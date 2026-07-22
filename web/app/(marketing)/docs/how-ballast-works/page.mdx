@@ -1,0 +1,61 @@
+export const metadata = {
+  title: "How ballast works",
+  description:
+    "Backing per token, the treasury contract, locked vs withdrawable, and why prices rest off-hours.",
+};
+
+# How ballast works
+
+Ballast is a treasury of tokenized real-world assets that a project holds in an
+on-chain contract. BALLAST reads that contract, prices its contents with
+Chainlink, and shows the result as **backing per token**.
+
+## The one number
+
+```
+backing per token       = Σ(treasury asset balance × live price) ÷ total supply
+locked backing per token = Σ(locked balances × live price) ÷ total supply
+backing ratio           = market price ÷ backing per token
+```
+
+This is arithmetic on public data. It is not a rating, a seal of approval, or an
+opinion. The value of the treasury is what the assets are worth right now — no
+more, no less.
+
+## Locked vs creator-withdrawable
+
+Every treasury separates two kinds of ballast, and BALLAST always shows them
+apart:
+
+- **Locked forever.** Assets deposited by third parties. Once accepted, they can
+  never be withdrawn by anyone — not the depositor, not the creator.
+- **Creator-withdrawable.** Assets the creator deposited themselves. They can be
+  withdrawn, but only after a public announcement and a fixed waiting period.
+
+Locked backing is the more meaningful figure, because it cannot leave.
+
+## The notice period is fixed at launch
+
+A creator chooses a withdrawal notice period — 7, 30, or 90 days — when the
+project is deployed. After that it **cannot be changed**. A creator cannot
+advertise 90 days to earn trust and quietly shorten it later. Every withdrawal is
+announced publicly first, with a countdown everyone can see before a single asset
+moves.
+
+## Why the equity value rests at night
+
+Tokenized equity feeds update during market sessions and hold their last price
+over weekends, holidays, and thin overnight windows. When a price is resting,
+BALLAST shows the last update and its timestamp next to the figure. We never
+estimate, smooth, or forward-project a price we do not have — the moment you
+smooth a number, you are making a claim.
+
+## Corporate actions
+
+Tokenized stock tokens implement ERC-8056. Dividends and splits do not change
+balances; they move a per-token multiplier. Because dividends are reinvested
+through that multiplier, a stock token tracks the total return of the underlying,
+so a treasury can compound on its own. BALLAST reads the Chainlink feed price,
+which already accounts for this — it never double-counts the multiplier.
+
+Next: [What ballast is not →](/docs/what-ballast-is-not)

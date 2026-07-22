@@ -1,0 +1,70 @@
+export const metadata = {
+  title: "Verify a treasury yourself",
+  description:
+    "Reproduce a project's backing per token from on-chain data, without using this interface.",
+};
+
+# Verify a treasury yourself
+
+You never have to trust this interface. Everything BALLAST shows is computed from
+public on-chain data you can read yourself. Here is how to reproduce the backing
+figure from scratch.
+
+## 1. Find the treasury
+
+From a project page, take the project token address and read its immutable
+`treasury()` value on the explorer, or resolve it from the `BallastFactory`
+creation event. Confirm the treasury&apos;s `projectToken()` points back to the
+same token — this two-way check defeats a spoofed treasury.
+
+## 2. List what it holds
+
+On the `ProjectTreasury` contract, read:
+
+- `assets()` — every asset the treasury has held
+- `lockedBalance(asset)` — permanently locked amount
+- `creatorWithdrawable(asset)` — amount the creator could withdraw
+
+The amount that counts toward backing is `lockedBalance + creatorWithdrawable`.
+Pending (proposed-but-not-accepted) deposits sit in escrow and are **not** counted.
+
+## 3. Price each asset
+
+For each asset, read its Chainlink feed:
+
+```solidity
+(, int256 answer, , uint256 updatedAt, ) = feed.latestRoundData();
+uint8 feedDecimals = feed.decimals();     // read it — do not assume 8
+```
+
+- Reject a zero or negative `answer`.
+- Check `updatedAt`. Off-hours the price rests with no new heartbeat — that is
+  expected, not an error. Note the age; do not discard the price for being rested.
+- On an L2, check the Chainlink sequencer uptime feed first. During a sequencer
+  outage feeds go stale while contracts still respond.
+- Do **not** multiply by the token&apos;s `uiMultiplier()`. The feed price already
+  includes it; applying it again double-counts.
+
+## 4. Do the arithmetic
+
+```
+value(asset)      = balance × price ÷ 10^(assetDecimals + feedDecimals)
+total value       = Σ value(asset)
+backing per token = total value ÷ (totalSupply ÷ 10^tokenDecimals)
+```
+
+Compare it to what the project page shows. They should match. If the chain and this
+interface ever disagree, **the chain is the source of truth.**
+
+## 5. Watch for withdrawals
+
+Read `pendingWithdrawal()` on the treasury to see any announced withdrawal — its
+asset, amount, and unlock time — without asking anyone&apos;s permission. Because
+only one withdrawal can be active at a time and the notice period is immutable, the
+countdown you see is the real one.
+
+## Reproduce it in code
+
+The [`BackingLens`](/docs/contract-addresses) contract does all of the above in a
+single batched call, and its source is verified on the explorer. You can call it
+directly, or copy its logic — it is the same math described here.
