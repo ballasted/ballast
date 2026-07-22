@@ -36,7 +36,7 @@ These are not style preferences. Violating any of them either breaks the legal p
 7. **Never apply `uiMultiplier()` to a Chainlink feed price.** The feed already includes it. Applying it again double-counts and inflates every backing figure.
 8. Never smooth, interpolate, or forward-project a resting price.
 9. Always read `decimals()` from the feed. Never hardcode.
-10. Always check the L2 sequencer uptime feed before trusting a price.
+10. Always check the L2 sequencer uptime feed before trusting a price. ⚠️ As of 2026-07 Chainlink publishes **no** L2 Sequencer Uptime Feed for Robinhood Chain (4663) — it is absent from the feeds directory and not listed on the l2-sequencer-feeds page. `BackingLens` requires one, so on mainnet this check currently has no feed to read. Do **not** hardcode a guessed address; treat it as an unresolved blocker and surface it.
 
 ### Contract invariants
 
@@ -44,6 +44,12 @@ These are not style preferences. Violating any of them either breaks the legal p
 12. Creators may withdraw **only** what they deposited. Third-party deposits are permanently locked.
 13. `require(asset != projectToken)` — self-backing must be impossible.
 14. Allowlist assets by **canonical contract address**, never by ticker or name. Impostor tokens with matching tickers are a documented risk on this chain.
+
+### Oracle feed sourcing
+
+15. **Always use the feed's Standard Proxy, never the SVR Proxy.** Every Chainlink feed on this chain exposes TWO addresses: the Standard Proxy (`proxyAddress` in the feeds directory) and the SVR Proxy (`secondaryProxyAddress`). SVR = Smart Value Recapture, built for lending protocols recapturing liquidation OEV — wrong for a disclosure product. They sit side by side on the same docs row and are trivially easy to swap. On-chain they can look identical today (same `description`, `decimals`, underlying `aggregator`) yet diverge later, so a runtime check won't save you — get the address right at allowlist time. Verified example: SGOV Standard `0xa0DF4ee0fFf975306345875E3548Fcc519577A11`, SVR `0xa7a18Ca3F19E17FfA28F92302B817Ca8c1A94b06`.
+16. Feeds are named `Robinhood TICKER / USD` (a few, incl. SGOV/DELL/USAR, use `Robinhood TICKER-USD`) and carry a `marketHours` field (e.g. `us_equities_24/5`). Derive each asset's `staleAfter` from its market-hours + heartbeat, **per asset** — never one global constant.
+17. Only ~35 of ~95 stock tokens have a Chainlink feed (56 feeds total; the rest are crypto/stablecoin/exchange-rate). The allowlist is therefore **materially smaller** than the token registry: a stock token with no official feed cannot be ballast.
 
 ---
 

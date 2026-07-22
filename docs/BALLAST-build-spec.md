@@ -165,9 +165,12 @@ function priceOf(address asset) public view returns (uint256 price, uint256 upda
 
 Also required before trusting any price:
 
-- **Sequencer uptime check.** On an L2, feeds go stale during a sequencer outage while contracts still respond. Read the Chainlink L2 Sequencer Uptime Feed: `sequencerStatus == 0` means up, plus a grace period after recovery.
+- **Sequencer uptime check.** On an L2, feeds go stale during a sequencer outage while contracts still respond. Read the Chainlink L2 Sequencer Uptime Feed: `sequencerStatus == 0` means up, plus a grace period after recovery. ⚠️ **Verified 2026-07: Chainlink publishes no sequencer uptime feed for Robinhood Chain (4663)** — absent from the feeds directory and the l2-sequencer-feeds page. `BackingLens` requires one, so this is an unresolved blocker for on-chain valuation; do not hardcode a guessed address.
 - **`oraclePaused()` on the stock token.** True while a corporate action is processing. Chainlink states this flag is advisory and not enforced on-chain, so treat `updatedAt` as the primary guard and this as an extra UI signal.
 - **Read `decimals()` from the feed.** Most USD feeds are 8 decimals, but never hardcode.
+- **Use the Standard Proxy, never the SVR Proxy.** Each feed has both: Standard (`proxyAddress`) and SVR (`secondaryProxyAddress`, Smart Value Recapture for lending OEV). They sit side by side and look identical on-chain today but can diverge — pick the Standard address at allowlist time. Verified SGOV: Standard `0xa0DF4ee0fFf975306345875E3548Fcc519577A11`, SVR `0xa7a18Ca3F19E17FfA28F92302B817Ca8c1A94b06`.
+- **Per-asset `staleAfter`.** Feeds carry a `marketHours` field (e.g. `us_equities_24/5`) confirming the 24/5 behaviour. Derive the staleness bound per asset from that field + heartbeat, never one global constant.
+- **Feed coverage < token count.** Only ~35 of ~95 stock tokens have a feed (56 feeds total, rest crypto/stablecoin/rate). The allowlist is materially smaller than the token registry; an unfeed-ed stock token cannot be ballast.
 
 **Never apply `uiMultiplier()` to the feed price.** `latestRoundData()` already returns the full multiplier-adjusted per-token price. Applying the multiplier again double-counts and inflates every backing figure on the platform. Only use `uiMultiplier()` if converting to underlying-share terms for display.
 
@@ -365,7 +368,7 @@ Write tests for the adversarial cases before the happy path. The attack surface 
 - **Do stock tokens carry transfer restrictions or holder allowlists?** Not answered in public docs. If a contract cannot hold them, the entire ballast mechanism needs rethinking. Verify this first, before writing anything else.
 - **Jurisdictional eligibility.** Stock tokens are described as available "in eligible regions". This directly constrains who can ballast a launch, and whether geo-blocking is required.
 - Read Chainlink feed proxy addresses, decimals and per-asset staleness bounds from the Chainlink Robinhood feeds page at build time.
-- Confirm the L2 Sequencer Uptime Feed address on this chain.
+- ~~Confirm the L2 Sequencer Uptime Feed address on this chain.~~ **Resolved 2026-07: there is none published.** Chainlink lists no sequencer uptime feed for chain 4663. `BackingLens` currently cannot perform the mandatory sequencer check on mainnet — decide whether to (a) wait for Chainlink to publish one, or (b) make the sequencer feed configurable with an explicit "unavailable" UI state rather than a hard dependency.
 - Confirm the correct modified UniversalRouter address independently, and the exact v4 swap struct encoding including `minHopPriceX36`.
 - Confirm whether Uniswap v4 hook deployment is permissionless here (hook-flag address mining).
 

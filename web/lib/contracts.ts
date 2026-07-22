@@ -16,9 +16,12 @@ export const ASSET_REGISTRY_ADDRESS = asAddress(
 );
 export const FACTORY_ADDRESS = asAddress(process.env.NEXT_PUBLIC_FACTORY_ADDRESS);
 
-// Temporary project source until the factory registry / indexer exists:
-// a comma-separated list of ProjectTreasury addresses. Discover reads each one
-// through BackingLens. Once the factory ships, this is replaced by a registry read.
+// ⚠️ TEMPORARY STOPGAP — REMOVE WHEN THE FACTORY REGISTRY EXISTS.
+// A hardcoded, comma-separated list of ProjectTreasury addresses so Discover can
+// read them through BackingLens before an indexer exists. This violates the
+// never-hardcode-per-launch-addresses rule (CLAUDE.md) and MUST be deleted once
+// BallastFactory ships — Discover should then enumerate launches from the factory
+// registry / creation events, not an env list.
 export const DISCOVER_TREASURIES: Address[] = (
   process.env.NEXT_PUBLIC_DISCOVER_TREASURIES ?? ""
 )
