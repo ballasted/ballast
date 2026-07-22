@@ -12,6 +12,16 @@ const nextConfig = {
   // Pin the workspace root: an unrelated package-lock.json in a parent dir was
   // making Next infer the wrong root for output file tracing.
   outputFileTracingRoot: __dirname,
+  webpack: (config, { webpack }) => {
+    // wagmi's connectors barrel drags in the Base/Coinbase account connector,
+    // which lazily requires optional @x402/* payment packages we don't install
+    // or use (we only use the `injected` connector). Ignore them so the bundle
+    // resolves; they are never executed.
+    config.plugins.push(
+      new webpack.IgnorePlugin({ resourceRegExp: /^@x402\// }),
+    );
+    return config;
+  },
 };
 
 const withMDX = createMDX({
