@@ -165,9 +165,12 @@ function priceOf(address asset) public view returns (uint256 price, uint256 upda
 
 Also required before trusting any price:
 
-- **Sequencer uptime check.** On an L2, feeds go stale during a sequencer outage while contracts still respond. Read the Chainlink L2 Sequencer Uptime Feed: `sequencerStatus == 0` means up, plus a grace period after recovery.
+- **Sequencer uptime check.** On an L2, feeds go stale during a sequencer outage while contracts still respond. Read the Chainlink L2 Sequencer Uptime Feed: `sequencerStatus == 0` means up, plus a grace period after recovery. ⚠️ **Verified 2026-07: Chainlink publishes no sequencer uptime feed for Robinhood Chain (4663)** — absent from the feeds directory and the l2-sequencer-feeds page. `BackingLens` requires one, so this is an unresolved blocker for on-chain valuation; do not hardcode a guessed address.
 - **`oraclePaused()` on the stock token.** True while a corporate action is processing. Chainlink states this flag is advisory and not enforced on-chain, so treat `updatedAt` as the primary guard and this as an extra UI signal.
 - **Read `decimals()` from the feed.** Most USD feeds are 8 decimals, but never hardcode.
+- **Use the Standard Proxy, never the SVR Proxy.** Each feed has both: Standard (`proxyAddress`) and SVR (`secondaryProxyAddress`, Smart Value Recapture for lending OEV). They sit side by side and look identical on-chain today but can diverge — pick the Standard address at allowlist time. Verified SGOV: Standard `0xa0DF4ee0fFf975306345875E3548Fcc519577A11`, SVR `0xa7a18Ca3F19E17FfA28F92302B817Ca8c1A94b06`.
+- **Per-asset `staleAfter`.** Feeds carry a `marketHours` field (e.g. `us_equities_24/5`) confirming the 24/5 behaviour. Derive the staleness bound per asset from that field + heartbeat, never one global constant.
+- **Feed coverage < token count.** Only ~35 of ~95 stock tokens have a feed (56 feeds total, rest crypto/stablecoin/rate). The allowlist is materially smaller than the token registry; an unfeed-ed stock token cannot be ballast.
 
 **Never apply `uiMultiplier()` to the feed price.** `latestRoundData()` already returns the full multiplier-adjusted per-token price. Applying the multiplier again double-counts and inflates every backing figure on the platform. Only use `uiMultiplier()` if converting to underlying-share terms for display.
 
@@ -365,8 +368,8 @@ Write tests for the adversarial cases before the happy path. The attack surface 
 - **Do stock tokens carry transfer restrictions or holder allowlists?** Not answered in public docs. If a contract cannot hold them, the entire ballast mechanism needs rethinking. Verify this first, before writing anything else.
 - **Jurisdictional eligibility.** Stock tokens are described as available "in eligible regions". This directly constrains who can ballast a launch, and whether geo-blocking is required.
 - Read Chainlink feed proxy addresses, decimals and per-asset staleness bounds from the Chainlink Robinhood feeds page at build time.
-- Confirm the L2 Sequencer Uptime Feed address on this chain.
-- Confirm the correct modified UniversalRouter address independently, and the exact v4 swap struct encoding including `minHopPriceX36`.
+- ~~Confirm the L2 Sequencer Uptime Feed address on this chain.~~ **Resolved 2026-07: none published, and `BackingLens` now makes it optional (chosen: option b).** The feed address is a constructor arg; when unset, `sequencerStatus = Unknown` and valuation proceeds while the UI shows "sequencer status unverifiable". Rationale: a hard dependency would brick valuation the same way a reverting stale-check does — and the sequencer guard exists for protocols that *act* on price (liquidations); BALLAST only displays, and reading a stale price as current is already covered by `updatedAt`. Set a real feed later to turn the check on with no code change.
+- ~~Confirm the correct modified UniversalRouter address independently, and the exact v4 swap struct encoding including `minHopPriceX36`.~~ **Resolved 2026-07-23.** Router `0x8876789976dEcBfCbBbe364623C63652db8C0904` (Blockscout-verified fork). `minHopPriceX36` is a scalar `uint256` after `amountOutMinimum` in single-hop `ExactInputSingleParams` (0 = disabled), and a `uint256[]` in multi-hop `ExactInputParams` (len 0 or == hops). See research §4, `contracts/src/interfaces/IRobinhoodV4Router.sol`, `web/lib/robinhoodRouter.ts`.
 - Confirm whether Uniswap v4 hook deployment is permissionless here (hook-flag address mining).
 
 See `robinhood-chain-research.md` for full sources and the verified technical findings behind this spec.

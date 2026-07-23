@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-bg text-text-primary font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(0, 200, 5, 0.25);
+  }
+
+  a {
+    @apply transition-colors;
+  }
+}
+
+@layer components {
+  /* Large, high-contrast primary figure with small muted secondary metrics. */
+  .figure-primary {
+    @apply text-text-primary font-semibold tabular-nums tracking-tight;
+  }
+
+  .metric-secondary {
+    @apply text-text-muted text-sm tabular-nums;
+  }
+
+  .card {
+    @apply bg-card border border-border rounded-card;
+  }
+
+  .prose-doc {
+    @apply text-text-secondary leading-relaxed;
+  }
+  .prose-doc h1 {
+    @apply text-text-primary text-3xl font-semibold tracking-tight mb-4 mt-0;
+  }
+  .prose-doc h2 {
+    @apply text-text-primary text-xl font-semibold tracking-tight mt-10 mb-3;
+  }
+  .prose-doc h3 {
+    @apply text-text-primary text-lg font-semibold mt-8 mb-2;
+  }
+  .prose-doc p {
+    @apply my-4;
+  }
+  .prose-doc ul {
+    @apply my-4 list-disc pl-6 space-y-2;
+  }
+  .prose-doc ol {
+    @apply my-4 list-decimal pl-6 space-y-2;
+  }
+  .prose-doc a {
+    @apply text-green underline underline-offset-2 hover:opacity-80;
+  }
+  .prose-doc code {
+    @apply bg-bg border border-border rounded px-1.5 py-0.5 text-sm font-mono text-text-primary;
+  }
+  .prose-doc pre {
+    @apply bg-bg border border-border rounded-card p-4 my-6 overflow-x-auto text-sm;
+  }
+  .prose-doc pre code {
+    @apply bg-transparent border-0 p-0;
+  }
+  .prose-doc strong {
+    @apply text-text-primary font-semibold;
+  }
+  .prose-doc hr {
+    @apply border-border my-8;
+  }
+  .prose-doc table {
+    @apply my-6 w-full text-sm border-collapse;
+  }
+  .prose-doc th {
+    @apply text-left text-text-primary font-semibold border-b border-border py-2 pr-4;
+  }
+  .prose-doc td {
+    @apply border-b border-border py-2 pr-4 align-top;
+  }
+}

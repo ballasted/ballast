@@ -1,0 +1,53 @@
+export const metadata = {
+  title: "Contract addresses",
+  description:
+    "BALLAST core contracts, how per-launch addresses are resolved, and the external contracts to verify independently.",
+};
+
+# Contract addresses
+
+Never trust an address because a website printed it. Verify every address on the
+block explorer ([robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com))
+before you send anything to it. This chain has documented impostor tokens that
+copy a real ticker with a different contract address.
+
+## BALLAST core contracts
+
+These are deployed once and shared across every launch.
+
+| Contract | Role | Address |
+| --- | --- | --- |
+| `AssetRegistry` | Global asset allowlist + pricing config | *pending deployment* |
+| `BackingLens` | Batched backing read for the UI | *pending deployment* |
+| `BallastFactory` | Launch entry point + registry | *pending deployment* |
+
+Addresses will be published here after mainnet deployment and mirrored in the app.
+
+## Per-launch contracts
+
+Each launch deploys its own project token and `ProjectTreasury`. **These addresses
+are never hardcoded.** Resolve them from the factory&apos;s creation event or its
+on-chain registry, and confirm the treasury address stored immutably on the token
+contract matches. The app does exactly this.
+
+## External contracts — verify independently
+
+Sourced from public docs; **confirm each on the explorer before use.**
+
+| Contract | Address |
+| --- | --- |
+| WETH (aeWETH proxy) | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` |
+| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
+
+> ⚠️ The UniversalRouter on Robinhood Chain is a **modified fork** with an extra
+> `minHopPriceX36` field in its v4 swap struct, and look-alike routers exist. Do
+> not copy a router address from any doc — including this one — without confirming
+> it independently.
+
+Asset (stock token) and Chainlink feed addresses come from the on-chain asset
+registry and the Chainlink Robinhood feeds page, read at build time. They are not
+listed here so that a stale copy can never mislead you.
+
+Next: [Verify a treasury yourself →](/docs/verify-a-treasury)
