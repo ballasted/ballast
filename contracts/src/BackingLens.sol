@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 import {IStockToken} from "./interfaces/IStockToken.sol";
-import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
+import {IAssetRegistry, MarketHours} from "./interfaces/IAssetRegistry.sol";
 import {ProjectTreasury} from "./ProjectTreasury.sol";
 
 /// @title BackingLens
@@ -15,34 +15,42 @@ import {ProjectTreasury} from "./ProjectTreasury.sol";
 /// @dev Encodes the non-negotiable valuation rules:
 ///
 ///   1. NEVER revert on a stale price. Robinhood equity feeds have no heartbeat
-///      off-hours; they hold the last published price over weekends and holidays.
-///      A reverting valuation is bricked two days out of every seven. Staleness is
-///      returned as a flag, per asset, never thrown.
+///      off-hours; they hold the last published price. Staleness is a per-asset
+///      flag, never a throw. The fine RESTING-vs-STALE distinction is computed
+///      off-chain from `marketHours` + `updatedAt` (web/lib/marketHours.ts); the
+///      on-chain `stale` flag is the coarse absolute outer bound.
 ///
-///   2. NEVER apply `uiMultiplier()` to the feed price. `latestRoundData()`
-///      already returns the full multiplier-adjusted per-token price.
+///   2. NEVER apply `uiMultiplier()` to the feed price — it already includes it.
 ///
 ///   3. Read `decimals()` from each feed. Never hardcode.
 ///
-///   4. Check the L2 sequencer uptime feed before trusting any price. During an
-///      outage feeds go stale while contracts still respond. Rather than brick the
-///      whole view, the sequencer state is surfaced as flags and, when down or in
-///      the post-recovery grace window, every asset is marked unpriced so the UI
-///      can say "prices unavailable" instead of showing wrong numbers.
+///   4. The L2 sequencer uptime feed is OPTIONAL and configurable. Robinhood Chain
+///      (4663) has no such feed published, and a hard dependency would brick the
+///      product exactly like a reverting stale-check would — the same failure this
+///      product forbids. When the feed is unset, valuation PROCEEDS and reports
+///      `sequencerStatus = Unknown` so the UI can say "sequencer status
+///      unverifiable" honestly. When a feed IS set, Down/GracePeriod mark prices
+///      untrusted. Setting the address later turns the check on with no code change.
 ///
-///   5. Reject zero/negative answers — a genuine oracle fault, distinct from a
-///      valid-but-resting off-hours price. Marked `priced = false`, not summed.
+///   5. Reject zero/negative answers — a genuine oracle fault (priced=false), not
+///      summed.
 ///
 /// All USD values are returned in 1e18 fixed point.
 contract BackingLens {
-    /// @notice Chainlink L2 Sequencer Uptime Feed. `answer == 0` means up.
+    /// @notice Chainlink L2 Sequencer Uptime Feed. `answer == 0` means up. May be
+    ///         the zero address when the chain has no such feed (then status is
+    ///         reported Unknown and prices are still valued).
     AggregatorV3Interface public immutable sequencerUptimeFeed;
 
-    /// @notice Grace period after sequencer recovery during which prices are not
-    ///         yet trusted.
     uint256 public constant SEQUENCER_GRACE_PERIOD = 1 hours;
-
     uint256 private constant WAD = 1e18;
+
+    enum SequencerStatus {
+        Unknown, // no feed configured — cannot verify (prices still valued, flagged)
+        Up,
+        GracePeriod, // recently recovered; not yet trusted
+        Down
+    }
 
     struct AssetBacking {
         address asset;
@@ -51,17 +59,17 @@ contract BackingLens {
         uint256 price; // feed decimals
         uint8 priceDecimals;
         uint8 assetDecimals;
-        uint256 updatedAt;
+        uint256 updatedAt; // raw feed timestamp — source of truth for freshness
+        uint8 marketHours; // MarketHours enum; off-chain tiering input
         uint256 lockedValueUsd; // 1e18
         uint256 withdrawableValueUsd; // 1e18
         bool priced; // false => excluded from totals (fault / sequencer down)
-        bool stale; // price age exceeded per-asset staleAfter (still valid)
+        bool stale; // coarse: age exceeded the absolute outer bound (still counts)
         bool oraclePaused; // ERC-8056 advisory flag, if the token exposes it
     }
 
     struct Backing {
-        bool sequencerUp;
-        bool sequencerGraceActive;
+        SequencerStatus sequencerStatus;
         uint256 totalSupply; // 18 decimals
         uint256 lockedValueUsd; // 1e18
         uint256 withdrawableValueUsd; // 1e18
@@ -73,8 +81,9 @@ contract BackingLens {
         AssetBacking[] assets;
     }
 
+    /// @param sequencerUptimeFeed_ the L2 sequencer feed, or address(0) if the
+    ///        chain has none (status will be reported Unknown).
     constructor(address sequencerUptimeFeed_) {
-        require(sequencerUptimeFeed_ != address(0), "zero feed");
         sequencerUptimeFeed = AggregatorV3Interface(sequencerUptimeFeed_);
     }
 
@@ -84,12 +93,13 @@ contract BackingLens {
         IAssetRegistry registry = treasury.registry();
         address projectToken = treasury.projectToken();
 
-        (bool seqUp, bool graceActive) = _sequencerState();
-        b.sequencerUp = seqUp;
-        b.sequencerGraceActive = graceActive;
+        SequencerStatus status = _sequencerState();
+        b.sequencerStatus = status;
         b.totalSupply = IERC20Metadata(projectToken).totalSupply();
 
-        bool trustPrices = seqUp && !graceActive;
+        // Trust prices when the sequencer is Up, or when we simply cannot check
+        // (Unknown — no feed on this chain). Down / GracePeriod are NOT trusted.
+        bool trustPrices = (status == SequencerStatus.Up || status == SequencerStatus.Unknown);
 
         address[] memory assetList = treasury.assets();
         b.assets = new AssetBacking[](assetList.length);
@@ -97,7 +107,6 @@ contract BackingLens {
         for (uint256 i = 0; i < assetList.length; i++) {
             AssetBacking memory a = _valueAsset(treasury, registry, assetList[i], trustPrices);
             b.assets[i] = a;
-
             b.lockedValueUsd += a.lockedValueUsd;
             b.withdrawableValueUsd += a.withdrawableValueUsd;
             if (a.stale) b.anyStale = true;
@@ -111,9 +120,8 @@ contract BackingLens {
         }
     }
 
-    /// @notice Spec §5 `priceOf`: returns price + age + staleness, never reverts on
-    ///         a resting off-hours price. Reverts only on a genuinely invalid
-    ///         (zero/negative) answer.
+    /// @notice Spec §5 `priceOf`: price + age + staleness, never reverts on a
+    ///         resting off-hours price. Reverts only on an invalid answer.
     function priceOf(address registryAddr, address asset)
         external
         view
@@ -142,31 +150,20 @@ contract BackingLens {
         a.withdrawableBalance = treasury.creatorWithdrawable(asset);
         a.assetDecimals = _tryDecimals(asset);
         a.oraclePaused = _tryOraclePaused(asset);
+        a.marketHours = uint8(registry.marketHoursOf(asset));
 
         address feedAddr = registry.feedOf(asset);
-        if (feedAddr == address(0)) {
-            // Asset was de-listed after deposit; balances still shown, unpriced.
-            return a;
-        }
+        if (feedAddr == address(0)) return a; // de-listed after deposit; unpriced
 
         (bool ok, uint256 price, uint8 priceDec, uint256 updatedAt) = _tryReadFeed(feedAddr);
         a.price = price;
         a.priceDecimals = priceDec;
         a.updatedAt = updatedAt;
+        if (!ok) return a; // zero/negative answer or reverting feed: unpriced
 
-        if (!ok) {
-            // Zero/negative answer or a reverting feed: fault, not summed.
-            return a;
-        }
-
-        // Staleness is informational — the price is still used. NEVER dropped just
-        // for being off-hours; that is the whole point.
         a.stale = (block.timestamp - updatedAt) > registry.staleAfter(asset);
 
-        // Only exclude from totals if the sequencer is untrusted.
-        if (!trustPrices) {
-            return a; // priced stays false
-        }
+        if (!trustPrices) return a; // sequencer down/grace: priced stays false
 
         a.priced = true;
         a.lockedValueUsd = _toUsd(a.lockedBalance, a.assetDecimals, price, priceDec);
@@ -183,11 +180,17 @@ contract BackingLens {
         return (balance * price * WAD) / (10 ** assetDec * 10 ** priceDec);
     }
 
-    function _sequencerState() internal view returns (bool up, bool graceActive) {
-        (, int256 status, uint256 startedAt,,) = sequencerUptimeFeed.latestRoundData();
-        up = (status == 0);
-        // After recovery, `startedAt` resets; wait out the grace window.
-        graceActive = up && (block.timestamp - startedAt <= SEQUENCER_GRACE_PERIOD);
+    function _sequencerState() internal view returns (SequencerStatus) {
+        if (address(sequencerUptimeFeed) == address(0)) return SequencerStatus.Unknown;
+        // A configured-but-broken feed must not brick valuation: treat a revert as
+        // Down (conservative — prices not trusted) rather than throwing.
+        try sequencerUptimeFeed.latestRoundData() returns (uint80, int256 answer, uint256 startedAt, uint256, uint80) {
+            if (answer != 0) return SequencerStatus.Down;
+            if (block.timestamp - startedAt <= SEQUENCER_GRACE_PERIOD) return SequencerStatus.GracePeriod;
+            return SequencerStatus.Up;
+        } catch {
+            return SequencerStatus.Down;
+        }
     }
 
     function _tryReadFeed(address feedAddr)

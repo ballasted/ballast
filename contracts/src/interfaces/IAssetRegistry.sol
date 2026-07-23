@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+/// @notice Market-hours class for an asset's feed, taken from the Chainlink
+///         `marketHours` field at allowlist time. Drives the off-chain two-tier
+///         freshness classification (RESTING vs STALE) — see web/lib/marketHours.ts.
+enum MarketHours {
+    Unknown, // no class recorded
+    UsEquities24_5, // "us_equities_24/5": trades ~24h Sun 8pm ET → Fri 8pm ET
+    Crypto24_7 // always open
+}
+
 /// @title IAssetRegistry
 /// @notice Read interface for the global BALLAST asset allowlist.
 /// @dev Assets are keyed by canonical contract address only — never by ticker or
@@ -11,15 +20,18 @@ interface IAssetRegistry {
     function isAllowed(address asset) external view returns (bool);
 
     /// @notice Minimum deposit size for `asset`, in the asset's own decimals.
-    /// @dev Enforced to stop dust-spam from bloating valuation loops and griefing
-    ///      gas on view functions.
     function minDeposit(address asset) external view returns (uint256);
 
-    /// @notice Chainlink feed proxy for `asset` (AggregatorV3Interface).
+    /// @notice Chainlink feed proxy for `asset`. MUST be the Standard Proxy, never
+    ///         the SVR (Smart Value Recapture) proxy (CLAUDE.md rule 15).
     function feedOf(address asset) external view returns (address);
 
-    /// @notice Per-asset staleness bound in seconds. A tokenized T-bill and a
-    ///         tokenized equity need different bounds, so this is per asset, never
-    ///         a single global constant.
+    /// @notice Per-asset absolute staleness bound in seconds. This is the OUTER
+    ///         safety net (a resting feed may legitimately reach it over a long
+    ///         weekend/holiday). The fine RESTING-vs-STALE distinction during
+    ///         trading hours is computed off-chain from `marketHoursOf` + updatedAt.
     function staleAfter(address asset) external view returns (uint256);
+
+    /// @notice Market-hours class of the asset's feed.
+    function marketHoursOf(address asset) external view returns (MarketHours);
 }

@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
-import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
+import {IAssetRegistry, MarketHours} from "./interfaces/IAssetRegistry.sol";
 
 /// @title AssetRegistry
 /// @notice Global, conservatively managed allowlist of assets that may back a
@@ -18,9 +18,10 @@ import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
 contract AssetRegistry is Ownable, IAssetRegistry {
     struct Asset {
         bool allowed;
-        address feed; // Chainlink AggregatorV3Interface proxy
-        uint256 staleAfter; // seconds; per-asset, never a global constant
+        address feed; // Chainlink AggregatorV3Interface proxy (STANDARD, never SVR)
+        uint256 staleAfter; // seconds; absolute outer bound, per-asset
         uint256 minDeposit; // in asset decimals
+        MarketHours marketHours; // drives off-chain RESTING-vs-STALE classification
     }
 
     mapping(address asset => Asset) private _assets;
@@ -36,15 +37,43 @@ contract AssetRegistry is Ownable, IAssetRegistry {
 
     constructor(address owner_) Ownable(owner_) {}
 
-    /// @notice Add or update an asset. Requires a feed and a positive staleness
-    ///         bound so no allowed asset can ever be unpriceable.
+    /// @notice Add or update an asset (market-hours class defaults to Unknown).
     function setAsset(address asset, address feed, uint256 staleAfter_, uint256 minDeposit_) external onlyOwner {
+        _setAsset(asset, feed, staleAfter_, minDeposit_, MarketHours.Unknown);
+    }
+
+    /// @notice Add or update an asset with its market-hours class. Requires a feed
+    ///         (the STANDARD proxy) and a positive staleness bound so no allowed
+    ///         asset can ever be unpriceable.
+    function setAsset(
+        address asset,
+        address feed,
+        uint256 staleAfter_,
+        uint256 minDeposit_,
+        MarketHours marketHours_
+    ) external onlyOwner {
+        _setAsset(asset, feed, staleAfter_, minDeposit_, marketHours_);
+    }
+
+    function _setAsset(
+        address asset,
+        address feed,
+        uint256 staleAfter_,
+        uint256 minDeposit_,
+        MarketHours marketHours_
+    ) internal {
         if (asset == address(0) || feed == address(0)) revert ZeroAddress();
         require(staleAfter_ > 0, "staleAfter=0");
         require(minDeposit_ > 0, "minDeposit=0");
 
         bool isNew = !_assets[asset].allowed;
-        _assets[asset] = Asset({allowed: true, feed: feed, staleAfter: staleAfter_, minDeposit: minDeposit_});
+        _assets[asset] = Asset({
+            allowed: true,
+            feed: feed,
+            staleAfter: staleAfter_,
+            minDeposit: minDeposit_,
+            marketHours: marketHours_
+        });
 
         if (isNew) {
             _allowedList.push(asset);
@@ -94,14 +123,19 @@ contract AssetRegistry is Ownable, IAssetRegistry {
         return _assets[asset].staleAfter;
     }
 
+    /// @inheritdoc IAssetRegistry
+    function marketHoursOf(address asset) external view returns (MarketHours) {
+        return _assets[asset].marketHours;
+    }
+
     /// @notice Full config for an asset in one read.
     function assetConfig(address asset)
         external
         view
-        returns (bool allowed, address feed, uint256 staleAfter_, uint256 minDeposit_)
+        returns (bool allowed, address feed, uint256 staleAfter_, uint256 minDeposit_, MarketHours marketHours_)
     {
         Asset storage a = _assets[asset];
-        return (a.allowed, a.feed, a.staleAfter, a.minDeposit);
+        return (a.allowed, a.feed, a.staleAfter, a.minDeposit, a.marketHours);
     }
 
     /// @notice Enumerate the allowlist (for the Create asset picker via the Lens).

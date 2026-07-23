@@ -11,8 +11,7 @@ export const backingLensAbi = [
         name: "b",
         type: "tuple",
         components: [
-          { name: "sequencerUp", type: "bool" },
-          { name: "sequencerGraceActive", type: "bool" },
+          { name: "sequencerStatus", type: "uint8" }, // 0 Unknown 1 Up 2 Grace 3 Down
           { name: "totalSupply", type: "uint256" },
           { name: "lockedValueUsd", type: "uint256" },
           { name: "withdrawableValueUsd", type: "uint256" },
@@ -32,6 +31,7 @@ export const backingLensAbi = [
               { name: "priceDecimals", type: "uint8" },
               { name: "assetDecimals", type: "uint8" },
               { name: "updatedAt", type: "uint256" },
+              { name: "marketHours", type: "uint8" }, // 0 Unknown 1 UsEquities24_5 2 Crypto24_7
               { name: "lockedValueUsd", type: "uint256" },
               { name: "withdrawableValueUsd", type: "uint256" },
               { name: "priced", type: "bool" },

@@ -26,11 +26,17 @@ import {BackingLens} from "../src/BackingLens.sol";
 contract DeployCore is Script {
     function run() external returns (AssetRegistry registry, BackingLens lens) {
         address owner = vm.envAddress("PROTOCOL_OWNER_ADDRESS");
-        address sequencerFeed = vm.envAddress("SEQUENCER_UPTIME_FEED_ADDRESS");
+        // Optional: Robinhood Chain (4663) has no L2 sequencer uptime feed today.
+        // When unset, BackingLens reports sequencerStatus = Unknown and still
+        // values (the UI surfaces "sequencer unverifiable"). Set it later — with no
+        // code change — if Chainlink publishes one.
+        address sequencerFeed = vm.envOr("SEQUENCER_UPTIME_FEED_ADDRESS", address(0));
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
         require(owner != address(0), "PROTOCOL_OWNER_ADDRESS unset");
-        require(sequencerFeed != address(0), "SEQUENCER_UPTIME_FEED_ADDRESS unset");
+        if (sequencerFeed == address(0)) {
+            console2.log("WARNING: no SEQUENCER_UPTIME_FEED_ADDRESS set - status will be Unknown");
+        }
 
         vm.startBroadcast(pk);
         registry = new AssetRegistry(owner);

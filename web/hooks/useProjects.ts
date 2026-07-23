@@ -9,8 +9,7 @@ import { activeChain } from "@/lib/chain";
 const CHAIN_ID = activeChain.id;
 
 export type ProjectBacking = {
-  sequencerUp: boolean;
-  sequencerGraceActive: boolean;
+  sequencerStatus: number; // 0 Unknown, 1 Up, 2 GracePeriod, 3 Down
   totalSupply: bigint;
   lockedValueUsd: bigint;
   withdrawableValueUsd: bigint;

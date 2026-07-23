@@ -206,7 +206,7 @@ contract BackingLensTest is Test {
 
         sequencer.setAnswer(1, block.timestamp); // 1 = down
         BackingLens.Backing memory b = lens.backingOf(address(treasury));
-        assertFalse(b.sequencerUp);
+        assertEq(uint8(b.sequencerStatus), uint8(BackingLens.SequencerStatus.Down));
         assertTrue(b.anyUnpriced);
         assertEq(b.totalValueUsd, 0, "no price trusted while sequencer down");
     }
@@ -219,15 +219,41 @@ contract BackingLensTest is Test {
         sequencer.setAnswer(0, block.timestamp);
         sequencer.setStartedAt(block.timestamp - 10 minutes); // < 1h grace
         BackingLens.Backing memory b = lens.backingOf(address(treasury));
-        assertTrue(b.sequencerUp);
-        assertTrue(b.sequencerGraceActive);
+        assertEq(uint8(b.sequencerStatus), uint8(BackingLens.SequencerStatus.GracePeriod));
         assertEq(b.totalValueUsd, 0, "grace period: prices not yet trusted");
 
         // After the grace window, prices resume.
         sequencer.setStartedAt(block.timestamp - 2 hours);
         b = lens.backingOf(address(treasury));
-        assertFalse(b.sequencerGraceActive);
+        assertEq(uint8(b.sequencerStatus), uint8(BackingLens.SequencerStatus.Up));
         assertEq(b.totalValueUsd, 100_000e18);
+    }
+
+    function test_noSequencerFeed_valuesWithUnknownStatus() public {
+        // Deploy a lens with NO sequencer feed (chain 4663 has none). Valuation
+        // must still proceed and report Unknown — never revert, never zero-out.
+        BackingLens noSeqLens = new BackingLens(address(0));
+        vm.prank(creator);
+        treasury.deposit(address(nvda), 1000e18);
+
+        BackingLens.Backing memory b = noSeqLens.backingOf(address(treasury));
+        assertEq(uint8(b.sequencerStatus), uint8(BackingLens.SequencerStatus.Unknown));
+        assertEq(b.totalValueUsd, 100_000e18, "unverifiable sequencer still values");
+        assertTrue(b.assets[0].priced);
+        assertFalse(b.anyUnpriced);
+    }
+
+    function test_brokenSequencerFeed_doesNotRevert() public {
+        // A configured feed that reverts must degrade to Down, not brick the view.
+        MockAggregator broken = new MockAggregator(0, 0, block.timestamp);
+        broken.setRevert(true);
+        BackingLens brokenLens = new BackingLens(address(broken));
+        vm.prank(creator);
+        treasury.deposit(address(nvda), 1000e18);
+
+        BackingLens.Backing memory b = brokenLens.backingOf(address(treasury));
+        assertEq(uint8(b.sequencerStatus), uint8(BackingLens.SequencerStatus.Down));
+        assertEq(b.totalValueUsd, 0);
     }
 
     // ===================================================================== //

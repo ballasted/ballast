@@ -1,20 +1,16 @@
+import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
-import { activeChain } from "@/lib/chain";
-import {
-  formatUsd,
-  formatBackingPerToken,
-  shortAddress,
-} from "@/lib/format";
+import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 
 // Card contents follow build-spec §9. Price / % change are shown as "—" until a
 // market source (pool/quoter) exists — we never invent a number we can't measure.
-// The backing row is real, read live from BackingLens.
+// The backing row is real, read live from BackingLens. The whole card links to the
+// token detail page (keyed by treasury address for now; see that page's note).
 export function ProjectCard({ project, hideSparkline }: { project: Project; hideSparkline?: boolean }) {
   const { symbol, name, backing, ballasted, token, treasury } = project;
-  const explorer = `${activeChain.blockExplorers.default.url}/address/${treasury}`;
 
   return (
-    <div className="card p-4">
+    <Link href={`/app/token/${treasury}`} className="card block p-4 transition-colors hover:border-text-faint">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-bg text-sm font-semibold text-green">
@@ -65,16 +61,7 @@ export function ProjectCard({ project, hideSparkline }: { project: Project; hide
         // needs the factory/indexer; shown as pending for now.
         <div className="mt-2 metric-secondary">New · age pending indexer</div>
       )}
-
-      <a
-        href={explorer}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-block text-xs text-text-faint hover:text-text-secondary"
-      >
-        Verify on-chain ↗
-      </a>
-    </div>
+    </Link>
   );
 }
 
