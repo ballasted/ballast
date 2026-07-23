@@ -56,6 +56,24 @@ export default function TokenDetailPage() {
 
       <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
 
+      {/* Launch-liquidity disclosure — the pool is seeded one-sided from backing
+          upward, so there is no protocol liquidity below backing at launch. This
+          is NOT a floor (see what-ballast-is-not). Verbatim, approved copy. */}
+      <section className="card p-4">
+        <h2 className="text-sm font-semibold text-text-primary">
+          No protocol liquidity below backing at launch — not a floor
+        </h2>
+        <p className="mt-2 text-sm text-text-secondary">
+          A ballasted launch seeds the project&apos;s tokens from its backing price
+          upward, and nothing below it. So at the very first trades the token cannot
+          print below its backing in this pool — not because the price is supported,
+          but because no one has placed a bid there yet. The protocol spends nothing
+          to hold the price and never will. Anyone can add liquidity below backing at
+          any time, and once they do, the token can and will trade below its backing.
+          Do not read the launch state as a floor.
+        </p>
+      </section>
+
       {/* Buy/Sell pinned within thumb reach — disabled until a pool exists. */}
       <div className="sticky bottom-20 grid grid-cols-2 gap-3">
         <button
