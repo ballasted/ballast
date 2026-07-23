@@ -24,6 +24,11 @@ contract BallastFactory {
     /// @notice Global asset allowlist every launched treasury reads from.
     address public immutable registry;
 
+    /// @notice WETH — the token is CREATE2-mined to sort BELOW it (currency0) so
+    ///         the pool price is WETH/token directly (price up = tick up), which
+    ///         keeps the one-sided seeded range intuitive and kills a tick-sign trap.
+    address public immutable weth;
+
     struct Launch {
         address token;
         address treasury;
@@ -40,10 +45,18 @@ contract BallastFactory {
 
     error BadNoticePeriod();
     error ZeroAddress();
+    error CouldNotMineCurrency0();
+    error WrongOrdering();
 
-    constructor(address registry_) {
-        if (registry_ == address(0)) revert ZeroAddress();
+    constructor(address registry_, address weth_) {
+        if (registry_ == address(0) || weth_ == address(0)) revert ZeroAddress();
         registry = registry_;
+        weth = weth_;
+    }
+
+    /// @dev CREATE2 address of `initHash` deployed by this factory with `salt`.
+    function _create2(bytes32 salt, bytes32 initHash) internal view returns (address) {
+        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initHash)))));
     }
 
     /// @notice Launch a project: deploy the token + treasury, wire them, register.
@@ -57,8 +70,29 @@ contract BallastFactory {
             revert BadNoticePeriod();
         }
 
-        // 1. Token — full supply minted to the factory (curve/pool routing: next phase).
-        BallastToken t = new BallastToken(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this));
+        // 1. Token — CREATE2-mined so its address sorts BELOW weth (currency0).
+        //    Full supply minted to the factory for one-sided pool seeding.
+        bytes32 initHash = keccak256(
+            abi.encodePacked(
+                type(BallastToken).creationCode, abi.encode(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this))
+            )
+        );
+        bytes32 salt;
+        bool found;
+        for (uint256 s = 0; s < 4000; s++) {
+            address predicted = _create2(bytes32(s), initHash);
+            // Sort below weth (currency0) AND be unused — identical launch params
+            // would otherwise collide on the same CREATE2 address.
+            if (predicted < weth && predicted.code.length == 0) {
+                salt = bytes32(s);
+                found = true;
+                break;
+            }
+        }
+        if (!found) revert CouldNotMineCurrency0();
+        BallastToken t = new BallastToken{salt: salt}(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this));
+        // On-chain guard — never trust the mined salt; verify the actual ordering.
+        if (address(t) >= weth) revert WrongOrdering();
 
         // 2. Treasury — projectToken is immutable here, so self-backing is impossible.
         ProjectTreasury tr = new ProjectTreasury(address(t), msg.sender, noticePeriod, registry);

@@ -20,10 +20,16 @@ contract BallastFactoryTest is Test {
     address alice = makeAddr("alice");
 
     uint256 constant SUPPLY = 1_000_000_000e18;
+    address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
 
     function setUp() public {
         registry = new AssetRegistry(owner);
-        factory = new BallastFactory(address(registry));
+        factory = new BallastFactory(address(registry), WETH);
+    }
+
+    function test_tokenMinedBelowWeth_currency0() public {
+        (BallastToken t,) = _launch();
+        assertLt(uint160(address(t)), uint160(WETH), "token must sort below WETH (currency0)");
     }
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
