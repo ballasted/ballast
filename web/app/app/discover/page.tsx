@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { ProjectCard } from "@/components/app/ProjectCard";
+import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
 type SortTab = "ballasted" | "trending" | "new";
@@ -41,7 +42,7 @@ export default function DiscoverPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Discover</h1>
+      <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
 
       {/* Sort tabs — underline style. Ballasted is the default: the positioning
           is structural, not cosmetic. */}
@@ -152,7 +153,8 @@ function sortProjects(projects: Project[], sort: SortTab): Project[] {
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="card p-8 text-center">
-      <h2 className="font-semibold text-text-primary">{title}</h2>
+      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+      <h2 className="font-serif font-semibold text-bone">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
     </div>
   );

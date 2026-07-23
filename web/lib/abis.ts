@@ -175,6 +175,7 @@ export const ballastFactoryAbi = [
       { name: "name_", type: "string" },
       { name: "symbol_", type: "string" },
       { name: "noticePeriod", type: "uint256" },
+      { name: "metadataURI", type: "string" },
     ],
     outputs: [
       { name: "id", type: "uint256" },
@@ -198,6 +199,27 @@ export const ballastFactoryAbi = [
       { name: "token", type: "address", indexed: true },
       { name: "treasury", type: "address", indexed: false },
       { name: "noticePeriod", type: "uint256", indexed: false },
+      { name: "metadataURI", type: "string", indexed: false },
+    ],
+  },
+] as const;
+
+// ── FeeConfig ─────────────────────────────────────────────────────────────────
+// Owner-settable global fee + split, read LIVE (CLAUDE.md: never hardcode economic
+// parameters). One config serves every pool. Split legs: creator / platform /
+// referrer, all out of 10_000 bps.
+export const feeConfigAbi = [
+  {
+    type: "function",
+    name: "feeParams",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "feeBps", type: "uint16" },
+      { name: "creatorBps", type: "uint16" },
+      { name: "platformBps", type: "uint16" },
+      { name: "referrerBps", type: "uint16" },
+      { name: "platformVault", type: "address" },
     ],
   },
 ] as const;
@@ -254,7 +276,8 @@ export const projectTreasuryWriteAbi = [
   },
 ] as const;
 
-// BallastToken — resolves its treasury on-chain (immutable pointer).
+// BallastToken — treasury pointer + project metadata (launch identity permanent,
+// current URI updatable by the creator with a public MetadataUpdated log).
 export const ballastTokenAbi = [
   {
     type: "function",
@@ -262,6 +285,50 @@ export const ballastTokenAbi = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "creator",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "metadataURI",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "string" }],
+  },
+  {
+    type: "function",
+    name: "launchMetadataURI",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "string" }],
+  },
+  {
+    type: "function",
+    name: "metadataChanged",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "setMetadataURI",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newURI", type: "string" }],
+    outputs: [],
+  },
+  {
+    type: "event",
+    name: "MetadataUpdated",
+    inputs: [
+      { name: "oldURI", type: "string", indexed: false },
+      { name: "newURI", type: "string", indexed: false },
+      { name: "timestamp", type: "uint256", indexed: false },
+    ],
   },
 ] as const;
 

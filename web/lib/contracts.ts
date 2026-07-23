@@ -17,6 +17,11 @@ export const ASSET_REGISTRY_ADDRESS = asAddress(
 );
 export const FACTORY_ADDRESS = asAddress(process.env.NEXT_PUBLIC_FACTORY_ADDRESS);
 export const HOOK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS);
+// FeeConfig — the fee split shown in the create flow is read live from here, not
+// hardcoded, because the owner can retune it (CLAUDE.md conventions).
+export const FEE_CONFIG_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS,
+);
 
 // ── Pre-existing chain infrastructure (verified, docs/robinhood-chain-research) ─
 export const WETH_ADDRESS = asAddress(process.env.NEXT_PUBLIC_WETH_ADDRESS);
@@ -43,6 +48,23 @@ export const PERMIT2_ADDRESS =
 export const isLensConfigured = Boolean(LENS_ADDRESS);
 export const isFactoryConfigured = Boolean(FACTORY_ADDRESS);
 export const isRegistryConfigured = Boolean(ASSET_REGISTRY_ADDRESS);
+export const isFeeConfigConfigured = Boolean(FEE_CONFIG_ADDRESS);
+
+// Core addresses the app cannot function without. `asAddress` already maps a
+// missing OR zero/malformed value to `undefined`, so this list catches both the
+// unset and the `0x0` case the spec calls out — a startup guard surfaces it as a
+// clear configuration error rather than letting a write revert confusingly later.
+export const REQUIRED_CONTRACTS = [
+  ["Factory", "NEXT_PUBLIC_FACTORY_ADDRESS", FACTORY_ADDRESS],
+  ["Backing lens", "NEXT_PUBLIC_LENS_ADDRESS", LENS_ADDRESS],
+  ["Asset registry", "NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS", ASSET_REGISTRY_ADDRESS],
+] as const;
+
+export const missingContracts: string[] = REQUIRED_CONTRACTS.filter(
+  ([, , addr]) => !addr,
+).map(([name, envVar]) => `${name} (${envVar})`);
+
+export const hasConfigError = missingContracts.length > 0;
 // A swap needs the pool identity (hook + WETH) and a route (router + state view).
 export const isSwapConfigured = Boolean(
   HOOK_ADDRESS &&

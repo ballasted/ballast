@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 
 /// @title FeeConfig
 /// @notice Owner-managed global fee parameters + referrer allowlist, read LIVE by
@@ -15,7 +16,7 @@ import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 ///      hidden discount on a platform whose pitch is that nothing is hidden, and
 ///      hard to remove later once pools rely on it. Unknown/unregistered referrer
 ///      => the referrer share rolls to the platform (see effectiveReferrer).
-contract FeeConfig is Ownable {
+contract FeeConfig is Ownable2Step {
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_FEE_BPS = 1_000; // 10% hard cap (sanity)
 

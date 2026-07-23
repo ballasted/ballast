@@ -6,7 +6,7 @@ import { decodeEventLog, type Address } from "viem";
 import { ballastFactoryAbi, erc20Abi, projectTreasuryWriteAbi } from "@/lib/abis";
 import { FACTORY_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { saveMeta, type ProjectMeta } from "@/lib/metadata";
+import { decodeTxError } from "@/lib/txError";
 
 const CHAIN_ID = activeChain.id;
 
@@ -23,20 +23,29 @@ export type LaunchParams = {
   name: string;
   symbol: string;
   noticePeriod: bigint; // seconds (7/30/90 days)
-  meta: ProjectMeta;
+  metadataURI: string; // ipfs://CID of the pinned metadata JSON (pinned before run)
   deposit?: { asset: Address; amount: bigint }; // undefined = unbacked
 };
 
+// Steps must name exactly what executes on each path. An unbacked launch has no
+// treasury deposit and graduates at a constant opening tick (BallastFactory
+// UNBACKED_TICK), so it never seeds "at backing" — showing that would be a
+// fabricated number. A treasury contract IS deployed on both paths, but on the
+// unbacked path it is empty and never funded here, so the token step drops the
+// "+ treasury" wording that only means something once assets go in.
 function baseSteps(backed: boolean): LaunchStep[] {
-  const s: LaunchStep[] = [
-    { key: "launch", label: "Deploy token + treasury", status: "idle" },
-  ];
-  if (backed) {
-    s.push({ key: "approve", label: "Approve treasury to pull the asset", status: "idle" });
-    s.push({ key: "deposit", label: "Deposit into treasury", status: "idle" });
+  if (!backed) {
+    return [
+      { key: "launch", label: "Deploy token", status: "idle" },
+      { key: "graduate", label: "Seed the pool (LP locked permanently)", status: "idle" },
+    ];
   }
-  s.push({ key: "graduate", label: "Seed the pool at backing (locks LP)", status: "idle" });
-  return s;
+  return [
+    { key: "launch", label: "Deploy token + treasury", status: "idle" },
+    { key: "approve", label: "Approve treasury to pull the asset", status: "idle" },
+    { key: "deposit", label: "Deposit into treasury", status: "idle" },
+    { key: "graduate", label: "Seed the pool at backing (LP locked permanently)", status: "idle" },
+  ];
 }
 
 export function useLaunchRunner() {
@@ -81,7 +90,7 @@ export function useLaunchRunner() {
             address: factory,
             abi: ballastFactoryAbi,
             functionName: "launch",
-            args: [params.name, params.symbol, params.noticePeriod],
+            args: [params.name, params.symbol, params.noticePeriod, params.metadataURI],
             chainId: CHAIN_ID,
           }),
         );
@@ -101,7 +110,6 @@ export function useLaunchRunner() {
           }
         }
         if (!token || !treasury) throw new Error("Could not read the launched token from the receipt");
-        saveMeta(token, params.meta);
 
         // 2 + 3. Backed: approve the treasury to pull the asset, then deposit.
         if (params.deposit) {
@@ -140,7 +148,7 @@ export function useLaunchRunner() {
 
         setResult({ token, treasury });
       } catch (err: unknown) {
-        const msg = friendlyError(err);
+        const msg = decodeTxError(err);
         setSteps((prev) => {
           const active = prev.find((s) => s.status === "pending" || s.status === "confirming");
           return active
@@ -155,13 +163,4 @@ export function useLaunchRunner() {
   );
 
   return { steps, run, isRunning, result };
-}
-
-function friendlyError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  if (/User rejected|denied|rejected the request/i.test(raw)) return "You rejected the transaction in your wallet.";
-  if (/FeedRestingAtLaunch/i.test(raw)) return "A treasury feed is resting — the market is closed. Launch during market hours.";
-  if (/insufficient funds/i.test(raw)) return "Not enough ETH for gas.";
-  // Keep it to the first line; wallet errors are verbose.
-  return (raw.split("\n")[0] ?? raw).slice(0, 200);
 }

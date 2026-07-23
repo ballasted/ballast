@@ -1,5 +1,5 @@
 import { createConfig, http } from "wagmi";
-import { robinhoodMainnet, robinhoodTestnet } from "./chain";
+import { robinhoodChain } from "./chain";
 
 // Wagmi config lives here and is imported ONLY by the /app provider, so no web3
 // code is pulled into the marketing bundle.
@@ -9,14 +9,14 @@ import { robinhoodMainnet, robinhoodTestnet } from "./chain";
 // deps. Instead we rely on `multiInjectedProviderDiscovery` (default: true),
 // which surfaces every injected wallet via EIP-6963 in `useConnect()`.
 //
-// Both chains are configured with concrete transports; reads pass an explicit
-// chainId so they always hit the active network. The public RPC is rate-limited,
-// so transports batch into multicall.
+// Robinhood Chain (4663) is the ONLY chain listed. We support no other network;
+// listing a second chain is what made wagmi report a connected wallet as being on
+// the wrong network (see lib/chain.ts). The public RPC is rate-limited, so the
+// transport batches into multicall.
 export const wagmiConfig = createConfig({
-  chains: [robinhoodMainnet, robinhoodTestnet],
+  chains: [robinhoodChain],
   transports: {
-    [robinhoodMainnet.id]: http(undefined, { batch: true }),
-    [robinhoodTestnet.id]: http(undefined, { batch: true }),
+    [robinhoodChain.id]: http(undefined, { batch: true }),
   },
   ssr: true,
 });

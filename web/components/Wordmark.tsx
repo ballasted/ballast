@@ -27,7 +27,7 @@ export function Wordmark({ className }: { className?: string }) {
           strokeLinecap="round"
         />
       </svg>
-      <span className="text-text-primary font-semibold tracking-tight">
+      <span className="font-semibold tracking-[0.15em] text-bone">
         BALLAST
       </span>
     </Link>

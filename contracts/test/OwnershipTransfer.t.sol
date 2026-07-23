@@ -29,11 +29,18 @@ contract OwnershipTransferTest is Test {
     }
 
     function test_transfer_newOwnerCanCallEveryOwnerOnlyFn() public {
-        // Hand both contracts to the multisig.
+        // Two-step hand-off to the multisig: propose, then the multisig accepts.
         vm.prank(deployer);
         registry.transferOwnership(multisig);
         vm.prank(deployer);
         cfg.transferOwnership(multisig);
+        assertEq(registry.pendingOwner(), multisig, "registry pending not set");
+        assertEq(cfg.pendingOwner(), multisig, "feeconfig pending not set");
+
+        vm.prank(multisig);
+        registry.acceptOwnership();
+        vm.prank(multisig);
+        cfg.acceptOwnership();
 
         assertEq(registry.owner(), multisig, "registry owner not moved");
         assertEq(cfg.owner(), multisig, "feeconfig owner not moved");
@@ -61,11 +68,31 @@ contract OwnershipTransferTest is Test {
         assertEq(referrerBps, 1500);
     }
 
-    function test_oldOwnerFullyStripped() public {
+    /// Ownable2Step anti-footgun: a proposed-but-unaccepted transfer does NOT move
+    /// control, so a typo'd new owner can never strand the contracts.
+    function test_pendingTransfer_doesNotStripUntilAccepted() public {
+        address typo = makeAddr("typo");
+        vm.prank(deployer);
+        registry.transferOwnership(typo);
+        // Ownership has NOT moved — deployer still controls it.
+        assertEq(registry.owner(), deployer);
+        vm.prank(deployer);
+        registry.setAsset(asset, feed, 3 days, 1); // still works
+        // And the deployer can redirect the pending transfer to the right address.
         vm.prank(deployer);
         registry.transferOwnership(multisig);
-        vm.prank(deployer);
+        assertEq(registry.pendingOwner(), multisig);
+    }
+
+    function test_oldOwnerFullyStripped() public {
+        vm.startPrank(deployer);
+        registry.transferOwnership(multisig);
         cfg.transferOwnership(multisig);
+        vm.stopPrank();
+        vm.prank(multisig);
+        registry.acceptOwnership();
+        vm.prank(multisig);
+        cfg.acceptOwnership();
 
         // Deployer can no longer touch anything owner-gated.
         bytes memory notOwner = abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, deployer);

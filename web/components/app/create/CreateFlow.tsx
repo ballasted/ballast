@@ -2,24 +2,42 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { parseUnits, type Address } from "viem";
-import { useAccount } from "wagmi";
+import { parseUnits, formatUnits, type Address } from "viem";
+import { useAccount, useReadContract } from "wagmi";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useLaunchRunner } from "@/hooks/useLaunchRunner";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
-import { isFactoryConfigured, TOTAL_SUPPLY } from "@/lib/contracts";
-import { formatBackingPerToken, formatUsd } from "@/lib/format";
+import { Logo } from "@/components/app/Logo";
+import { erc20Abi } from "@/lib/abis";
+import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
+import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt } from "@/lib/marketHours";
-import { CATEGORIES, colorFor, type Category } from "@/lib/metadata";
+import { CATEGORIES, type Category } from "@/lib/metadata";
 import { activeChain } from "@/lib/chain";
 import { cn } from "@/lib/cn";
+import {
+  pinFile,
+  pinJson,
+  resizeImage,
+  isAcceptedImage,
+  ipfsToGateway,
+  MAX_UPLOAD_BYTES,
+} from "@/lib/ipfs";
+
+const CHAIN_ID = activeChain.id;
 
 const NOTICE_OPTIONS = [
   { days: 7, label: "7 days" },
   { days: 30, label: "30 days" },
   { days: 90, label: "90 days" },
 ] as const;
+
+const NAME_MAX = 32;
+const SYMBOL_MAX = 10;
+const DESC_MAX = 256;
 
 // backing per token (1e18 USD), mirroring the contract's BackingMath:
 //   usd1e18       = amountRaw * price * 1e18 / (10^priceDec * 10^assetDec)
@@ -31,29 +49,61 @@ function backingPreview(amountRaw: bigint, a: AllowedAsset): { usd: bigint; perT
   return { usd, perToken };
 }
 
-export function CreateFlow() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+// Strip any leading @ or platform prefix so we store a bare handle.
+function cleanHandle(v: string): string {
+  return v
+    .trim()
+    .replace(/^@/, "")
+    .replace(/^(https?:\/\/)?(www\.)?(x\.com\/|twitter\.com\/|t\.me\/)?/i, "")
+    .replace(/\/+$/, "");
+}
 
-  // Step 1 — project.
+// The single-page create flow (spec Phase 2). The three-step wizard is gone: the
+// live backing-per-token figure must move as the user types a treasury amount, and
+// that only works with the form and its preview on one screen at once.
+export function CreateFlow() {
+  // Project
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [category, setCategory] = useState<Category>("Index");
   const [description, setDescription] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  const [logoUri, setLogoUri] = useState(""); // ipfs://CID (uploaded) or manual URL
+  const [xHandle, setXHandle] = useState("");
+  const [tgHandle, setTgHandle] = useState("");
 
-  // Step 2 — treasury.
+  // Treasury
   const [mode, setMode] = useState<"ballast" | "none">("ballast");
   const [assetAddr, setAssetAddr] = useState<Address | "">("");
   const [amount, setAmount] = useState("");
   const [noticeDays, setNoticeDays] = useState<7 | 30 | 90>(30);
+  const [advanced, setAdvanced] = useState(false);
+
+  // Submit lifecycle
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pinning, setPinning] = useState(false);
+  const [pinError, setPinError] = useState<string | undefined>();
 
   const now = useNow();
   const { address: account } = useAccount();
+  const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { assets, isConfigured: registryReady, isLoading: assetsLoading, hasAssets } = useAssets();
+  const { split: feeSplit } = useFeeSplit();
   const runner = useLaunchRunner();
 
   const selected = assets.find((a) => a.address === assetAddr);
   const backed = mode === "ballast";
+  const symbolClean = symbol.trim().toUpperCase().slice(0, SYMBOL_MAX);
+
+  // Creator's balance of the selected asset — powers the Max button.
+  const balRes = useReadContract({
+    address: selected?.address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: account ? [account] : undefined,
+    chainId: CHAIN_ID,
+    query: { enabled: Boolean(selected && account) },
+  });
+  const balance = balRes.data as bigint | undefined;
 
   const amountRaw = useMemo(() => {
     if (!selected?.decimals || !amount) return 0n;
@@ -66,7 +116,8 @@ export function CreateFlow() {
 
   const preview = selected && amountRaw > 0n ? backingPreview(amountRaw, selected) : null;
 
-  // Market-hours gate — surfaced HERE, in step 2, never as a signing revert.
+  // Market-hours classification — same classifier the display path uses, so the
+  // gate and the UI can never disagree (spec 2.3).
   const freshness =
     selected?.updatedAt !== undefined && now > 0
       ? classifyFreshness(Number(selected.updatedAt), selected.marketHours, false, now)
@@ -75,22 +126,46 @@ export function CreateFlow() {
   const nextOpen = now > 0 ? nextOpenSec(now) : null;
 
   const belowMin = Boolean(selected && amountRaw > 0n && amountRaw < selected.minDeposit);
+  const overBalance = Boolean(balance !== undefined && amountRaw > balance);
+  const hasLink = /(https?:\/\/|www\.)/i.test(description);
 
-  const step1Valid = name.trim() && symbol.trim() && description.trim();
-  const step2Valid = backed
-    ? Boolean(selected) && amountRaw > 0n && !belowMin && !feedResting
+  const projectValid = Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink;
+  const treasuryValid = backed
+    ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedResting
     : true;
+  const formValid = projectValid && treasuryValid;
 
-  const symbolClean = symbol.trim().toUpperCase().slice(0, 11);
+  function openConfirm() {
+    setPinError(undefined);
+    setConfirmOpen(true);
+  }
 
-  function submit() {
-    runner.run({
-      name: name.trim(),
-      symbol: symbolClean,
-      noticePeriod: BigInt(noticeDays) * 86400n,
-      meta: { category, description: description.trim(), logoUrl: logoUrl.trim() || undefined, color: colorFor(symbolClean) },
-      deposit: backed && selected ? { asset: selected.address, amount: amountRaw } : undefined,
-    });
+  async function confirmAndLaunch() {
+    setConfirmOpen(false);
+    setPinError(undefined);
+    setPinning(true);
+    try {
+      const metadataURI = await pinJson({
+        name: name.trim(),
+        symbol: symbolClean,
+        description: description.trim(),
+        category,
+        logo: logoUri.trim() || undefined,
+        x: xHandle.trim() ? `x.com/${cleanHandle(xHandle)}` : undefined,
+        telegram: tgHandle.trim() ? `t.me/${cleanHandle(tgHandle)}` : undefined,
+      });
+      setPinning(false);
+      runner.run({
+        name: name.trim(),
+        symbol: symbolClean,
+        noticePeriod: BigInt(noticeDays) * 86400n,
+        metadataURI,
+        deposit: backed && selected ? { asset: selected.address, amount: amountRaw } : undefined,
+      });
+    } catch (e) {
+      setPinning(false);
+      setPinError(e instanceof Error ? e.message : "Could not pin project metadata to IPFS.");
+    }
   }
 
   if (!isFactoryConfigured) {
@@ -102,450 +177,653 @@ export function CreateFlow() {
     );
   }
 
-  // Terminal states — success / in-progress live under Review, rendered by the runner.
-  const started = runner.steps.length > 0;
+  // Terminal + in-progress states take over the whole view.
+  if (runner.result) {
+    return <SuccessCard token={runner.result.token} symbol={symbolClean} logoUri={logoUri} />;
+  }
+  const running = pinning || runner.steps.length > 0;
+  if (running) {
+    return (
+      <LaunchProgress
+        symbol={symbolClean}
+        pinning={pinning}
+        steps={runner.steps}
+        isRunning={runner.isRunning}
+        onRetry={confirmAndLaunch}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      <Stepper step={step} />
+    <>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        {/* ── LEFT: form ──────────────────────────────────────────────── */}
+        <div className="space-y-5">
+          <section className="card space-y-4 p-5">
+            <LogoUploader symbol={symbolClean} logoUri={logoUri} setLogoUri={setLogoUri} />
 
-      {step === 1 && (
-        <div key="s1" className="anim-fade">
-        <StepProject
-          {...{ name, setName, symbol, setSymbol, symbolClean, category, setCategory, description, setDescription, logoUrl, setLogoUrl }}
-          onNext={() => setStep(2)}
-          valid={Boolean(step1Valid)}
-        />
+            <Field label="Name" hint={`${name.length}/${NAME_MAX}`}>
+              <input
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value.slice(0, NAME_MAX))}
+                placeholder="Acme Treasury Index"
+                maxLength={NAME_MAX}
+              />
+            </Field>
+
+            <Field label="Ticker" hint={`$${symbolClean || "TICKER"}`}>
+              <input
+                className="input uppercase"
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value.slice(0, SYMBOL_MAX))}
+                placeholder="ACME"
+                maxLength={SYMBOL_MAX}
+              />
+            </Field>
+
+            <Field label="Category">
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCategory(c)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-sm transition-colors",
+                      category === c
+                        ? "border-green bg-green-bg text-green"
+                        : "border-border text-text-muted hover:text-text-secondary",
+                    )}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Description" hint={`${description.length}/${DESC_MAX}`}>
+              <textarea
+                className="input min-h-[96px] resize-y"
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, DESC_MAX))}
+                placeholder="What is this project, and what does its treasury hold?"
+                maxLength={DESC_MAX}
+              />
+              {hasLink && (
+                <p className="mt-1 text-xs text-negative">
+                  Links aren&apos;t allowed in the description. Put them in the X / Telegram fields below.
+                </p>
+              )}
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="X" optional>
+                <PrefixInput prefix="x.com/" value={xHandle} onChange={setXHandle} placeholder="handle" />
+              </Field>
+              <Field label="Telegram" optional>
+                <PrefixInput prefix="t.me/" value={tgHandle} onChange={setTgHandle} placeholder="handle" />
+              </Field>
+            </div>
+          </section>
+
+          {/* Treasury */}
+          <section className="card space-y-4 p-5">
+            <div className="grid grid-cols-2 gap-2 rounded-card border border-border p-1">
+              {(["ballast", "none"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={cn(
+                    "rounded-input px-3 py-2.5 text-sm font-medium transition-colors",
+                    mode === m ? "bg-green-bg text-green" : "text-text-muted hover:text-text-secondary",
+                  )}
+                >
+                  {m === "ballast" ? "Ballast this launch" : "No treasury"}
+                </button>
+              ))}
+            </div>
+
+            {mode === "none" ? (
+              <p className="text-sm text-text-secondary">
+                An unbacked launch. No treasury assets, no backing figure — the token opens at a fixed nominal price and
+                trades on its own. You can add a treasury later by depositing, but this launch carries no verified
+                backing.
+              </p>
+            ) : !registryReady ? (
+              <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</InlineNotice>
+            ) : assetsLoading ? (
+              <div className="h-40 animate-pulse rounded-input bg-bg" />
+            ) : !hasAssets ? (
+              <InlineNotice>
+                The registry has no allowed assets yet. The protocol owner allowlists assets (by canonical contract
+                address) before a backed launch is possible.
+              </InlineNotice>
+            ) : (
+              <>
+                <Field label="Treasury asset">
+                  <div className="grid gap-2">
+                    {assets.map((a) => (
+                      <button
+                        key={a.address}
+                        type="button"
+                        onClick={() => setAssetAddr(a.address)}
+                        className={cn(
+                          "flex items-center justify-between rounded-input border px-3 py-2.5 text-left text-sm transition-colors",
+                          assetAddr === a.address ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
+                        )}
+                      >
+                        <span className="font-medium text-text-primary">{a.symbol ?? "asset"}</span>
+                        <span className="metric-secondary">
+                          {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field label="Amount to deposit">
+                  <div className="relative">
+                    <input
+                      className="input pr-16"
+                      inputMode="decimal"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                      placeholder="0.0"
+                      disabled={!selected}
+                    />
+                    {selected && balance !== undefined && (
+                      <button
+                        type="button"
+                        onClick={() => setAmount(formatUnits(balance, selected.decimals ?? 18))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-border px-2 py-1 text-xs font-medium text-text-secondary hover:text-text-primary"
+                      >
+                        Max
+                      </button>
+                    )}
+                  </div>
+                  {selected && balance !== undefined && (
+                    <p className="mt-1 text-xs text-text-faint">
+                      Balance: {Number(formatUnits(balance, selected.decimals ?? 18)).toLocaleString("en", { maximumFractionDigits: 6 })}{" "}
+                      {selected.symbol}
+                    </p>
+                  )}
+                  {belowMin && selected && <p className="mt-1 text-xs text-warning">Below the minimum deposit for this asset.</p>}
+                  {overBalance && <p className="mt-1 text-xs text-negative">More than your wallet holds.</p>}
+                </Field>
+
+                <Field label="Withdrawal notice period">
+                  <div className="grid grid-cols-3 gap-2">
+                    {NOTICE_OPTIONS.map((o) => (
+                      <button
+                        key={o.days}
+                        type="button"
+                        onClick={() => setNoticeDays(o.days)}
+                        className={cn(
+                          "rounded-input border py-2 text-sm transition-colors",
+                          noticeDays === o.days ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-text-muted">
+                    You may withdraw only what you deposit, every withdrawal is announced publicly and delayed by this
+                    period, and this choice is permanent — the treasury cannot change it later.
+                  </p>
+                </Field>
+
+                {/* Market-hours gate — surfaced HERE, before signing (spec 2.3). */}
+                {feedResting && (
+                  <div className="rounded-card border border-warning-border bg-warning-bg p-4 text-sm">
+                    <div className="flex items-center gap-2 font-semibold text-warning">
+                      <span aria-hidden>⚠</span> Market closed — a backed launch can&apos;t price yet
+                    </div>
+                    <p className="mt-2 text-text-secondary">
+                      {selected?.symbol}&apos;s feed is {freshness?.label.toLowerCase()}. A backed launch opens the pool at
+                      your treasury&apos;s live value, so its feed must be trading, not resting.{" "}
+                      {nextOpen ? (
+                        <>Next window opens <span className="font-semibold text-text-primary">{formatEt(nextOpen)}</span>.</>
+                      ) : (
+                        <>The next open time is beyond our market calendar — check back closer to a weekday session.</>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          {/* Advanced — creator wallet. See note: the factory records msg.sender as
+              creator; there is no override parameter, so we surface the address as a
+              read-only fact rather than a non-functional input. */}
+          <section className="card p-5">
+            <button
+              type="button"
+              onClick={() => setAdvanced((a) => !a)}
+              className="flex w-full items-center justify-between text-sm font-medium text-text-secondary"
+            >
+              Advanced
+              <span className="text-text-faint">{advanced ? "–" : "+"}</span>
+            </button>
+            {advanced && (
+              <div className="mt-3 space-y-2 text-sm text-text-muted">
+                <div className="flex items-center justify-between">
+                  <span>Creator address</span>
+                  <span className="font-mono text-text-primary">{account ? shortAddress(account) : "connect a wallet"}</span>
+                </div>
+                <p className="text-xs text-text-faint">
+                  The wallet you launch from is recorded on-chain as the creator and receives the creator share of swap
+                  fees. It cannot be changed after launch.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Primary action */}
+          {!account ? (
+            <div className="card p-4 text-center text-sm text-text-muted">
+              <p className="mb-3">Connect a wallet to launch.</p>
+              <div className="flex justify-center"><ConnectButton /></div>
+            </div>
+          ) : wrongNetwork ? (
+            <button className="btn-primary w-full" onClick={() => void switchToRobinhood()} disabled={isSwitching}>
+              {isSwitching ? "Switching…" : "Switch to Robinhood Chain"}
+            </button>
+          ) : (
+            <button className="btn-primary w-full" disabled={!formValid} onClick={openConfirm}>
+              Review &amp; launch ${symbolClean || "TICKER"}
+            </button>
+          )}
+          {pinError && <p className="text-center text-xs text-negative">{pinError}</p>}
         </div>
-      )}
 
-      {step === 2 && (
-        <div key="s2" className="anim-fade">
-        <StepTreasury
-          {...{ mode, setMode, assets, assetAddr, setAssetAddr, amount, setAmount, noticeDays, setNoticeDays }}
-          registryReady={registryReady}
-          assetsLoading={assetsLoading}
-          hasAssets={hasAssets}
-          selected={selected}
-          preview={preview}
-          belowMin={belowMin}
-          feedResting={feedResting}
-          freshness={freshness}
-          nextOpen={nextOpen}
-          onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
-          valid={step2Valid}
-        />
+        {/* ── RIGHT: live preview ─────────────────────────────────────── */}
+        <div>
+          <div className="lg:sticky lg:top-20">
+            <PreviewCard
+              name={name.trim()}
+              symbol={symbolClean}
+              category={category}
+              logoUri={logoUri}
+              backed={backed}
+              selected={selected}
+              amount={amount}
+              preview={preview}
+              feeSplit={feeSplit}
+              freshness={freshness}
+            />
+          </div>
         </div>
-      )}
+      </div>
 
-      {step === 3 && (
-        <StepReview
+      {confirmOpen && (
+        <ConfirmModal
           name={name.trim()}
           symbol={symbolClean}
-          category={category}
           backed={backed}
           selected={selected}
           amount={amount}
           preview={preview}
           noticeDays={noticeDays}
+          feeSplit={feeSplit}
           account={account}
-          runner={runner}
-          started={started}
-          onBack={() => !runner.isRunning && setStep(2)}
-          onSubmit={submit}
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={confirmAndLaunch}
         />
       )}
-    </div>
+    </>
   );
 }
 
-// ── Stepper ────────────────────────────────────────────────────────────────
-function Stepper({ step }: { step: 1 | 2 | 3 }) {
-  const labels = ["Project", "Treasury", "Review"];
-  return (
-    <ol className="flex items-center gap-2 text-sm">
-      {labels.map((l, i) => {
-        const n = (i + 1) as 1 | 2 | 3;
-        const active = n === step;
-        const done = n < step;
-        return (
-          <li key={l} className="flex items-center gap-2">
-            <span
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
-                active ? "bg-green text-bg" : done ? "bg-green-bg text-green" : "bg-border text-text-muted",
-              )}
-            >
-              {done ? "✓" : n}
-            </span>
-            <span className={cn(active ? "text-text-primary" : "text-text-muted")}>{l}</span>
-            {i < 2 && <span className="mx-1 h-px w-6 bg-border" />}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-// ── Step 1: Project ──────────────────────────────────────────────────────────
-function StepProject(p: {
-  name: string; setName: (v: string) => void;
-  symbol: string; setSymbol: (v: string) => void; symbolClean: string;
-  category: Category; setCategory: (v: Category) => void;
-  description: string; setDescription: (v: string) => void;
-  logoUrl: string; setLogoUrl: (v: string) => void;
-  onNext: () => void; valid: boolean;
-}) {
-  return (
-    <div className="space-y-4">
-      <section className="card space-y-4 p-5">
-        <div className="flex items-center gap-3">
-          <Avatar symbol={p.symbolClean} logoUrl={p.logoUrl} />
-          <div className="text-sm text-text-muted">
-            Your project&apos;s mark. Uses your ticker&apos;s initials by default; paste an image URL to override.
-          </div>
-        </div>
-
-        <div>
-          <label className="field-label">Name</label>
-          <input className="input" value={p.name} onChange={(e) => p.setName(e.target.value)} placeholder="Acme Treasury Index" maxLength={64} />
-        </div>
-        <div>
-          <label className="field-label">Ticker</label>
-          <input
-            className="input uppercase"
-            value={p.symbol}
-            onChange={(e) => p.setSymbol(e.target.value)}
-            placeholder="ACME"
-            maxLength={11}
-          />
-          <p className="mt-1 text-xs text-text-faint">On-chain symbol: ${p.symbolClean || "TICKER"}</p>
-        </div>
-        <div>
-          <label className="field-label">Category</label>
-          <div className="flex flex-wrap gap-2">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => p.setCategory(c)}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-sm",
-                  p.category === c ? "border-green bg-green-bg text-green" : "border-border text-text-muted hover:text-text-secondary",
-                )}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="field-label">Description</label>
-          <textarea
-            className="input min-h-[96px] resize-y"
-            value={p.description}
-            onChange={(e) => p.setDescription(e.target.value)}
-            placeholder="What is this project, and what does its treasury hold?"
-            maxLength={600}
-          />
-        </div>
-        <div>
-          <label className="field-label">Logo URL <span className="text-text-faint">(optional)</span></label>
-          <input className="input" value={p.logoUrl} onChange={(e) => p.setLogoUrl(e.target.value)} placeholder="https://…" />
-        </div>
-        <p className="text-xs text-text-faint">
-          Name and ticker are written on-chain. Category, description, and logo are listing details stored with your
-          project on this device until the shared metadata service is live.
-        </p>
-      </section>
-      <button className="btn-primary w-full" disabled={!p.valid} onClick={p.onNext}>
-        Continue to treasury
-      </button>
-    </div>
-  );
-}
-
-// ── Step 2: Treasury ─────────────────────────────────────────────────────────
-function StepTreasury(p: {
-  mode: "ballast" | "none"; setMode: (m: "ballast" | "none") => void;
-  assets: AllowedAsset[]; assetAddr: Address | ""; setAssetAddr: (a: Address | "") => void;
-  amount: string; setAmount: (v: string) => void;
-  noticeDays: 7 | 30 | 90; setNoticeDays: (d: 7 | 30 | 90) => void;
-  registryReady: boolean; assetsLoading: boolean; hasAssets: boolean;
-  selected?: AllowedAsset;
+// ── Live preview card ─────────────────────────────────────────────────────────
+function PreviewCard(p: {
+  name: string; symbol: string; category: string; logoUri: string;
+  backed: boolean; selected?: AllowedAsset; amount: string;
   preview: { usd: bigint; perToken: bigint } | null;
-  belowMin: boolean; feedResting: boolean;
+  feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number; feePct: number };
   freshness?: { tier: string; label: string };
-  nextOpen: number | null;
-  onBack: () => void; onNext: () => void; valid: boolean;
 }) {
   return (
-    <div className="space-y-4">
-      {/* Segmented control — both options equally prominent (spec §9). */}
-      <div className="grid grid-cols-2 gap-2 rounded-card border border-border p-1">
-        {(["ballast", "none"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => p.setMode(m)}
+    <section className="card overflow-hidden">
+      <div className="flex items-center gap-3 border-b border-border p-4">
+        <Logo src={ipfsToGateway(p.logoUri)} symbol={p.symbol} size={44} />
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-text-primary">{p.name || "Your project"}</div>
+          <div className="metric-secondary">${p.symbol || "TICKER"} · {p.category}</div>
+        </div>
+      </div>
+
+      <div className="space-y-4 p-4">
+        {/* Backing per token — the reason the preview lives on the same screen.
+            Reflects the input; it never counts up (Phase 4 motion rule 2). */}
+        <div className="rounded-input bg-bg p-4">
+          <div className="text-xs uppercase tracking-wide text-text-faint">Backing per token</div>
+          <div className="mt-1 figure-primary text-3xl">
+            {p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "None"}
+          </div>
+          {p.backed && (
+            <div className="metric-secondary mt-0.5">
+              {p.preview ? `${formatUsd(p.preview.usd, { compact: true })} treasury across 1B tokens` : "enter a treasury amount"}
+            </div>
+          )}
+        </div>
+
+        {/* Treasury composition */}
+        {p.backed && (
+          <PreviewRow label="Treasury">
+            {p.selected && p.amount ? (
+              <span>
+                {p.amount} {p.selected.symbol}
+                {p.preview ? <span className="text-text-muted"> · {formatUsd(p.preview.usd, { compact: true })}</span> : null}
+              </span>
+            ) : (
+              <span className="text-text-muted">—</span>
+            )}
+          </PreviewRow>
+        )}
+
+        {p.backed && p.selected && (
+          <PreviewRow label="Market hours">
+            {p.freshness ? (
+              <span className={p.freshness.tier === "fresh" ? "text-green" : "text-warning"}>{p.freshness.label}</span>
+            ) : (
+              <span className="text-text-muted">—</span>
+            )}
+          </PreviewRow>
+        )}
+
+        <PreviewRow label="Fee split">
+          {p.feeSplit ? (
+            <span>
+              {p.feeSplit.creatorPct}% creator · {p.feeSplit.platformPct}% platform · {p.feeSplit.referrerPct}% referrer
+            </span>
+          ) : (
+            <span className="text-text-muted">read live from FeeConfig</span>
+          )}
+        </PreviewRow>
+
+        <PreviewRow label="Liquidity">Locked permanently</PreviewRow>
+        <PreviewRow label="Creator allocation">
+          <span className="text-green">None</span>
+        </PreviewRow>
+
+        <p className="border-t border-border pt-3 text-xs text-text-faint">
+          100% of supply seeds the pool. You receive no allocation, no presale, no team bag — the one thing that makes a
+          BALLAST launch structurally different.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ── Confirm modal (spec 2.4) — deliberately blunt, no motion (Phase 4 rule 4). ──
+function ConfirmModal(p: {
+  name: string; symbol: string; backed: boolean; selected?: AllowedAsset; amount: string;
+  preview: { usd: bigint; perToken: bigint } | null; noticeDays: number;
+  feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number };
+  account?: Address; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" role="dialog" aria-modal="true">
+      <div className="card w-full max-w-md p-5">
+        <h2 className="text-lg font-semibold text-text-primary">Confirm launch</h2>
+        <p className="mt-1 text-sm text-text-muted">Everything below is written on-chain. Review before you sign.</p>
+
+        <dl className="mt-4 divide-y divide-border">
+          <ConfirmRow label="Token" value={`${p.name} · $${p.symbol}`} />
+          <ConfirmRow
+            label="Treasury"
+            value={p.backed && p.selected ? `${p.amount} ${p.selected.symbol ?? "asset"}` : "None — unbacked"}
+          />
+          <ConfirmRow label="Backing per token" value={p.backed && p.preview ? formatBackingPerToken(p.preview.perToken) : "—"} />
+          <ConfirmRow label="Withdrawal notice" value={p.backed ? `${p.noticeDays} days (permanent)` : "—"} />
+          <ConfirmRow
+            label="Fee split"
+            value={p.feeSplit ? `${p.feeSplit.creatorPct}% / ${p.feeSplit.platformPct}% / ${p.feeSplit.referrerPct}%` : "read live"}
+          />
+          <ConfirmRow label="Creator" value={p.account ? shortAddress(p.account) : "—"} mono />
+          <ConfirmRow label="Network" value={activeChain.name} />
+          <ConfirmRow label="Factory" value={FACTORY_ADDRESS ? shortAddress(FACTORY_ADDRESS) : "—"} mono />
+        </dl>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button className="btn-secondary" onClick={p.onCancel}>Cancel</button>
+          <button className="btn-primary" onClick={p.onConfirm}>Confirm &amp; launch</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Transaction progress (spec 2.5) ────────────────────────────────────────────
+function LaunchProgress(p: {
+  symbol: string; pinning: boolean;
+  steps: ReturnType<typeof useLaunchRunner>["steps"];
+  isRunning: boolean; onRetry: () => void;
+}) {
+  const hasError = p.steps.some((s) => s.status === "error");
+  return (
+    <div className="mx-auto max-w-md">
+      <section className="card p-5">
+        <h2 className="text-sm font-semibold text-text-primary">Launching ${p.symbol}</h2>
+        {p.pinning && <p className="mt-2 text-sm text-text-muted">Pinning project metadata to IPFS…</p>}
+        <ol className="mt-4 space-y-3">
+          {p.steps.map((s) => (
+            <li key={s.key} className="flex items-start gap-3">
+              <StepDot status={s.status} />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-text-primary">{s.label}</div>
+                {s.txHash && (
+                  <a
+                    className="text-xs text-text-faint hover:text-text-secondary"
+                    href={`${activeChain.blockExplorers.default.url}/tx/${s.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {s.status === "confirming" ? "Confirming" : "View"} on Blockscout ↗
+                  </a>
+                )}
+                {s.error && <div className="text-xs text-negative">{s.error}</div>}
+              </div>
+            </li>
+          ))}
+        </ol>
+        {hasError && !p.isRunning && (
+          <button className="btn-primary mt-4 w-full" onClick={p.onRetry}>Retry</button>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: string; logoUri: string }) {
+  return (
+    <div className="mx-auto max-w-md">
+      <section className="card p-6 text-center">
+        <div className="mx-auto w-fit"><Logo src={ipfsToGateway(logoUri)} symbol={symbol} size={48} /></div>
+        <h2 className="mt-3 text-lg font-semibold text-text-primary">${symbol} is live</h2>
+        <p className="mt-1 text-sm text-text-muted">Its pool is seeded and the LP is locked permanently.</p>
+        <div className="mt-4 grid gap-2">
+          <Link href={`/app/token/${token}`} className="btn-primary">View ${symbol}</Link>
+          <a
+            className="btn-secondary"
+            href={`${activeChain.blockExplorers.default.url}/token/${token}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View token on Blockscout ↗
+          </a>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ── Logo uploader with the artwork-moderation gate (spec 2.1) ───────────────────
+function LogoUploader({
+  symbol,
+  logoUri,
+  setLogoUri,
+}: {
+  symbol: string;
+  logoUri: string;
+  setLogoUri: (v: string) => void;
+}) {
+  const [ack, setAck] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const [manual, setManual] = useState(false);
+
+  async function onFile(file: File) {
+    setError(undefined);
+    if (!isAcceptedImage(file)) {
+      setError("Use a PNG, JPG, SVG, or WebP image.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError("Image is over 1 MB. Pick a smaller file.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const resized = await resizeImage(file, 512);
+      const uri = await pinFile(resized, "logo.png");
+      setLogoUri(uri);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const preview = ipfsToGateway(logoUri);
+  const locked = !ack;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-4">
+        <Logo src={preview} symbol={symbol} size={56} />
+        <div className="min-w-0 flex-1">
+          <label
             className={cn(
-              "rounded-input px-3 py-2.5 text-sm font-medium",
-              p.mode === m ? "bg-green-bg text-green" : "text-text-muted hover:text-text-secondary",
+              "btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm",
+              locked ? "cursor-not-allowed opacity-40" : "cursor-pointer",
             )}
           >
-            {m === "ballast" ? "Ballast this launch" : "No treasury"}
-          </button>
-        ))}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onFile(f);
+              }}
+              disabled={uploading || locked}
+            />
+            {uploading ? "Uploading…" : logoUri ? "Replace logo" : "Upload logo"}
+          </label>
+          <p className="mt-1 text-xs text-text-faint">PNG/JPG/SVG/WebP, up to 1 MB. Resized to 512×512 and pinned to IPFS.</p>
+        </div>
       </div>
 
-      {p.mode === "none" ? (
-        <section className="card p-5 text-sm text-text-secondary">
-          <p>
-            An unbacked launch. No treasury assets, no backing figure — the token opens at a fixed nominal price and
-            trades on its own. You can add a treasury later by depositing, but this launch will carry no verified
-            backing.
-          </p>
-        </section>
-      ) : !p.registryReady ? (
-        <Notice title="Registry not set">Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</Notice>
-      ) : p.assetsLoading ? (
-        <div className="card h-40 animate-pulse" />
-      ) : !p.hasAssets ? (
-        <Notice title="No assets allowlisted">
-          The registry has no allowed assets yet. The protocol owner allowlists assets (by canonical contract address)
-          before a backed launch is possible.
-        </Notice>
-      ) : (
-        <section className="card space-y-4 p-5">
-          <div>
-            <label className="field-label">Treasury asset</label>
-            <div className="grid gap-2">
-              {p.assets.map((a) => (
-                <button
-                  key={a.address}
-                  type="button"
-                  onClick={() => p.setAssetAddr(a.address)}
-                  className={cn(
-                    "flex items-center justify-between rounded-input border px-3 py-2.5 text-left text-sm",
-                    p.assetAddr === a.address ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
-                  )}
-                >
-                  <span className="font-medium text-text-primary">{a.symbol ?? "asset"}</span>
-                  <span className="metric-secondary">
-                    {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* The moderation acknowledgement gates the picker — it sets the expectation
+          that the upload is permanent and public before a file can be chosen. */}
+      <label className="flex cursor-pointer items-start gap-2 text-xs text-text-secondary">
+        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 accent-green" />
+        I understand that selected artwork will be moderated and uploaded to public IPFS.
+      </label>
 
-          <div>
-            <label className="field-label">Amount to deposit</label>
+      {error && <p className="text-xs text-negative">{error}</p>}
+
+      {!locked && (
+        <>
+          <button
+            type="button"
+            onClick={() => setManual((m) => !m)}
+            className="text-xs text-text-muted hover:text-text-secondary"
+          >
+            {manual ? "Hide" : "Already hosting your image? Paste a URL instead"}
+          </button>
+          {manual && (
             <input
               className="input"
-              inputMode="decimal"
-              value={p.amount}
-              onChange={(e) => p.setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-              placeholder="0.0"
-              disabled={!p.selected}
+              value={logoUri.startsWith("ipfs://") ? "" : logoUri}
+              onChange={(e) => setLogoUri(e.target.value)}
+              placeholder="https://… or ipfs://…"
             />
-            {p.belowMin && p.selected && (
-              <p className="mt-1 text-xs text-warning">Below the minimum deposit for this asset.</p>
-            )}
-          </div>
-
-          {/* LIVE backing-per-token preview. Never counts up — it just reflects the input. */}
-          <div className="rounded-input bg-bg p-4">
-            <div className="text-xs uppercase tracking-wide text-text-faint">Resulting backing per token</div>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="figure-primary text-2xl">
-                {p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00"}
-              </span>
-              <span className="metric-secondary">
-                {p.preview ? `${formatUsd(p.preview.usd, { compact: true })} across 1B tokens` : "enter an amount"}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-text-muted">
-              The pool opens at this backing. Flooring to the pool&apos;s tick spacing can seat it up to ~0.7% below;
-              it never opens above backing.
-            </p>
-          </div>
-
-          <div>
-            <label className="field-label">Withdrawal notice period</label>
-            <div className="grid grid-cols-3 gap-2">
-              {NOTICE_OPTIONS.map((o) => (
-                <button
-                  key={o.days}
-                  type="button"
-                  onClick={() => p.setNoticeDays(o.days)}
-                  className={cn(
-                    "rounded-input border py-2 text-sm",
-                    p.noticeDays === o.days ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1.5 text-xs text-text-muted">
-              You may withdraw only what you deposit, and every withdrawal is announced publicly and delayed by this
-              period. This choice is permanent — the treasury cannot change it later.
-            </p>
-          </div>
-
-          {/* MARKET-HOURS GATE — before Review, never a post-signing revert. */}
-          {p.feedResting && (
-            <div className="rounded-card border border-warning-border bg-warning-bg p-4 text-sm">
-              <div className="flex items-center gap-2 font-semibold text-warning">
-                <span aria-hidden>⚠</span> Market closed — backed launch can&apos;t price yet
-              </div>
-              <p className="mt-2 text-text-secondary">
-                {p.selected?.symbol}&apos;s feed is {p.freshness?.label.toLowerCase()}. A backed launch opens the pool at
-                your treasury&apos;s live value, so its feed must be trading (fresh), not resting. Launch during market
-                hours.{" "}
-                {p.nextOpen ? (
-                  <>Next window opens <span className="font-semibold text-text-primary">{formatEt(p.nextOpen)}</span>.</>
-                ) : (
-                  <>The next open time is beyond our market calendar — check back closer to a weekday session.</>
-                )}
-              </p>
-            </div>
           )}
-        </section>
+        </>
       )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <button className="btn-secondary" onClick={p.onBack}>Back</button>
-        <button className="btn-primary" disabled={!p.valid} onClick={p.onNext}>Review launch</button>
-      </div>
     </div>
   );
 }
 
-// ── Step 3: Review ─────────────────────────────────────────────────────────
-function StepReview(p: {
-  name: string; symbol: string; category: string; backed: boolean;
-  selected?: AllowedAsset; amount: string;
-  preview: { usd: bigint; perToken: bigint } | null;
-  noticeDays: number; account?: Address;
-  runner: ReturnType<typeof useLaunchRunner>;
-  started: boolean;
-  onBack: () => void; onSubmit: () => void;
+// ── small shared bits ───────────────────────────────────────────────────────
+function Field({
+  label,
+  hint,
+  optional,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  optional?: boolean;
+  children: React.ReactNode;
 }) {
-  const { runner } = p;
-
-  if (runner.result) {
-    return (
-      <div className="space-y-4">
-        <section className="card p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-bg text-2xl text-green">✓</div>
-          <h2 className="mt-3 text-lg font-semibold text-text-primary">${p.symbol} is live</h2>
-          <p className="mt-1 text-sm text-text-muted">Its pool is seeded and the LP is locked permanently.</p>
-          <div className="mt-4 grid gap-2">
-            <Link href={`/app/token/${runner.result.token}`} className="btn-primary">View {p.symbol}</Link>
-            <a
-              className="btn-secondary"
-              href={`${activeChain.blockExplorers.default.url}/token/${runner.result.token}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View token on Blockscout ↗
-            </a>
-          </div>
-        </section>
-      </div>
-    );
-  }
-
-  if (p.started) {
-    return (
-      <div className="space-y-4">
-        <section className="card p-5">
-          <h2 className="text-sm font-semibold text-text-primary">Launching ${p.symbol}</h2>
-          <ol className="mt-4 space-y-3">
-            {runner.steps.map((s) => (
-              <li key={s.key} className="flex items-start gap-3">
-                <StepDot status={s.status} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-text-primary">{s.label}</div>
-                  {s.txHash && (
-                    <a
-                      className="text-xs text-text-faint hover:text-text-secondary"
-                      href={`${activeChain.blockExplorers.default.url}/tx/${s.txHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {s.status === "confirming" ? "Confirming" : "View"} on Blockscout ↗
-                    </a>
-                  )}
-                  {s.error && <div className="text-xs text-negative">{s.error}</div>}
-                </div>
-              </li>
-            ))}
-          </ol>
-          {runner.steps.some((s) => s.status === "error") && !runner.isRunning && (
-            <button className="btn-primary mt-4 w-full" onClick={p.onSubmit}>Retry</button>
-          )}
-        </section>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <section className="card divide-y divide-border">
-        <Row label="Project" value={`${p.name} · $${p.symbol}`} />
-        <Row label="Category" value={p.category} />
-        <Row
-          label="Treasury"
-          value={
-            p.backed && p.selected
-              ? `${p.amount} ${p.selected.symbol ?? "asset"} · ${p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00"}/token`
-              : "None — unbacked launch"
-          }
-        />
-        {p.backed && <Row label="Withdrawal notice" value={`${p.noticeDays} days (permanent)`} />}
-      </section>
-
-      {/* Locked-on facts. */}
-      <section className="card space-y-2 p-4 text-sm text-text-secondary">
-        <Fact>100% of supply seeds the pool — you receive no token allocation, no presale, no team bag.</Fact>
-        <Fact>The LP is locked permanently. Neither you nor anyone can pull the pool.</Fact>
-        {p.backed && <Fact>You may withdraw only what you deposit, publicly announced and delayed {p.noticeDays} days. Third-party deposits are locked forever.</Fact>}
-      </section>
-
-      {/* Amber disclosure notice — verbatim intent from spec §9. */}
-      <section className="rounded-card border border-warning-border bg-warning-bg p-4 text-sm text-warning">
-        Backing is disclosure only. You are not promising holders any claim, redemption, or return.
-      </section>
-
-      {!p.account ? (
-        <div className="card p-4 text-center text-sm text-text-muted">
-          <p className="mb-3">Connect a wallet to launch.</p>
-          <div className="flex justify-center"><ConnectButton /></div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <button className="btn-secondary" onClick={p.onBack}>Back</button>
-          <button className="btn-primary" onClick={p.onSubmit}>Launch ${p.symbol}</button>
-        </div>
-      )}
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <label className="field-label mb-0">
+          {label} {optional && <span className="text-text-faint">(optional)</span>}
+        </label>
+        {hint && <span className="text-xs text-text-faint">{hint}</span>}
+      </div>
+      {children}
     </div>
   );
 }
 
-// ── shared bits ──────────────────────────────────────────────────────────────
-function Avatar({ symbol, logoUrl }: { symbol: string; logoUrl?: string }) {
-  const bg = colorFor(symbol || "•");
-  if (logoUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={logoUrl} alt="" className="h-12 w-12 rounded-full object-cover" />;
-  }
+function PrefixInput({
+  prefix,
+  value,
+  onChange,
+  placeholder,
+}: {
+  prefix: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-full text-sm font-semibold text-white" style={{ background: bg }}>
-      {(symbol || "•").slice(0, 3)}
+    <div className="flex items-center rounded-input border border-border bg-bg focus-within:border-green">
+      <span className="pl-3 text-sm text-text-faint">{prefix}</span>
+      <input
+        className="w-full bg-transparent px-1 py-2.5 text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function PreviewRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-text-muted">{label}</span>
+      <span className="text-right font-medium text-text-primary">{children}</span>
+    </div>
+  );
+}
+
+function ConfirmRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
+      <span className="text-text-muted">{label}</span>
+      <span className={cn("text-right font-medium text-text-primary", mono && "font-mono")}>{value}</span>
     </div>
   );
 }
@@ -558,24 +836,6 @@ function StepDot({ status }: { status: string }) {
   return <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-border" />;
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-right font-medium text-text-primary">{value}</span>
-    </div>
-  );
-}
-
-function Fact({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex gap-2">
-      <span className="mt-1 text-green" aria-hidden>•</span>
-      <span>{children}</span>
-    </div>
-  );
-}
-
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="card p-6 text-center">
@@ -583,4 +843,8 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{children}</p>
     </div>
   );
+}
+
+function InlineNotice({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-input border border-border bg-bg p-3 text-sm text-text-muted">{children}</p>;
 }
