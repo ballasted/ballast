@@ -54,7 +54,7 @@ export default function PortfolioPage() {
       <section className="card p-4">
         <div className="text-sm font-semibold text-text-primary">Backing exposure</div>
         <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-border">
-          <div className="bg-green" style={{ width: `${backedPct}%` }} />
+          <div className="bar-grow bg-green" style={{ width: `${backedPct}%` }} />
           <div className="bg-text-faint" style={{ width: `${100 - backedPct}%` }} />
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -84,21 +84,23 @@ export default function PortfolioPage() {
         ))}
       </div>
 
-      {isLoading ? (
-        <div className="card h-24 animate-pulse" />
-      ) : tab === "holdings" ? (
-        holdings.length === 0 ? (
-          <Notice title="No holdings" body="You don't hold any BALLAST tokens on this network yet. Find one on Discover." />
+      <div key={tab} className="anim-fade">
+        {isLoading ? (
+          <div className="card h-24 animate-pulse" />
+        ) : tab === "holdings" ? (
+          holdings.length === 0 ? (
+            <Notice title="No holdings" body="You don't hold any BALLAST tokens on this network yet. Find one on Discover." />
+          ) : (
+            <div className="space-y-2">
+              {holdings.map((h) => <HoldingRow key={h.project.token} h={h} />)}
+            </div>
+          )
+        ) : myLaunches.length === 0 ? (
+          <Notice title="No launches" body="You haven't launched a project from this wallet. Create one to see it here." />
         ) : (
-          <div className="space-y-2">
-            {holdings.map((h) => <HoldingRow key={h.project.token} h={h} />)}
-          </div>
-        )
-      ) : myLaunches.length === 0 ? (
-        <Notice title="No launches" body="You haven't launched a project from this wallet. Create one to see it here." />
-      ) : (
-        <div className="space-y-2">{myLaunches.map((p) => <LaunchRow key={p.token} p={p} />)}</div>
-      )}
+          <div className="space-y-2">{myLaunches.map((p) => <LaunchRow key={p.token} p={p} />)}</div>
+        )}
+      </div>
     </div>
   );
 }

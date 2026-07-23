@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Container } from "@/components/Container";
+import { Reveal } from "@/components/Reveal";
+import { FaqList } from "@/components/marketing/FaqList";
 
 // Landing page. Copy is lifted from docs/BALLAST-landing-copy.md and respects the
 // hard copy rules: no "floor / guaranteed / protected / secured / safe / yield /
@@ -25,24 +27,25 @@ function Hero() {
   return (
     <section className="border-b border-border">
       <Container className="py-20 sm:py-28">
-        <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-text-primary sm:text-6xl">
+        {/* Hero entrance — staggered, once on load. transform + opacity only. */}
+        <h1 className="anim-enter max-w-3xl text-4xl font-semibold tracking-tight text-text-primary sm:text-6xl">
           Launch with something underneath.
         </h1>
-        <p className="mt-6 max-w-2xl text-lg text-text-secondary">
+        <p className="anim-enter anim-d1 mt-6 max-w-2xl text-lg text-text-secondary">
           BALLAST is a launchpad on Robinhood Chain where projects can hold a
           treasury of tokenized real-world assets — and anyone can see exactly how
           much, per token, live.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="anim-enter anim-d2 mt-8 flex flex-wrap gap-3">
           <Link
             href="/app/discover"
-            className="rounded-button bg-green px-5 py-3 font-semibold text-bg hover:opacity-90"
+            className="rounded-button bg-green px-5 py-3 font-semibold text-bg transition-opacity hover:opacity-90"
           >
             Explore ballasted projects
           </Link>
           <Link
             href="/app/create"
-            className="rounded-button border border-border px-5 py-3 font-semibold text-text-primary hover:border-text-muted"
+            className="rounded-button border border-border px-5 py-3 font-semibold text-text-primary transition-colors hover:border-text-muted"
           >
             Launch a project
           </Link>
@@ -51,7 +54,7 @@ function Hero() {
         {/* Hero stat strip — LIVE data, not marketing figures. Rendered as neutral
             placeholders until the indexer/Lens is wired; we never show a number we
             have not measured. */}
-        <dl className="mt-14 grid max-w-2xl grid-cols-1 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3">
+        <dl className="anim-enter anim-d3 mt-14 grid max-w-2xl grid-cols-1 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3">
           <Stat label="Ballasted projects" value="—" />
           <Stat label="Total ballast" value="—" />
           <Stat label="Launches this week" value="—" />
@@ -317,24 +320,7 @@ function Faq() {
   return (
     <Section>
       <SectionHeading>FAQ</SectionHeading>
-      <div className="mt-8 divide-y divide-border rounded-card border border-border">
-        {FAQ.map((item) => (
-          <details key={item.q} className="group px-6 py-4">
-            <summary className="cursor-pointer list-none font-medium text-text-primary marker:content-none">
-              <span className="flex items-center justify-between gap-4">
-                {item.q}
-                <span
-                  aria-hidden
-                  className="text-text-muted transition-transform group-open:rotate-45"
-                >
-                  +
-                </span>
-              </span>
-            </summary>
-            <p className="mt-3 text-sm text-text-secondary">{item.a}</p>
-          </details>
-        ))}
-      </div>
+      <FaqList items={FAQ} />
     </Section>
   );
 }
@@ -378,7 +364,9 @@ function Section({
 }) {
   return (
     <section id={id} className={muted ? "border-b border-border bg-card/30" : "border-b border-border"}>
-      <Container className="py-16 sm:py-20">{children}</Container>
+      <Container className="py-16 sm:py-20">
+        <Reveal>{children}</Reveal>
+      </Container>
     </section>
   );
 }

@@ -112,13 +112,14 @@ export default function DiscoverPage() {
           <EmptyState title="Nothing here" body="No projects match this view." />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {sorted.map((p) => (
-              <ProjectCard
-                key={p.token}
-                project={p}
-                hideSparkline={sort === "new"}
-                firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
-              />
+            {sorted.map((p, i) => (
+              <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+                <ProjectCard
+                  project={p}
+                  hideSparkline={sort === "new"}
+                  firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
+                />
+              </div>
             ))}
           </div>
         )}

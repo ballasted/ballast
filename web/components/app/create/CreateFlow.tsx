@@ -110,14 +110,17 @@ export function CreateFlow() {
       <Stepper step={step} />
 
       {step === 1 && (
+        <div key="s1" className="anim-fade">
         <StepProject
           {...{ name, setName, symbol, setSymbol, symbolClean, category, setCategory, description, setDescription, logoUrl, setLogoUrl }}
           onNext={() => setStep(2)}
           valid={Boolean(step1Valid)}
         />
+        </div>
       )}
 
       {step === 2 && (
+        <div key="s2" className="anim-fade">
         <StepTreasury
           {...{ mode, setMode, assets, assetAddr, setAssetAddr, amount, setAmount, noticeDays, setNoticeDays }}
           registryReady={registryReady}
@@ -133,6 +136,7 @@ export function CreateFlow() {
           onNext={() => setStep(3)}
           valid={step2Valid}
         />
+        </div>
       )}
 
       {step === 3 && (

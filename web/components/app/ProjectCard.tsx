@@ -18,7 +18,7 @@ export function ProjectCard({
   const { symbol, name, backing, ballasted, token } = project;
 
   return (
-    <Link href={`/app/token/${token}`} className="card block p-4 transition-colors hover:border-text-faint">
+    <Link href={`/app/token/${token}`} className="card card-hover block p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-bg text-sm font-semibold text-green">
