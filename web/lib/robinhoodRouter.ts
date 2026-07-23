@@ -18,10 +18,10 @@ export const UNIVERSAL_ROUTER = "0x8876789976dEcBfCbBbe364623C63652db8C0904" as 
 /** UniversalRouter command id for a v4 swap. */
 export const CMD_V4_SWAP = "0x10";
 
-/** v4 Action ids used inside a V4_SWAP input. */
+/** v4 Action ids used inside a V4_SWAP input. Single-hop only — BALLAST does not
+ *  ship multi-hop (SWAP_EXACT_IN = 0x07); see research §4. */
 export const V4_ACTIONS = {
   SWAP_EXACT_IN_SINGLE: 0x06,
-  SWAP_EXACT_IN: 0x07,
   SETTLE_ALL: 0x0c,
   TAKE_ALL: 0x0f,
 } as const;
@@ -52,28 +52,8 @@ export const exactInputSingleParamsAbi = {
   ],
 } as const;
 
-// Multi-hop variant: `minHopPriceX36` becomes uint256[] — length 0 (disabled) or
-// exactly path.length, else the router reverts InvalidHopPriceLength.
-export const exactInputParamsAbi = {
-  type: "tuple",
-  components: [
-    { name: "currencyIn", type: "address" },
-    {
-      name: "path",
-      type: "tuple[]",
-      components: [
-        { name: "intermediateCurrency", type: "address" },
-        { name: "fee", type: "uint24" },
-        { name: "tickSpacing", type: "int24" },
-        { name: "hooks", type: "address" },
-        { name: "hookData", type: "bytes" },
-      ],
-    },
-    { name: "amountIn", type: "uint128" },
-    { name: "amountOutMinimum", type: "uint128" },
-    { name: "minHopPriceX36", type: "uint256[]" }, // FORK-ONLY; [] = disabled
-  ],
-} as const;
+// Multi-hop (ExactInputParams, with minHopPriceX36 as uint256[]) is intentionally
+// omitted — BALLAST is single-hop only. The verified shape lives in research §4.
 
 export const universalRouterExecuteAbi = [
   {

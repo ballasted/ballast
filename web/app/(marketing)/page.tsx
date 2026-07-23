@@ -296,8 +296,8 @@ const FAQ = [
     a: "It is permanent. You cannot withdraw it, you receive nothing in return, and the project may still fail. Read the confirmation screen carefully — it is deliberately blunt.",
   },
   {
-    q: "Why does the equity value not update at night?",
-    a: "Because the underlying markets are closed. Equity prices only update during market hours, so outside them we show the last close with its timestamp. We do not estimate, smooth, or forward-project a price we do not have.",
+    q: "Why does the equity value sometimes stop updating?",
+    a: "Tokenized equity feeds run 24/5 — regular, pre-market, post-market and overnight sessions — so weekday nights are covered. They rest on weekends, market holidays, and thin overnight windows, holding the last published price. When a feed is resting we show that last price with its timestamp, clearly marked, and never estimate, smooth, or forward-project a price we do not have.",
   },
   {
     q: "Can the notice period be changed after launch?",

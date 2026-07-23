@@ -156,9 +156,13 @@ Entrypoint: `execute(bytes commands, bytes[] inputs, uint256 deadline)` — **ti
 **The `minHopPriceX36` fork field has TWO shapes** (the trap — one field, two types):
 
 - **Single-hop `ExactInputSingleParams`** (what BALLAST needs for a graduated token/WETH pool): `{ poolKey, zeroForOne, amountIn (uint128), amountOutMinimum (uint128), minHopPriceX36 (uint256), hookData }`. The fork inserts `minHopPriceX36` **after `amountOutMinimum`, before `hookData`**. Enabled iff `!= 0`; set **0 to disable** and rely on `amountOutMinimum`.
-- **Multi-hop `ExactInputParams`**: `minHopPriceX36` is a **`uint256[]`** — length **0 (disabled)** or **exactly `path.length`**, else the router reverts `InvalidHopPriceLength`.
+- **Multi-hop `ExactInputParams`** — ⚠️ **exists and is verified from source, but BALLAST does NOT ship it** (single-hop only: graduated pools are token/WETH, native ETH uses WRAP/UNWRAP, the treasury never swaps). Recorded here in case it is ever needed. Verified field order from the deployed `IV4Router.sol`: `{ currencyIn, path (PathKey[]), minHopPriceX36 (uint256[]), amountIn (uint128), amountOutMinimum (uint128) }` — `minHopPriceX36` is the **THIRD field, after `path`, before `amountIn`**, NOT trailing; length **0 (disabled)** or **exactly `path.length`**, else the router reverts `InvalidHopPriceLength`. Not carried in `IRobinhoodV4Router.sol` / `robinhoodRouter.ts`.
 
-`X36` = fixed-point ×10^36 (minimum execution price per hop). Stock Uniswap SDKs omit the field entirely → their calldata reverts here; **manual encoding is mandatory.** Canonical references: `contracts/src/interfaces/IRobinhoodV4Router.sol` (Solidity structs + command/action constants) and `web/lib/robinhoodRouter.ts` (viem ABI params). Not yet wired into a live swap — BALLAST's Buy/Sell stay disabled until the factory deploys a pool.
+`X36` = fixed-point ×10^36 (minimum execution price per hop). Stock Uniswap SDKs omit the field entirely → their calldata reverts here; **manual encoding is mandatory.** Canonical references: `contracts/src/interfaces/IRobinhoodV4Router.sol` (Solidity structs + command/action constants) and `web/lib/robinhoodRouter.ts` (viem ABI params).
+
+#### ✅ PROVEN BY EXECUTION 2026-07-23 (not just source)
+
+`contracts/script/ProveSwapMainnet.s.sol` ran the full four-step proof on mainnet against a real WETH/token pool (liquidity confirmed via StateView): (1) StateView liquidity, (2) V4Quoter quote, (3) `forge script` simulate `execute()`, (4) real broadcast. All three of quote / simulation / on-chain result returned the **identical** output (`75649940621173298741106` token units for `0.00001` WETH), so `ExactInputSingleParams` with `minHopPriceX36 = 0` and actions `[0x06,0x0c,0x0f]` is decoded correctly by the fork router. Swap tx `0xddf8b24a81a2e01383018f7889eef12b868a484509f8f8f0209cb3a13235ee5a`. Input settled via Permit2 (WETH → Permit2 → router); output taken to the caller. The v4 singletons (PoolManager/PositionManager/V4Quoter/StateView) and permissionless hooks (standard flag-bit mining, no allowlist) are also verified.
 
 ---
 
