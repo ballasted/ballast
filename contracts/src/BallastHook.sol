@@ -50,6 +50,14 @@ contract BallastHook {
     event Claimed(address indexed recipient, uint256 amount);
 
     error NotPoolManager();
+    /// @notice Sell-exact-out (WETH specified as output) is rejected: the WETH fee
+    ///         would have to be skimmed in beforeSwap on the REQUESTED amount before
+    ///         the fill is known, over-collecting on a partial fill, and afterSwap
+    ///         cannot correct it (it only touches the unspecified currency). We
+    ///         revert loudly instead of overcharging silently. Route sells as
+    ///         exact-in. (Buy-exact-out is fine — WETH is unspecified there, so the
+    ///         fee is charged on the actual fill in afterSwap.)
+    error SellExactOutNotSupported();
 
     /// Flag bits this hook's mined address must carry (and only these).
     uint160 public constant FLAGS =
@@ -89,14 +97,11 @@ contract BallastHook {
             // WETH is unspecified here -> afterSwap handles it.
             return (IHooks.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
         }
-        // Specified amount magnitude == the WETH leg for both exact-in and exact-out.
-        // ⚠️ KNOWN LIMITATION (fork-verified, awaiting a routing decision): for an
-        // exact-OUT swap where WETH is specified (sell exact-out), this skims on the
-        // REQUESTED amount before the fill is known, so a PARTIAL fill OVER-COLLECTS.
-        // afterSwap cannot fix it (it can only touch the unspecified currency).
-        // Exact-in (the dominant path) is exact. See BallastHookFork.t.sol
-        // test_partialFill_sellExactOut.
-        uint256 wethAmt = uint256(params.amountSpecified < 0 ? -params.amountSpecified : params.amountSpecified);
+        // WETH is specified. Exact-out here == sell-exact-out: reject it rather than
+        // over-collect on a partial fill (see SellExactOutNotSupported).
+        if (!exactIn) revert SellExactOutNotSupported();
+        // Exact-in: the specified magnitude IS the WETH input leg.
+        uint256 wethAmt = uint256(-params.amountSpecified);
         uint256 fee = (wethAmt * feeConfig.feeBps()) / feeConfig.BPS();
         if (fee == 0) return (IHooks.beforeSwap.selector, toBeforeSwapDelta(0, 0), 0);
 

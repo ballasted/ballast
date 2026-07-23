@@ -50,4 +50,13 @@ Asset (stock token) and Chainlink feed addresses come from the on-chain asset
 registry and the Chainlink Robinhood feeds page, read at build time. They are not
 listed here so that a stale copy can never mislead you.
 
+## Integrators: route sells as exact-in
+
+The BALLAST fee hook charges 1% on the WETH leg of every swap. **Sell-exact-out
+(asking for an exact amount of WETH out) is unsupported and reverts with
+`SellExactOutNotSupported`.** On a partial fill that path would over-collect the
+fee, and it cannot be corrected after the fact, so it fails loudly instead of
+overcharging silently. Route sells as **exact-in** (specify the token amount you
+are selling). Buys work either way (exact-in or exact-out).
+
 Next: [Verify a treasury yourself →](/docs/verify-a-treasury)

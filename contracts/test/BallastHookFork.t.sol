@@ -188,12 +188,11 @@ contract BallastHookForkTest is Test {
         return Currency.unwrap(key.currency0) == WETH ? Currency.unwrap(key.currency1) : Currency.unwrap(key.currency0);
     }
 
-    /// @dev The partial-fill edge: a sell exact-out for MORE WETH than the pool can
-    ///      provide (fills at the range boundary). WETH is the SPECIFIED currency,
-    ///      so the fee is skimmed in beforeSwap on the REQUESTED amount — before the
-    ///      fill is known. If it fills partially, the fee must still equal 1% of the
-    ///      ACTUAL WETH out, not the requested amount.
-    function test_partialFill_sellExactOut() public {
+    /// @dev Partial fill at the top of the range (the ceiling — exactly what slice 3
+    ///      will hit). Buy exact-out requesting MORE token than the range holds fills
+    ///      partially; WETH is the UNSPECIFIED currency, so afterSwap charges the fee
+    ///      on the ACTUAL filled WETH, not the requested amount.
+    function test_partialFill_buyExactOut_chargesOnActual() public {
         if (!forked) {
             vm.skip(true);
             return;
@@ -201,11 +200,12 @@ contract BallastHookForkTest is Test {
         MockBallastToken t = _deployTokenOnSide(false); // token > WETH (currency1)
         (PoolKey memory key, bool wethIsC0) = _pool(t);
 
-        uint256 requested = 100 ether; // far more WETH than the seeded range holds
-        bool zeroForOne = !wethIsC0; // sell: WETH out
+        uint256 requested = 1e30; // far more token than the range holds -> partial at ceiling
+        bool zeroForOne = wethIsC0; // buy: WETH in
         uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
 
         Bal memory a = _weth();
+        uint256 tokBefore = t.balanceOf(address(this));
         swap.swap(
             key,
             IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: int256(requested), sqrtPriceLimitX96: limit}),
@@ -213,27 +213,20 @@ contract BallastHookForkTest is Test {
             ""
         );
         Bal memory b = _weth();
-
         uint256 fee = b.sh - a.sh;
-        uint256 actualOut = uint256(int256(b.sw) - int256(a.sw)); // WETH the swapper actually got
-        console2.log("partial-fill sell exact-out:");
-        console2.log("  requested WETH out:", requested);
-        console2.log("  actual WETH out:  ", actualOut);
-        console2.log("  fee collected:    ", fee);
-        console2.log("  1% of requested:  ", requested / 100);
-        console2.log("  1% of actual:     ", actualOut / 100);
+        uint256 paid = uint256(int256(a.sw) - int256(b.sw)); // WETH paid by swapper
+        uint256 gotTok = t.balanceOf(address(this)) - tokBefore;
 
-        // ⚠️ KNOWN ISSUE (reported, awaiting a routing decision): for sell
-        // exact-out the WETH leg is the SPECIFIED currency, so the fee must be
-        // skimmed in beforeSwap — on the REQUESTED amount, before the fill is known.
-        // On a partial fill it OVER-COLLECTS, and afterSwap cannot correct it
-        // (afterSwap's return delta only touches the UNSPECIFIED currency). This
-        // test CHARACTERIZES the current (incorrect) behaviour and MUST be updated
-        // when the fix lands. The correct assertion would be:
-        //   assertApproxEqRel(fee, actualOut / 100, 0.01e18);
-        assertLt(actualOut, requested, "expected a partial fill");
-        assertEq(fee, requested / 100, "current behaviour: fee on requested (BUG)");
-        assertGt(fee, actualOut / 100 + actualOut / 1000, "over-collection vs actual fill (BUG)");
+        console2.log("partial buy exact-out (ceiling):");
+        console2.log("  requested token:", requested);
+        console2.log("  got token:      ", gotTok);
+        console2.log("  WETH paid:      ", paid);
+        console2.log("  fee:            ", fee);
+
+        assertLt(gotTok, requested, "expected partial fill at ceiling");
+        // fee == 1% of the ACTUAL WETH leg (gross into pool = paid - fee), NOT of the
+        // requested token. This is the correct partial-fill behaviour.
+        assertApproxEqRel(fee, (paid - fee) / 100, 0.01e18, "fee must be 1% of actual filled WETH");
     }
 
     function test_fourCases_bothOrderings() public {
@@ -245,10 +238,53 @@ contract BallastHookForkTest is Test {
             MockBallastToken t = _deployTokenOnSide(side == 0); // 0: token<WETH (c0), 1: token>WETH (c1)
             (PoolKey memory key, bool wethIsC0) = _pool(t);
             string memory ord = wethIsC0 ? "[WETH=c0] " : "[WETH=c1] ";
+            // 3 supported cases assert the fee; the 4th (sell exact-out) asserts it
+            // reverts. 4 cases x 2 orderings = 8 combos.
             _case(string.concat(ord, "buy exact-in"), key, wethIsC0, true, true, 0.01 ether);
             _case(string.concat(ord, "buy exact-out"), key, wethIsC0, true, false, 1e18);
             _case(string.concat(ord, "sell exact-in"), key, wethIsC0, false, true, 1e18);
-            _case(string.concat(ord, "sell exact-out"), key, wethIsC0, false, false, 0.01 ether);
+            _expectSellExactOutReverts(string.concat(ord, "sell exact-out"), key, wethIsC0);
         }
+    }
+
+    /// Sell exact-out (WETH specified as output) must revert with the named error.
+    /// v4 WRAPS hook reverts (CustomRevert.WrappedError), so we assert the wrapped
+    /// revert data embeds the SellExactOutNotSupported selector rather than matching
+    /// a bare selector.
+    function _expectSellExactOutReverts(string memory label, PoolKey memory key, bool wethIsC0) internal {
+        bool zeroForOne = !wethIsC0; // sell: WETH out
+        uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        bytes memory cd = abi.encodeCall(
+            PoolSwapTest.swap,
+            (
+                key,
+                IPoolManager.SwapParams({
+                    zeroForOne: zeroForOne,
+                    amountSpecified: int256(0.01 ether),
+                    sqrtPriceLimitX96: limit
+                }),
+                PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+                bytes("")
+            )
+        );
+        (bool ok, bytes memory ret) = address(swap).call(cd);
+        assertFalse(ok, string.concat(label, ": expected revert"));
+        assertTrue(
+            _hasSelector(ret, BallastHook.SellExactOutNotSupported.selector),
+            string.concat(label, ": wrong revert error")
+        );
+        console2.log(label, "reverted SellExactOutNotSupported (as designed)");
+    }
+
+    function _hasSelector(bytes memory data, bytes4 sel) internal pure returns (bool) {
+        if (data.length < 4) return false;
+        for (uint256 i = 0; i + 4 <= data.length; i++) {
+            bytes4 chunk;
+            assembly {
+                chunk := mload(add(add(data, 0x20), i))
+            }
+            if (chunk == sel) return true;
+        }
+        return false;
     }
 }
