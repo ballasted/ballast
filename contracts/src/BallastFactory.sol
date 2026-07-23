@@ -64,7 +64,12 @@ contract BallastFactory {
     mapping(address token => uint256 idPlusOne) public launchIdOf;
 
     event Launched(
-        uint256 indexed id, address indexed creator, address indexed token, address treasury, uint256 noticePeriod
+        uint256 indexed id,
+        address indexed creator,
+        address indexed token,
+        address treasury,
+        uint256 noticePeriod,
+        string metadataURI
     );
 
     event Graduated(address indexed token, address treasury, int24 tickLower, uint256 backingUsd1e18);
@@ -139,10 +144,24 @@ contract BallastFactory {
         return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initHash)))));
     }
 
+    /// @dev Mine a salt whose CREATE2 address sorts BELOW weth (currency0) and is
+    ///      unused. Extracted from launch() to keep that frame within the stack
+    ///      limit. Reverts if none found in the search window.
+    function _mineCurrency0Salt(bytes32 initHash) internal view returns (bytes32) {
+        for (uint256 s = 0; s < 4000; s++) {
+            address predicted = _create2(bytes32(s), initHash);
+            if (predicted < weth && predicted.code.length == 0) return bytes32(s);
+        }
+        revert CouldNotMineCurrency0();
+    }
+
     /// @notice Launch a project: deploy the token + treasury, wire them, register.
     /// @param noticePeriod Withdrawal notice, restricted to the offered set
     ///        (7 / 30 / 90 days) and immutable on the treasury once set.
-    function launch(string calldata name_, string calldata symbol_, uint256 noticePeriod)
+    /// @param metadataURI ipfs://CID of the pinned project metadata JSON (name,
+    ///        description, category, logo, website, x). Stored on the token as the
+    ///        permanent launch identity + the initial (updatable) current URI.
+    function launch(string calldata name_, string calldata symbol_, uint256 noticePeriod, string calldata metadataURI)
         external
         returns (uint256 id, address token, address treasury)
     {
@@ -151,26 +170,16 @@ contract BallastFactory {
         }
 
         // 1. Token — CREATE2-mined so its address sorts BELOW weth (currency0).
-        //    Full supply minted to the factory for one-sided pool seeding.
+        //    Full supply minted to the factory for one-sided pool seeding. Mining is
+        //    factored out to keep this frame under the stack limit.
         bytes32 initHash = keccak256(
             abi.encodePacked(
-                type(BallastToken).creationCode, abi.encode(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this))
+                type(BallastToken).creationCode,
+                abi.encode(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI)
             )
         );
-        bytes32 salt;
-        bool found;
-        for (uint256 s = 0; s < 4000; s++) {
-            address predicted = _create2(bytes32(s), initHash);
-            // Sort below weth (currency0) AND be unused — identical launch params
-            // would otherwise collide on the same CREATE2 address.
-            if (predicted < weth && predicted.code.length == 0) {
-                salt = bytes32(s);
-                found = true;
-                break;
-            }
-        }
-        if (!found) revert CouldNotMineCurrency0();
-        BallastToken t = new BallastToken{salt: salt}(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this));
+        BallastToken t =
+            new BallastToken{salt: _mineCurrency0Salt(initHash)}(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI);
         // On-chain guard — never trust the mined salt; verify the actual ordering.
         if (address(t) >= weth) revert WrongOrdering();
 
@@ -187,7 +196,7 @@ contract BallastFactory {
         id = launches.length - 1;
         launchIdOf[token] = id + 1;
 
-        emit Launched(id, msg.sender, token, treasury, noticePeriod);
+        emit Launched(id, msg.sender, token, treasury, noticePeriod, metadataURI);
     }
 
     function launchCount() external view returns (uint256) {

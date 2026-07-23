@@ -56,12 +56,24 @@ export function useBacking(token?: Address) {
       ? [
           { address: token, abi: erc20Abi, functionName: "name", chainId: CHAIN_ID },
           { address: token, abi: erc20Abi, functionName: "symbol", chainId: CHAIN_ID },
+          { address: token, abi: ballastTokenAbi, functionName: "metadataURI", chainId: CHAIN_ID },
+          { address: token, abi: ballastTokenAbi, functionName: "launchMetadataURI", chainId: CHAIN_ID },
+          { address: token, abi: ballastTokenAbi, functionName: "metadataChanged", chainId: CHAIN_ID },
+          { address: token, abi: ballastTokenAbi, functionName: "creator", chainId: CHAIN_ID },
+          { address: token, abi: erc20Abi, functionName: "totalSupply", chainId: CHAIN_ID },
         ]
       : [],
     query: { enabled: Boolean(token) },
   });
-  const name = metaRes.data?.[0]?.status === "success" ? (metaRes.data[0].result as string) : undefined;
-  const symbol = metaRes.data?.[1]?.status === "success" ? (metaRes.data[1].result as string) : undefined;
+  const pick = (i: number) => (metaRes.data?.[i]?.status === "success" ? metaRes.data[i].result : undefined);
+  const name = pick(0) as string | undefined;
+  const symbol = pick(1) as string | undefined;
+  // On-chain pointer to the pinned project metadata JSON (the source of truth).
+  const metadataURI = pick(2) as string | undefined;
+  const launchMetadataURI = pick(3) as string | undefined;
+  const metadataChanged = Boolean(pick(4));
+  const creator = pick(5) as Address | undefined;
+  const totalSupply = pick(6) as bigint | undefined;
 
   const graduatedRes = useReadContract({
     address: FACTORY_ADDRESS,
@@ -152,6 +164,11 @@ export function useBacking(token?: Address) {
     backing,
     name,
     symbol,
+    metadataURI,
+    launchMetadataURI,
+    metadataChanged,
+    creator,
+    totalSupply,
     pending,
     noticePeriod,
     graduated,

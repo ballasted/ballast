@@ -1,21 +1,30 @@
 import { defineChain } from "viem";
 
-// Robinhood Chain — Arbitrum Orbit L2. Values from docs/robinhood-chain-research.md.
-// Mainnet 4663, testnet 46630, gas token ETH, ~100ms blocks. The public RPC is
-// rate-limited — a paid endpoint should be set via NEXT_PUBLIC_RPC_URL in prod.
+// Robinhood Chain — Arbitrum Orbit L2. This is the ONLY network BALLAST supports,
+// so it is the only chain defined here and the only chain in the wagmi config.
+//
+// Values from docs/robinhood-chain-research.md: mainnet id 4663, gas token ETH,
+// ~100ms blocks, Multicall3 canonical. The public RPC is rate-limited — set
+// NEXT_PUBLIC_RPC_URL to a dedicated endpoint (Alchemy) in prod.
+//
+// Why a single chain: wagmi treats a connected chain that is absent from its
+// `chains` array as unsupported and falls back to `chains[0]`. The previous
+// config listed BOTH a mainnet and a testnet entry and toggled the *active* one
+// off NEXT_PUBLIC_USE_MAINNET (defaulted false → testnet 46630). A wallet on real
+// mainnet 4663 therefore mismatched the app's target and wagmi reported the wrong
+// id — the "undefined"/id-1 fallback the launch bug surfaced. One chain, no toggle.
 
-const USE_MAINNET = process.env.NEXT_PUBLIC_USE_MAINNET === "true";
-
-const MAINNET_RPC =
+const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
-const TESTNET_RPC =
-  process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.chain.robinhood.com";
 
-export const robinhoodMainnet = defineChain({
+export const robinhoodChain = defineChain({
   id: 4663,
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [MAINNET_RPC] } },
+  rpcUrls: {
+    default: { http: [RPC_URL] },
+    public: { http: ["https://rpc.mainnet.chain.robinhood.com"] },
+  },
   blockExplorers: {
     default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
   },
@@ -24,17 +33,7 @@ export const robinhoodMainnet = defineChain({
   },
 });
 
-export const robinhoodTestnet = defineChain({
-  id: 46630,
-  name: "Robinhood Chain Testnet",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [TESTNET_RPC] } },
-  blockExplorers: {
-    default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
-  },
-  contracts: {
-    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
-  },
-});
-
-export const activeChain = USE_MAINNET ? robinhoodMainnet : robinhoodTestnet;
+// The app targets exactly one network. `activeChain` and `robinhoodMainnet` are
+// kept as aliases so existing imports keep working without threading a choice.
+export const activeChain = robinhoodChain;
+export const robinhoodMainnet = robinhoodChain;

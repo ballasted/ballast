@@ -35,7 +35,7 @@ export default function ProfilePage() {
           {account.slice(2, 4).toUpperCase()}
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-text-primary">{shortAddress(account)}</h1>
+          <h1 className="font-serif text-xl font-semibold text-bone">{shortAddress(account)}</h1>
           {/* X OAuth isn't wired — anchor to the wallet and say so plainly (spec §9). */}
           <p className="text-xs text-text-muted">
             Wallet identity. Linking an X account (harder to fake than a fresh wallet) comes with the social layer.

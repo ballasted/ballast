@@ -28,7 +28,7 @@ function Hero() {
     <section className="border-b border-border">
       <Container className="py-20 sm:py-28">
         {/* Hero entrance — staggered, once on load. transform + opacity only. */}
-        <h1 className="anim-enter max-w-3xl text-4xl font-semibold tracking-tight text-text-primary sm:text-6xl">
+        <h1 className="anim-enter max-w-3xl font-serif text-4xl font-semibold tracking-tight text-bone sm:text-6xl">
           Launch with something underneath.
         </h1>
         <p className="anim-enter anim-d1 mt-6 max-w-2xl text-lg text-text-secondary">
@@ -243,7 +243,7 @@ function Audiences() {
     <Section muted>
       <div className="grid gap-5 md:grid-cols-2">
         <div className="card p-8">
-          <h2 className="text-xl font-semibold text-text-primary">Show your work.</h2>
+          <h2 className="font-serif text-xl font-semibold text-bone">Show your work.</h2>
           <p className="mt-4 text-sm text-text-secondary">
             If you have raised, if you hold a treasury, if you are building something
             with assets behind it — most launchpads give you no way to prove it. You
@@ -260,7 +260,7 @@ function Audiences() {
           </Link>
         </div>
         <div className="card p-8">
-          <h2 className="text-xl font-semibold text-text-primary">
+          <h2 className="font-serif text-xl font-semibold text-bone">
             Know what you are holding.
           </h2>
           <p className="mt-4 text-sm text-text-secondary">
@@ -329,7 +329,7 @@ function FinalCta() {
   return (
     <section className="border-t border-border">
       <Container className="py-20 text-center">
-        <h2 className="text-3xl font-semibold tracking-tight text-text-primary">
+        <h2 className="font-serif text-3xl font-semibold tracking-tight text-bone">
           Show your work, or know what you hold.
         </h2>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -373,7 +373,7 @@ function Section({
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="max-w-3xl text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">
+    <h2 className="max-w-3xl font-serif text-2xl font-semibold tracking-tight text-bone sm:text-3xl">
       {children}
     </h2>
   );

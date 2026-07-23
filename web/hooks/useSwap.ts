@@ -15,6 +15,7 @@ import { activeChain } from "@/lib/chain";
 import { poolKeyForToken, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE } from "@/lib/pool";
 import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
+import { decodeTxError } from "@/lib/txError";
 
 const CHAIN_ID = activeChain.id;
 const MAX_EXPIRATION = 2n ** 48n - 1n;
@@ -162,8 +163,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
       setTxHash(hash);
       setPhase("success");
     } catch (e: unknown) {
-      const raw = e instanceof Error ? e.message : String(e);
-      setError(/rejected|denied/i.test(raw) ? "You rejected the transaction." : (raw.split("\n")[0] ?? raw).slice(0, 200));
+      setError(decodeTxError(e));
       setPhase("error");
     }
   }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync]);

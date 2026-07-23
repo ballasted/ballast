@@ -39,8 +39,40 @@ contract BallastFactoryTest is Test {
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
         vm.prank(creator);
-        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days);
+        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj");
         return (BallastToken(token), ProjectTreasury(treasury));
+    }
+
+    // ── Metadata: updatable-with-history, launch identity permanent ──────────
+    function test_metadata_launchSetAndReadable() public {
+        (BallastToken t,) = _launch();
+        assertEq(t.launchMetadataURI(), "ipfs://proj", "launch URI");
+        assertEq(t.metadataURI(), "ipfs://proj", "current URI == launch at start");
+        assertFalse(t.metadataChanged(), "unchanged at launch");
+    }
+
+    function test_metadata_creatorCanUpdate_andHistoryIsVisible() public {
+        (BallastToken t,) = _launch();
+        // Every change emits MetadataUpdated(old, new, ts) — the public log.
+        vm.expectEmit(false, false, false, true, address(t));
+        emit BallastToken.MetadataUpdated("ipfs://proj", "ipfs://v2", block.timestamp);
+        vm.prank(creator);
+        t.setMetadataURI("ipfs://v2");
+
+        assertEq(t.metadataURI(), "ipfs://v2", "current updated");
+        assertEq(t.launchMetadataURI(), "ipfs://proj", "launch identity permanent");
+        assertTrue(t.metadataChanged(), "flagged as changed");
+    }
+
+    function test_metadata_onlyCreatorCanUpdate() public {
+        (BallastToken t,) = _launch();
+        vm.prank(alice);
+        vm.expectRevert(BallastToken.OnlyCreator.selector);
+        t.setMetadataURI("ipfs://hijack");
+        // factory can't either — this is the creator's to change.
+        vm.prank(address(factory));
+        vm.expectRevert(BallastToken.OnlyCreator.selector);
+        t.setMetadataURI("ipfs://hijack");
     }
 
     function test_launch_wiresEverythingAtomically() public {
@@ -116,17 +148,17 @@ contract BallastFactoryTest is Test {
         uint256[3] memory ok = [uint256(7 days), 30 days, 90 days];
         for (uint256 i = 0; i < ok.length; i++) {
             vm.prank(creator);
-            factory.launch("P", "P", ok[i]);
+            factory.launch("P", "P", ok[i], "");
         }
         assertEq(factory.launchCount(), 3);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 5 days);
+        factory.launch("P", "P", 5 days, "");
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 0);
+        factory.launch("P", "P", 0, "");
     }
 
     // ===================================================================== //
@@ -157,9 +189,9 @@ contract BallastFactoryTest is Test {
 
     function test_twoLaunches_distinctAddressesAndIds() public {
         vm.prank(creator);
-        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days);
+        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "");
         vm.prank(alice);
-        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days);
+        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "");
 
         assertEq(id0, 0);
         assertEq(id1, 1);

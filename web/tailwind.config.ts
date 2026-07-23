@@ -11,12 +11,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#0A0C0B",
-        card: "#101412",
+        bg: "#0A0C0B", // Ground
+        card: "#101412", // Surface
+        "surface-raised": "#161B18", // raised surfaces (nested panels, hovered cards)
         border: "#1C211E",
+        "border-strong": "#2E352F",
         green: {
-          DEFAULT: "#00C805",
-          bg: "#0E2A12",
+          DEFAULT: "#00C805", // Accent (patina)
+          bg: "#0E2A12", // Accent deep
+          mid: "#2E6B33", // Accent mid — second data/step tone
+        },
+        // Bone / marble — from the brand assets. The primary tone for headings and
+        // brand moments, so the interface reads composed rather than monochrome.
+        bone: {
+          DEFAULT: "#DDD8CA",
+          muted: "#8A938D",
         },
         text: {
           primary: "#F2F4F2",
@@ -24,11 +33,21 @@ const config: Config = {
           muted: "#8A938D",
           faint: "#5F665F",
         },
+        positive: "#00C805",
         negative: "#FF5A52",
         warning: {
           DEFAULT: "#EF9F27",
           bg: "#1A1509",
           border: "#3D3114",
+        },
+        // Chart + treasury-composition series. Kept as an explicit ramp so a
+        // visualization has more than one usable colour without inventing hues.
+        data: {
+          1: "#00C805",
+          2: "#2E6B33",
+          3: "#DDD8CA",
+          4: "#6E8B77",
+          5: "#C9A96A",
         },
       },
       borderRadius: {
@@ -46,6 +65,19 @@ const config: Config = {
           "Helvetica Neue",
           "Arial",
           "sans-serif",
+        ],
+        // The second register from the brand's two-register system. Headings and
+        // brand moments only; body / numbers / controls stay sans for legibility.
+        // A classical humanist serif stack (no web-font download → marketing stays
+        // zero-bundle and the build is offline-safe); swap in the brand serif via
+        // next/font when its file is chosen.
+        serif: [
+          "Iowan Old Style",
+          "Palatino Linotype",
+          "Palatino",
+          "Georgia",
+          "Cambria",
+          "serif",
         ],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },

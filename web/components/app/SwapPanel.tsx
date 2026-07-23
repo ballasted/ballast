@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useSwap } from "@/hooks/useSwap";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
 import { isSwapConfigured } from "@/lib/contracts";
 import { cn } from "@/lib/cn";
@@ -17,11 +18,25 @@ function fmt(v: bigint | undefined, dp = 6): string {
   return n.toLocaleString("en", { maximumFractionDigits: dp });
 }
 
-export function SwapPanel({ token, symbol, hasPool }: { token: Address; symbol: string; hasPool: boolean }) {
+const SLIPPAGE_OPTIONS = [50, 100, 200] as const;
+
+export function SwapPanel({
+  token,
+  symbol,
+  hasPool,
+  spotPriceWeth,
+}: {
+  token: Address;
+  symbol: string;
+  hasPool: boolean;
+  spotPriceWeth?: bigint; // WETH per token, 1e18 — pool mid, for price impact
+}) {
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
+  const [slippageBps, setSlippageBps] = useState<number>(100);
   const { address: account } = useAccount();
-  const s = useSwap(hasPool ? token : undefined, side, amount);
+  const { wrongNetwork } = useNetworkGuard();
+  const s = useSwap(hasPool ? token : undefined, side, amount, slippageBps);
 
   if (!isSwapConfigured) {
     return (
@@ -42,6 +57,22 @@ export function SwapPanel({ token, symbol, hasPool }: { token: Address; symbol: 
   const inLabel = side === "buy" ? "WETH" : symbol;
   const outLabel = side === "buy" ? symbol : "WETH";
   const busy = s.phase === "approving" || s.phase === "swapping";
+
+  // Price impact vs the pool mid: compare the quote's effective price to spot.
+  //   buy  → WETH-in / token-out is the paid price; impact = paid/spot − 1
+  //   sell → WETH-out / token-in is the received price; impact = 1 − received/spot
+  let priceImpactPct: number | undefined;
+  if (spotPriceWeth && spotPriceWeth > 0n && s.quote !== undefined && s.quote > 0n && s.amountIn > 0n) {
+    const spot = Number(spotPriceWeth) / 1e18;
+    if (side === "buy") {
+      const paid = Number(s.amountIn) / Number(s.quote);
+      priceImpactPct = (paid / spot - 1) * 100;
+    } else {
+      const received = Number(s.quote) / Number(s.amountIn);
+      priceImpactPct = (1 - received / spot) * 100;
+    }
+  }
+  const highImpact = priceImpactPct !== undefined && priceImpactPct > 5;
 
   return (
     <div className="card p-4">
@@ -82,14 +113,43 @@ export function SwapPanel({ token, symbol, hasPool }: { token: Address; symbol: 
         </span>
       </div>
       {s.quote !== undefined && (
-        <div className="mt-1 flex items-center justify-between text-xs text-text-faint">
-          <span>Minimum after 1% slippage</span>
-          <span className="tabular-nums">{fmt(s.minOut)}</span>
-        </div>
+        <>
+          {priceImpactPct !== undefined && (
+            <div className="mt-1 flex items-center justify-between text-xs">
+              <span className="text-text-faint">Price impact</span>
+              <span className={cn("tabular-nums", highImpact ? "text-warning" : "text-text-muted")}>
+                {priceImpactPct < 0.01 ? "<0.01" : priceImpactPct.toFixed(2)}%
+              </span>
+            </div>
+          )}
+          <div className="mt-1 flex items-center justify-between text-xs text-text-faint">
+            <span>Minimum after {slippageBps / 100}% slippage</span>
+            <span className="tabular-nums">{fmt(s.minOut)}</span>
+          </div>
+        </>
       )}
       {s.quoteError && amount && (
         <p className="mt-2 text-xs text-warning">Couldn&apos;t quote this size against current liquidity.</p>
       )}
+
+      {/* Slippage tolerance */}
+      <div className="mt-3 flex items-center justify-between">
+        <span className="text-xs text-text-faint">Slippage tolerance</span>
+        <div className="flex gap-1">
+          {SLIPPAGE_OPTIONS.map((bps) => (
+            <button
+              key={bps}
+              onClick={() => setSlippageBps(bps)}
+              className={cn(
+                "rounded px-2 py-1 text-xs tabular-nums transition-colors",
+                slippageBps === bps ? "bg-green-bg text-green" : "text-text-muted hover:text-text-secondary",
+              )}
+            >
+              {bps / 100}%
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-4">
         {!account ? (
@@ -114,16 +174,18 @@ export function SwapPanel({ token, symbol, hasPool }: { token: Address; symbol: 
         ) : (
           <button
             className={cn("w-full", side === "buy" ? "btn-primary" : "btn-secondary")}
-            disabled={!s.canSwap || busy}
+            disabled={!s.canSwap || busy || wrongNetwork}
             onClick={s.swap}
           >
-            {s.phase === "approving"
-              ? "Approving…"
-              : s.phase === "swapping"
-                ? "Swapping…"
-                : side === "buy"
-                  ? `Buy ${symbol}`
-                  : `Sell ${symbol}`}
+            {wrongNetwork
+              ? "Switch to Robinhood Chain"
+              : s.phase === "approving"
+                ? "Approving…"
+                : s.phase === "swapping"
+                  ? "Swapping…"
+                  : side === "buy"
+                    ? `Buy ${symbol}`
+                    : `Sell ${symbol}`}
           </button>
         )}
         {s.error && <p className="mt-2 text-center text-xs text-negative">{s.error}</p>}

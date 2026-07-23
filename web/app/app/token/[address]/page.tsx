@@ -1,19 +1,31 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useState } from "react";
 import type { Address } from "viem";
 import { useBacking } from "@/hooks/useBacking";
+import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useNow } from "@/hooks/useNow";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { SwapPanel } from "@/components/app/SwapPanel";
+import {
+  MarketOverview,
+  AllocationSlot,
+  MetadataHistory,
+  CreatorTrackRecord,
+  PendingDataPanel,
+} from "@/components/app/token/TokenSections";
+import { Logo } from "@/components/app/Logo";
+import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
+import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress, formatBackingPerToken } from "@/lib/format";
-import { loadMeta } from "@/lib/metadata";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. The treasury is
-// resolved on-chain from token.treasury().
+// resolved on-chain from token.treasury(). Everything that can be sourced from
+// chain state is shown live; anything that needs the indexer (24h change, chart,
+// holders, trades, volume) carries an honest label until Phase 3.
 export default function TokenDetailPage() {
   const params = useParams();
   const raw = typeof params.address === "string" ? params.address : "";
@@ -21,20 +33,26 @@ export default function TokenDetailPage() {
   const token = isAddr ? (raw as Address) : undefined;
 
   const now = useNow();
-  const meta = useMemo(() => (token ? loadMeta(token) : undefined), [token]);
   const {
     treasury,
     backing,
     symbol,
     name,
+    metadataURI,
+    launchMetadataURI,
+    metadataChanged,
+    creator,
+    totalSupply,
     pending,
     marketPriceUsd,
+    marketPriceWeth,
     hasPool,
     graduated,
     isConfigured,
     isLoading,
     found,
   } = useBacking(token);
+  const { meta } = useProjectMeta(metadataURI);
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -45,7 +63,6 @@ export default function TokenDetailPage() {
     return <Notice title="Nothing here" body="No BALLAST token found at this address on the active chain." />;
   }
 
-  // Market price vs backing — both in USD. Ratio only when a pool exists.
   const ratio =
     marketPriceUsd !== undefined && backing && backing.backingPerToken > 0n
       ? Number((marketPriceUsd * 10n ** 18n) / backing.backingPerToken) / 1e18
@@ -53,36 +70,83 @@ export default function TokenDetailPage() {
 
   return (
     <div className="space-y-4">
+      {/* Pending withdrawal — above everything when active (spec 5). */}
       {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
 
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold text-text-primary">{symbol ?? shortAddress(token!)}</h1>
-          <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
-          {meta?.category && <span className="mt-1 inline-block rounded-full bg-card px-2 py-0.5 text-xs text-text-muted">{meta.category}</span>}
-        </div>
-        <div className="text-right">
-          <div className="figure-primary text-2xl">
-            {marketPriceUsd !== undefined ? formatBackingPerToken(marketPriceUsd) : "—"}
-          </div>
-          <div className="metric-secondary">{hasPool ? "market price" : graduated ? "no liquidity" : "not launched"}</div>
-          {ratio !== null && (
-            <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>
-              {ratio.toFixed(2)}× backing
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <header className="card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
+            <div className="min-w-0">
+              <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
+              <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
             </div>
-          )}
+          </div>
+          <div className="text-right">
+            <div className="figure-primary text-2xl">
+              {marketPriceUsd !== undefined ? formatBackingPerToken(marketPriceUsd) : "—"}
+            </div>
+            <div className="metric-secondary">{hasPool ? "market price" : graduated ? "no liquidity" : "not launched"}</div>
+            {ratio !== null && (
+              <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>{ratio.toFixed(2)}× backing</div>
+            )}
+          </div>
         </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+          {meta?.category && <Badge>{meta.category}</Badge>}
+          <Badge>{activeChain.name}</Badge>
+          <CopyAddress address={token!} />
+          {meta?.x && <ExtLink href={toUrl(meta.x)}>X ↗</ExtLink>}
+          {meta?.telegram && <ExtLink href={toUrl(meta.telegram)}>Telegram ↗</ExtLink>}
+          {meta?.website && <ExtLink href={toUrl(meta.website)}>Website ↗</ExtLink>}
+        </div>
+        {/* 24h change needs the indexer — labelled, never a fabricated %. */}
+        <div className="mt-2 text-xs text-text-faint">24h change: needs indexer</div>
       </header>
 
-      {meta?.description && <p className="text-sm text-text-secondary">{meta.description}</p>}
-
+      {/* Verified backing — above the chart, the reason the page exists. */}
       {backing && <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />}
+
+      {/* Price chart — pending the indexer / GeckoTerminal embed (Phase 3). A token
+          with no trades shows an honest empty state, never a flat line at zero. */}
+      <PendingDataPanel
+        title="Price chart"
+        what="The price chart activates once the pool has trades and the indexer is wired. It is never drawn as a flat line at zero when there's nothing to show."
+      />
+
+      {/* Swap */}
+      <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} spotPriceWeth={marketPriceWeth} />
+
+      {/* About */}
+      {meta?.description && (
+        <section className="card p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">About</h2>
+          <p className="mt-2 text-sm text-text-secondary">{meta.description}</p>
+        </section>
+      )}
+
+      <MarketOverview marketPriceUsd={marketPriceUsd} totalSupply={totalSupply ?? backing?.totalSupply} hasPool={hasPool} />
+
+      <PendingDataPanel
+        title="Holders"
+        what="The holder list — with LP, treasury, and creator labelled — is built from Transfer events by the indexer, which isn't wired yet. Holder count will equal the length of this list."
+      />
+      <PendingDataPanel
+        title="Recent trades"
+        what="The trade feed comes from pool swap events via the indexer, which isn't wired yet. 24h volume is the sum of this feed over that window."
+      />
+
+      <AllocationSlot />
+
+      <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
+
+      <CreatorTrackRecord creator={creator} thisToken={token!} />
 
       {/* Launch-liquidity disclosure — verbatim approved copy. */}
       <section className="card p-4">
-        <h2 className="text-sm font-semibold text-text-primary">
-          No protocol liquidity below backing at launch — not a floor
-        </h2>
+        <h2 className="text-sm font-semibold text-text-primary">No protocol liquidity below backing at launch — not a floor</h2>
         <p className="mt-2 text-sm text-text-secondary">
           A ballasted launch seeds the project&apos;s tokens from its backing price upward, and nothing below it. So at
           the very first trades the token cannot print below its backing in this pool — not because the price is
@@ -92,10 +156,7 @@ export default function TokenDetailPage() {
         </p>
       </section>
 
-      {/* Buy / Sell — pinned within thumb reach. */}
-      <div className="sticky bottom-20">
-        <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} />
-      </div>
+      <Meander className="opacity-60" />
 
       <a
         href={`${activeChain.blockExplorers.default.url}/address/${treasury}`}
@@ -109,10 +170,47 @@ export default function TokenDetailPage() {
   );
 }
 
+function CopyAddress({ address }: { address: Address }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        void navigator.clipboard?.writeText(address).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="rounded-full border border-border px-2.5 py-1 font-mono text-text-secondary transition-colors hover:border-text-faint"
+      title="Copy contract address"
+    >
+      {copied ? "Copied" : shortAddress(address)}
+    </button>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-full bg-border px-2.5 py-1 text-text-secondary">{children}</span>;
+}
+
+function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint">
+      {children}
+    </a>
+  );
+}
+
+// Metadata stores handles like "x.com/name" / "t.me/name" — normalise to a URL.
+function toUrl(v: string): string {
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
+  return `https://${v.replace(/^\/+/, "")}`;
+}
+
 function Notice({ title, body }: { title: string; body: string }) {
   return (
     <div className="card p-8 text-center">
-      <h1 className="font-semibold text-text-primary">{title}</h1>
+      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+      <h1 className="font-serif font-semibold text-bone">{title}</h1>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
     </div>
   );

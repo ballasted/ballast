@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
+import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";
 import {IAssetRegistry, MarketHours} from "./interfaces/IAssetRegistry.sol";
 
 /// @title AssetRegistry
@@ -15,7 +16,7 @@ import {IAssetRegistry, MarketHours} from "./interfaces/IAssetRegistry.sol";
 ///
 ///      This registry deliberately holds NO funds and takes NO fee. It only
 ///      answers "is this asset acceptable, and how do we price it".
-contract AssetRegistry is Ownable, IAssetRegistry {
+contract AssetRegistry is Ownable2Step, IAssetRegistry {
     struct Asset {
         bool allowed;
         address feed; // Chainlink AggregatorV3Interface proxy (STANDARD, never SVR)

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Providers } from "./providers";
 import { BottomNav } from "@/components/app/BottomNav";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { ConfigGuard } from "@/components/app/ConfigGuard";
+import { NetworkGuard } from "@/components/app/NetworkGuard";
 import { Wordmark } from "@/components/Wordmark";
 
 // APP LAYOUT — this is the ONLY segment wrapped in web3 providers. The marketing
@@ -16,6 +18,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <ConnectButton />
           </div>
         </header>
+        <ConfigGuard />
+        <NetworkGuard />
         {/* pb accounts for the fixed bottom nav */}
         <main className="mx-auto w-full max-w-content flex-1 px-5 pb-24 pt-4">
           {children}
