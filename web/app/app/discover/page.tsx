@@ -24,9 +24,20 @@ const CATEGORIES: { id: Category; label: string }[] = [
 export default function DiscoverPage() {
   const [sort, setSort] = useState<SortTab>("ballasted");
   const [category, setCategory] = useState<Category>("all");
-  const { projects, isLoading, isConfigured, hasTreasuries } = useProjects();
+  const { projects, isLoading, isConfigured, hasLaunches } = useProjects();
 
   const sorted = useMemo(() => sortProjects(projects, sort), [projects, sort]);
+
+  // A wallet is "known" once it has launched before. First-time creators get an
+  // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
+  const priorLaunches = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of projects) {
+      const k = p.creator.toLowerCase();
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [projects]);
 
   return (
     <div>
@@ -88,21 +99,27 @@ export default function DiscoverPage() {
         {!isConfigured ? (
           <EmptyState
             title="Not configured yet"
-            body="BackingLens isn't deployed. Set NEXT_PUBLIC_LENS_ADDRESS (and a project source) after deploying the core contracts, and Discover lights up."
-          />
-        ) : !hasTreasuries ? (
-          <EmptyState
-            title="No projects yet"
-            body="No treasuries to show. Once the factory ships (or NEXT_PUBLIC_DISCOVER_TREASURIES is set), launches appear here, read live from BackingLens."
+            body="The factory and BackingLens addresses aren't set. Deploy the core contracts and set NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS, and Discover reads the registry live."
           />
         ) : isLoading ? (
           <SkeletonGrid />
+        ) : !hasLaunches ? (
+          <EmptyState
+            title="No projects have launched yet"
+            body="Nothing has been launched on this network. Be the first — Create a project, and it appears here the moment the launch confirms on-chain."
+          />
         ) : sorted.length === 0 ? (
           <EmptyState title="Nothing here" body="No projects match this view." />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {sorted.map((p) => (
-              <ProjectCard key={p.treasury} project={p} hideSparkline={sort === "new"} />
+            {sorted.map((p, i) => (
+              <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+                <ProjectCard
+                  project={p}
+                  hideSparkline={sort === "new"}
+                  firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
+                />
+              </div>
             ))}
           </div>
         )}

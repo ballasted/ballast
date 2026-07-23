@@ -149,6 +149,81 @@ contract BallastGraduateForkTest is Test {
         hook.claim(); // creator claims; no revert
     }
 
+    // Helper: fund creator + deposit an amount of a fresh mock asset, return its USD price feed answer.
+    function _addBackedAsset(address treasury, uint8 feedDec, uint256 priceUsd, uint256 amount, uint256 uiMul)
+        internal
+        returns (MockStockToken stock)
+    {
+        stock = new MockStockToken("Mock", "MK", 18);
+        if (uiMul != 0) stock.setUiMultiplier(uiMul);
+        MockAggregator feed = new MockAggregator(feedDec, int256(priceUsd), block.timestamp);
+        registry.setAsset(address(stock), address(feed), 3 days, 1, MarketHours.UsEquities24_5);
+        stock.mint(address(this), amount);
+        stock.approve(treasury, type(uint256).max);
+        ProjectTreasury(treasury).deposit(address(stock), amount);
+    }
+
+    function _poolKey(address token) internal view returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(token),
+            currency1: Currency.wrap(WETH),
+            fee: 0,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+    }
+
+    /// forge-config: default.fuzz.runs = 40
+    function testFuzz_backedGraduate_opensNear1x(uint256 amount, uint256 ethUsd, uint8 decSel) public {
+        if (!forked) return;
+        uint8 feedDec = [6, 8, 18][decSel % 3]; // fuzz feed decimals != 8
+        amount = bound(amount, 1e18, 1_000_000e18); // token units held
+        ethUsd = bound(ethUsd, 200e8, 10_000e8); // ETH/USD at 8 dec
+        ethFeed.setAnswer(int256(ethUsd), block.timestamp);
+
+        (, address token, address treasury) = factory.launch("F", "F", 30 days);
+        _addBackedAsset(treasury, feedDec, 100 * (10 ** feedDec), amount, 0); // $100 asset
+        factory.graduate(token);
+
+        // expected backing = amount * $100 ; per token / ethPrice
+        uint256 v = amount * 100; // 1e18-scaled USD (amount is 18-dec, $100 whole)
+        uint256 expectedP0 = FullMath.mulDiv(FullMath.mulDiv(v, 1e18, 1_000_000_000e18), 1e18, FullMath.mulDiv(ethUsd, 1e18, 1e8));
+        uint256 poolP0 = _poolPrice1e18(_poolKey(token));
+        assertLe(poolP0, FullMath.mulDiv(expectedP0, 1001, 1000), "above 1x");
+        assertGe(poolP0, FullMath.mulDiv(expectedP0, 990, 1000), ">1% below 1x");
+    }
+
+    function test_uiMultiplier_notApplied_toFeedPrice() public {
+        if (!forked) return;
+        // Two identical launches; one asset has uiMultiplier 3x. Backing (hence P0)
+        // must be IDENTICAL — the feed price already embeds the multiplier (rule 7).
+        (, address tokA, address trA) = factory.launch("A", "A", 30 days);
+        _addBackedAsset(trA, 8, 100e8, 1000e18, 1e18); // uiMultiplier 1.0
+        factory.graduate(tokA);
+
+        (, address tokB, address trB) = factory.launch("B", "B", 30 days);
+        _addBackedAsset(trB, 8, 100e8, 1000e18, 3e18); // uiMultiplier 3.0
+        factory.graduate(tokB);
+
+        // Same tick => same P0 (uiMultiplier ignored).
+        (, int24 tA,,) = MANAGER.getSlot0(_poolKey(tokA).toId());
+        (, int24 tB,,) = MANAGER.getSlot0(_poolKey(tokB).toId());
+        assertEq(tA, tB, "uiMultiplier must not change backing/P0");
+    }
+
+    function test_mixedAssets_sumBacking() public {
+        if (!forked) return;
+        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days);
+        _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
+        _addBackedAsset(treasury, 18, 2e18, 10_000e18, 0); // $20k (2 USD, 18-dec feed)
+        factory.graduate(token);
+
+        uint256 v = 500e18 * 100 + 10_000e18 * 2; // $70k, 1e18-scaled
+        uint256 expectedP0 = FullMath.mulDiv(FullMath.mulDiv(v, 1e18, 1_000_000_000e18), 1e18, 3000e18);
+        uint256 poolP0 = _poolPrice1e18(_poolKey(token));
+        assertApproxEqRel(poolP0, expectedP0, 0.01e18, "mixed-asset backing sum wrong");
+    }
+
     function test_graduateReverts_whenBackingFeedResting() public {
         if (!forked) return;
         MockStockToken stock = new MockStockToken("Mock AAPL", "MAAPL", 18);

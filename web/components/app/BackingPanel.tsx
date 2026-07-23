@@ -73,7 +73,7 @@ export function BackingPanel({
 
       {/* Split bar: locked forever vs creator-withdrawable. */}
       <div className="mt-4 flex h-2.5 overflow-hidden rounded-full bg-border">
-        <div className="bg-green" style={{ width: `${lockedPct}%` }} title="Locked forever" />
+        <div className="bar-grow bg-green" style={{ width: `${lockedPct}%` }} title="Locked forever" />
         <div className="bg-text-faint" style={{ width: `${100 - lockedPct}%` }} title="Creator-withdrawable" />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3">

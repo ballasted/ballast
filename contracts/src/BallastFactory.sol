@@ -8,9 +8,8 @@ import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
-import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
+import {BackingMath} from "./libraries/BackingMath.sol";
 
 /// @title BallastFactory
 /// @notice Launch entry point + registry. Atomically deploys a project token and
@@ -127,21 +126,12 @@ contract BallastFactory {
         }
         if (!backed) return (UNBACKED_TICK, 0);
 
-        // P0 (WETH/token, 1e18) = (backing/token) / ethPrice
-        uint256 backingPerToken = FullMath.mulDiv(backingUsd1e18, 1e18, TOTAL_SUPPLY);
         (, int256 e,, uint256 eUpd,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
         require(e > 0, "invalid eth price");
         if (block.timestamp - eUpd > FRESH_WINDOW) revert FeedRestingAtLaunch(ethUsdFeed);
         uint256 ethUsd = FullMath.mulDiv(uint256(e), 1e18, 10 ** AggregatorV3Interface(ethUsdFeed).decimals());
-        uint256 p0 = FullMath.mulDiv(backingPerToken, 1e18, ethUsd); // WETH per token, 1e18
-
-        // sqrtPriceX96 = sqrt(p0 / 1e18) * 2^96 = sqrt(p0 * 2^192 / 1e18)
-        uint256 sqrtP = FixedPointMathLib.sqrt(FullMath.mulDiv(p0, 1 << 192, 1e18));
-        int24 tick = TickMath.getTickAtSqrtPrice(uint160(sqrtP));
-        // Floor-align to tick spacing.
-        int24 rem = tick % TICK_SPACING;
-        if (rem < 0) rem += TICK_SPACING;
-        tickLower = tick - rem;
+        // Permanent-effect P0 math, isolated + fuzzed in BackingMath.
+        tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, ethUsd, TICK_SPACING);
     }
 
     /// @dev CREATE2 address of `initHash` deployed by this factory with `salt`.
