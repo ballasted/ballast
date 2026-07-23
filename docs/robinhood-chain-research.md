@@ -147,6 +147,19 @@ Per the Bags protocol docs, the UniversalRouter deployed on Robinhood Chain is a
 
 This is the single most expensive gotcha in this document. Budget time to get the encoding right, and verify the router address independently before sending value through it.
 
+#### ✅ RESOLVED 2026-07-23 — verified encoding
+
+Router **`0x8876789976dEcBfCbBbe364623C63652db8C0904`**, confirmed on Blockscout as a verified fork of Uniswap `universal-router` + `v4-periphery` (source contains the `minHopPriceX36` modification). Two look-alikes exist; only this address carries the matching verified fork source. Re-verify before sending value.
+
+Entrypoint: `execute(bytes commands, bytes[] inputs, uint256 deadline)` — **timestamp** deadline. A v4 swap is command byte `0x10` (`V4_SWAP`); its input is `abi.encode(bytes actions, bytes[] params)` with actions `[0x06 SWAP_EXACT_IN_SINGLE, 0x0c SETTLE_ALL, 0x0f TAKE_ALL]` (single-hop) or `0x07 SWAP_EXACT_IN` for multi-hop.
+
+**The `minHopPriceX36` fork field has TWO shapes** (the trap — one field, two types):
+
+- **Single-hop `ExactInputSingleParams`** (what BALLAST needs for a graduated token/WETH pool): `{ poolKey, zeroForOne, amountIn (uint128), amountOutMinimum (uint128), minHopPriceX36 (uint256), hookData }`. The fork inserts `minHopPriceX36` **after `amountOutMinimum`, before `hookData`**. Enabled iff `!= 0`; set **0 to disable** and rely on `amountOutMinimum`.
+- **Multi-hop `ExactInputParams`**: `minHopPriceX36` is a **`uint256[]`** — length **0 (disabled)** or **exactly `path.length`**, else the router reverts `InvalidHopPriceLength`.
+
+`X36` = fixed-point ×10^36 (minimum execution price per hop). Stock Uniswap SDKs omit the field entirely → their calldata reverts here; **manual encoding is mandatory.** Canonical references: `contracts/src/interfaces/IRobinhoodV4Router.sol` (Solidity structs + command/action constants) and `web/lib/robinhoodRouter.ts` (viem ABI params). Not yet wired into a live swap — BALLAST's Buy/Sell stay disabled until the factory deploys a pool.
+
 ---
 
 ## 5. Reference architecture — how an existing launchpad does it here
