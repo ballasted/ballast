@@ -52,8 +52,10 @@ export const exactInputSingleParamsAbi = {
   ],
 } as const;
 
-// Multi-hop variant: `minHopPriceX36` becomes uint256[] — length 0 (disabled) or
-// exactly path.length, else the router reverts InvalidHopPriceLength.
+// Multi-hop variant. ⚠️ Field order verified against the deployed IV4Router.sol
+// source: minHopPriceX36 (uint256[]) is the THIRD field — after `path`, BEFORE
+// `amountIn` — NOT trailing. Length 0 (disabled) or exactly path.length, else the
+// router reverts InvalidHopPriceLength.
 export const exactInputParamsAbi = {
   type: "tuple",
   components: [
@@ -69,9 +71,9 @@ export const exactInputParamsAbi = {
         { name: "hookData", type: "bytes" },
       ],
     },
+    { name: "minHopPriceX36", type: "uint256[]" }, // FORK-ONLY, 3rd field; [] = disabled
     { name: "amountIn", type: "uint128" },
     { name: "amountOutMinimum", type: "uint128" },
-    { name: "minHopPriceX36", type: "uint256[]" }, // FORK-ONLY; [] = disabled
   ],
 } as const;
 

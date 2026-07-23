@@ -82,11 +82,14 @@ library RobinhoodV4 {
         bytes hookData;
     }
 
+    // ⚠️ Field order verified against the deployed contract's Blockscout source
+    // (IV4Router.sol). minHopPriceX36 sits THIRD — after `path`, BEFORE `amountIn`.
+    // (It is NOT trailing; getting this wrong mis-encodes every multi-hop swap.)
     struct ExactInputParams {
-        address currencyIn;
+        address currencyIn; // Currency in v4
         PathKey[] path;
+        uint256[] minHopPriceX36; // FORK-ONLY, 3rd field. empty = disabled; else length == path.length.
         uint128 amountIn;
         uint128 amountOutMinimum;
-        uint256[] minHopPriceX36; // FORK-ONLY. empty = disabled; else length == path.length.
     }
 }

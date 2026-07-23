@@ -156,7 +156,7 @@ Entrypoint: `execute(bytes commands, bytes[] inputs, uint256 deadline)` — **ti
 **The `minHopPriceX36` fork field has TWO shapes** (the trap — one field, two types):
 
 - **Single-hop `ExactInputSingleParams`** (what BALLAST needs for a graduated token/WETH pool): `{ poolKey, zeroForOne, amountIn (uint128), amountOutMinimum (uint128), minHopPriceX36 (uint256), hookData }`. The fork inserts `minHopPriceX36` **after `amountOutMinimum`, before `hookData`**. Enabled iff `!= 0`; set **0 to disable** and rely on `amountOutMinimum`.
-- **Multi-hop `ExactInputParams`**: `minHopPriceX36` is a **`uint256[]`** — length **0 (disabled)** or **exactly `path.length`**, else the router reverts `InvalidHopPriceLength`.
+- **Multi-hop `ExactInputParams`** (verified field order from the deployed `IV4Router.sol` source): `{ currencyIn, path (PathKey[]), minHopPriceX36 (uint256[]), amountIn (uint128), amountOutMinimum (uint128) }`. Note `minHopPriceX36` is the **THIRD field — after `path`, before `amountIn`**, NOT trailing. Length **0 (disabled)** or **exactly `path.length`**, else the router reverts `InvalidHopPriceLength`.
 
 `X36` = fixed-point ×10^36 (minimum execution price per hop). Stock Uniswap SDKs omit the field entirely → their calldata reverts here; **manual encoding is mandatory.** Canonical references: `contracts/src/interfaces/IRobinhoodV4Router.sol` (Solidity structs + command/action constants) and `web/lib/robinhoodRouter.ts` (viem ABI params). Not yet wired into a live swap — BALLAST's Buy/Sell stay disabled until the factory deploys a pool.
 
