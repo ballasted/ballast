@@ -3,6 +3,14 @@ pragma solidity 0.8.28;
 
 import {BallastToken} from "./BallastToken.sol";
 import {ProjectTreasury} from "./ProjectTreasury.sol";
+import {BallastSeeder} from "./BallastSeeder.sol";
+import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
+import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "v4-core/src/libraries/FullMath.sol";
+import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 
 /// @title BallastFactory
 /// @notice Launch entry point + registry. Atomically deploys a project token and
@@ -29,6 +37,23 @@ contract BallastFactory {
     ///         keeps the one-sided seeded range intuitive and kills a tick-sign trap.
     address public immutable weth;
 
+    /// @notice One-sided liquidity seeder (shared singleton).
+    BallastSeeder public immutable seeder;
+
+    /// @notice Chainlink ETH/USD feed — converts USD backing to the pool's WETH/token P0.
+    address public immutable ethUsdFeed;
+
+    int24 public constant TICK_SPACING = 60;
+    /// @notice Feed must be this fresh at graduation. Matches the display path's
+    ///         trading-hours FRESH window (web/lib/marketHours.ts TRADING_STALE_SEC),
+    ///         so a backed launch can only price against a LIVE feed (market hours).
+    uint256 public constant FRESH_WINDOW = 1 hours;
+    /// @notice Constant opening tick for UNBACKED launches (no oracle dependency).
+    ///         ~1e-9 WETH/token; tunable product parameter. Multiple of TICK_SPACING.
+    int24 public constant UNBACKED_TICK = -207240;
+
+    mapping(address token => bool) public graduated;
+
     struct Launch {
         address token;
         address treasury;
@@ -43,15 +68,80 @@ contract BallastFactory {
         uint256 indexed id, address indexed creator, address indexed token, address treasury, uint256 noticePeriod
     );
 
+    event Graduated(address indexed token, address treasury, int24 tickLower, uint256 backingUsd1e18);
+
     error BadNoticePeriod();
     error ZeroAddress();
     error CouldNotMineCurrency0();
     error WrongOrdering();
+    error NotLaunchToken();
+    error AlreadyGraduated();
+    /// @notice A backed launch's feed was RESTING (not live) at graduation, so P0
+    ///         would be set from a stale price permanently. Launch during market
+    ///         hours, when the feed is fresh.
+    error FeedRestingAtLaunch(address asset);
 
-    constructor(address registry_, address weth_) {
-        if (registry_ == address(0) || weth_ == address(0)) revert ZeroAddress();
+    constructor(address registry_, address weth_, BallastSeeder seeder_, address ethUsdFeed_) {
+        if (registry_ == address(0) || weth_ == address(0) || address(seeder_) == address(0) || ethUsdFeed_ == address(0)) {
+            revert ZeroAddress();
+        }
         registry = registry_;
         weth = weth_;
+        seeder = seeder_;
+        ethUsdFeed = ethUsdFeed_;
+    }
+
+    /// @notice Seed the token/WETH pool at P0 and lock LP. Backed launches derive P0
+    ///         from live backing (all treasury feeds must be FRESH — see
+    ///         FeedRestingAtLaunch); unbacked launches use a constant P0.
+    function graduate(address token) external {
+        uint256 idPlus1 = launchIdOf[token];
+        if (idPlus1 == 0) revert NotLaunchToken();
+        if (graduated[token]) revert AlreadyGraduated();
+        graduated[token] = true;
+
+        address treasury = launches[idPlus1 - 1].treasury;
+        (int24 tickLower, uint256 backingUsd) = _p0Tick(treasury);
+
+        uint256 supply = IERC20(token).balanceOf(address(this));
+        IERC20(token).transfer(address(seeder), supply);
+        seeder.seed(token, tickLower);
+
+        emit Graduated(token, treasury, tickLower, backingUsd);
+    }
+
+    /// @dev P0 tick + backing USD. Reverts if any held treasury feed is resting.
+    function _p0Tick(address treasury) internal view returns (int24 tickLower, uint256 backingUsd1e18) {
+        address[] memory assets = ProjectTreasury(treasury).assets();
+        bool backed;
+        for (uint256 i = 0; i < assets.length; i++) {
+            uint256 held = ProjectTreasury(treasury).heldBalance(assets[i]);
+            if (held == 0) continue;
+            backed = true;
+            address feed = IAssetRegistry(registry).feedOf(assets[i]);
+            (, int256 ans,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
+            require(ans > 0, "invalid price");
+            if (block.timestamp - updatedAt > FRESH_WINDOW) revert FeedRestingAtLaunch(assets[i]);
+            uint256 usd = FullMath.mulDiv(held, uint256(ans), 10 ** AggregatorV3Interface(feed).decimals());
+            backingUsd1e18 += FullMath.mulDiv(usd, 1e18, 10 ** IERC20Metadata(assets[i]).decimals());
+        }
+        if (!backed) return (UNBACKED_TICK, 0);
+
+        // P0 (WETH/token, 1e18) = (backing/token) / ethPrice
+        uint256 backingPerToken = FullMath.mulDiv(backingUsd1e18, 1e18, TOTAL_SUPPLY);
+        (, int256 e,, uint256 eUpd,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
+        require(e > 0, "invalid eth price");
+        if (block.timestamp - eUpd > FRESH_WINDOW) revert FeedRestingAtLaunch(ethUsdFeed);
+        uint256 ethUsd = FullMath.mulDiv(uint256(e), 1e18, 10 ** AggregatorV3Interface(ethUsdFeed).decimals());
+        uint256 p0 = FullMath.mulDiv(backingPerToken, 1e18, ethUsd); // WETH per token, 1e18
+
+        // sqrtPriceX96 = sqrt(p0 / 1e18) * 2^96 = sqrt(p0 * 2^192 / 1e18)
+        uint256 sqrtP = FixedPointMathLib.sqrt(FullMath.mulDiv(p0, 1 << 192, 1e18));
+        int24 tick = TickMath.getTickAtSqrtPrice(uint160(sqrtP));
+        // Floor-align to tick spacing.
+        int24 rem = tick % TICK_SPACING;
+        if (rem < 0) rem += TICK_SPACING;
+        tickLower = tick - rem;
     }
 
     /// @dev CREATE2 address of `initHash` deployed by this factory with `salt`.

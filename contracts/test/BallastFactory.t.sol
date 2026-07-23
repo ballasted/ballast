@@ -6,6 +6,8 @@ import {BallastFactory} from "../src/BallastFactory.sol";
 import {BallastToken} from "../src/BallastToken.sol";
 import {ProjectTreasury} from "../src/ProjectTreasury.sol";
 import {AssetRegistry, MarketHours} from "../src/AssetRegistry.sol";
+import {BallastSeeder} from "../src/BallastSeeder.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {MockStockToken} from "./mocks/MockStockToken.sol";
 
 /// @dev Phase 1 factory tests. Adversarial-first: the wiring invariants (permanent
@@ -24,7 +26,10 @@ contract BallastFactoryTest is Test {
 
     function setUp() public {
         registry = new AssetRegistry(owner);
-        factory = new BallastFactory(address(registry), WETH);
+        // Seeder + ethUsdFeed are only exercised by graduate() (fork-tested
+        // separately); dummies here keep the launch/wiring unit tests pure.
+        BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), WETH, address(2));
+        factory = new BallastFactory(address(registry), WETH, seeder, address(3));
     }
 
     function test_tokenMinedBelowWeth_currency0() public {

@@ -37,6 +37,7 @@ contract DeployMainnet is Script {
         address pm;
         address weth;
         address sequencer;
+        address ethUsdFeed;
     }
 
     function run() external {
@@ -46,10 +47,13 @@ contract DeployMainnet is Script {
             vault: vm.envAddress("PROTOCOL_VAULT_ADDRESS"),
             pm: vm.envAddress("POOL_MANAGER"),
             weth: vm.envAddress("WETH"),
-            sequencer: vm.envOr("SEQUENCER_UPTIME_FEED_ADDRESS", address(0))
+            sequencer: vm.envOr("SEQUENCER_UPTIME_FEED_ADDRESS", address(0)),
+            ethUsdFeed: vm.envAddress("ETH_USD_FEED")
         });
         require(
-            e.owner != address(0) && e.vault != address(0) && e.pm != address(0) && e.weth != address(0), "env unset"
+            e.owner != address(0) && e.vault != address(0) && e.pm != address(0) && e.weth != address(0)
+                && e.ethUsdFeed != address(0),
+            "env unset"
         );
 
         vm.startBroadcast(pk);
@@ -60,8 +64,9 @@ contract DeployMainnet is Script {
         console2.log("FeeConfig:      ", address(cfg));
         BallastHook hook = _deployHook(e.pm, cfg, e.weth);
         console2.log("BallastHook:    ", address(hook));
-        console2.log("BallastFactory: ", address(new BallastFactory(registry, e.weth)));
-        console2.log("BallastSeeder:  ", address(new BallastSeeder(IPoolManager(e.pm), e.weth, address(hook))));
+        BallastSeeder seeder = new BallastSeeder(IPoolManager(e.pm), e.weth, address(hook));
+        console2.log("BallastSeeder:  ", address(seeder));
+        console2.log("BallastFactory: ", address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed)));
         vm.stopBroadcast();
         console2.log("sequencer feed (0x0 = Unknown, none on 4663):", e.sequencer);
     }
