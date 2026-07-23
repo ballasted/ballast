@@ -39,6 +39,22 @@
     @apply bg-card border border-border rounded-card;
   }
 
+  .input {
+    @apply w-full rounded-input border border-border bg-bg px-3 py-2.5 text-sm text-text-primary
+      placeholder:text-text-faint focus:border-green focus:outline-none;
+  }
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-text-secondary;
+  }
+  .btn-primary {
+    @apply rounded-button bg-green px-4 py-3 text-center font-semibold text-bg
+      hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-secondary {
+    @apply rounded-button border border-border px-4 py-3 text-center font-semibold text-text-secondary
+      hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
   .prose-doc {
     @apply text-text-secondary leading-relaxed;
   }

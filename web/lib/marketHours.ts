@@ -132,6 +132,28 @@ export function isMarketOpenAt(unixSec: number): boolean {
   return true;
 }
 
+/**
+ * The next instant the US-equities 24/5 market opens at or after `nowSec`, or
+ * null if that falls beyond the holiday calendar (we won't guess). Scanned at
+ * 30-min resolution — matches lastCloseSec and is robust across holidays. Used by
+ * the create flow to tell a creator when a resting-feed backed launch can proceed,
+ * rather than letting them discover FeedRestingAtLaunch as a revert after signing.
+ */
+export function nextOpenSec(nowSec: number): number | null {
+  if (isMarketOpenAt(nowSec)) return nowSec;
+  const STEP = 1800;
+  for (let t = nowSec + STEP; t < nowSec + 14 * 86400; t += STEP) {
+    if (isCalendarExhausted(t)) return null;
+    if (isMarketOpenAt(t)) {
+      // Walk back to the minute the window actually opens for a precise label.
+      let open = t;
+      while (open - 60 > nowSec && isMarketOpenAt(open - 60)) open -= 60;
+      return open;
+    }
+  }
+  return null;
+}
+
 // Most recent instant the market closed at or before `nowSec` (assumes closed
 // now). Scanned at 30-min resolution — cheap and robust across holiday boundaries.
 function lastCloseSec(nowSec: number): number {

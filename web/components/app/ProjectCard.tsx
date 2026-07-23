@@ -6,11 +6,19 @@ import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 // market source (pool/quoter) exists — we never invent a number we can't measure.
 // The backing row is real, read live from BackingLens. The whole card links to the
 // token detail page (keyed by treasury address for now; see that page's note).
-export function ProjectCard({ project, hideSparkline }: { project: Project; hideSparkline?: boolean }) {
-  const { symbol, name, backing, ballasted, token, treasury } = project;
+export function ProjectCard({
+  project,
+  hideSparkline,
+  firstLaunch,
+}: {
+  project: Project;
+  hideSparkline?: boolean;
+  firstLaunch?: boolean;
+}) {
+  const { symbol, name, backing, ballasted, token } = project;
 
   return (
-    <Link href={`/app/token/${treasury}`} className="card block p-4 transition-colors hover:border-text-faint">
+    <Link href={`/app/token/${token}`} className="card block p-4 transition-colors hover:border-text-faint">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-bg text-sm font-semibold text-green">
@@ -19,7 +27,7 @@ export function ProjectCard({ project, hideSparkline }: { project: Project; hide
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-semibold text-text-primary">
-                {symbol ?? shortAddress(token ?? treasury)}
+                {symbol ?? shortAddress(token)}
               </span>
               {ballasted && <VerifiedCheck />}
             </div>
@@ -56,10 +64,18 @@ export function ProjectCard({ project, hideSparkline }: { project: Project; hide
         )}
       </div>
 
+      {/* A new wallet is UNKNOWN, not safe. Amber, visually distinct from the
+          green verified check (spec §9). */}
+      {firstLaunch && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-warning">
+          <span aria-hidden>◆</span> First launch · no track record yet
+        </div>
+      )}
+
       {hideSparkline && (
-        // On the New tab we show elapsed time instead of a chart. Creation time
-        // needs the factory/indexer; shown as pending for now.
-        <div className="mt-2 metric-secondary">New · age pending indexer</div>
+        // On the New tab we show elapsed time instead of a chart. Precise creation
+        // time needs event logs; the registry preserves launch order regardless.
+        <div className="mt-1 metric-secondary">New · ordered by launch</div>
       )}
     </Link>
   );
