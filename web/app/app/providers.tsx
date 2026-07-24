@@ -5,8 +5,8 @@ import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { wagmiConfig } from "@/lib/wagmi";
 import { TermsGate } from "@/components/app/TermsGate";
-// Side-effect import: creates the reown AppKit modal once, client-side.
-import "@/lib/appkit";
+// NB: @/lib/appkit is intentionally NOT imported here — it's loaded lazily by the
+// connect button so the AppKit modal UI stays out of the initial /app bundle.
 
 // Web3 providers. This component — and everything it wraps — is the ONLY place
 // wagmi/viem/reown load. Imported by app/app/layout.tsx alone, so marketing

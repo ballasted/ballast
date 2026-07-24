@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Address } from "viem";
 import { useProjects } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { useIndexerStatus } from "@/hooks/useIndexerStatus";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Meander } from "@/components/Meander";
@@ -198,14 +199,32 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
   );
 }
 
-// ── Holders + trades — honest pending states until the indexer lands ─────────
+// ── Holders + trades — honest, indexer-status-aware states ───────────────────
+// Never shows a stale or zero value: if the indexer is unreachable or behind, it
+// says so plainly instead of rendering an old figure (spec Phase 3 degradation).
 export function PendingDataPanel({ title, what }: { title: string; what: string }) {
+  const status = useIndexerStatus();
+
+  const message =
+    status.state === "down"
+      ? "The indexer is unreachable right now, so this is shown as unavailable rather than a stale figure."
+      : status.state === "delayed"
+        ? `The indexer is catching up${
+            status.lastIndexedAt
+              ? ` (last update ${Math.max(1, Math.round((Date.now() / 1000 - status.lastIndexedAt) / 60))} min ago)`
+              : ""
+          } — figures appear once it's current.`
+        : what;
+
   return (
     <section className="card p-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">{title}</h2>
       <div className="mt-4 flex flex-col items-center py-6 text-center">
         <Meander className="mb-4 max-w-[100px] opacity-60" />
-        <p className="max-w-sm text-sm text-text-muted">{what}</p>
+        <p className="max-w-sm text-sm text-text-muted">{message}</p>
+        {(status.state === "down" || status.state === "delayed") && (
+          <p className="mt-2 text-xs text-warning">Backing and price above are read from the chain and stay live.</p>
+        )}
       </div>
     </section>
   );
