@@ -1,41 +1,43 @@
 "use client";
 
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
+import { appKitEnabled } from "@/lib/wagmi";
 import { shortAddress } from "@/lib/format";
 
-// Uses wagmi's EIP-6963 injected discovery (no connectors barrel import). If more
-// than one wallet is present we connect the first discovered; a full picker can
-// come later.
+// Opens the reown AppKit modal (multi-wallet picker, WalletConnect QR, mobile
+// wallets). If no reown project id is configured, falls back to connecting the
+// first injected (EIP-6963) wallet so local dev without a key still works.
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
-  const { connectors, connect, isPending } = useConnect();
+  const { open } = useAppKit();
+  const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
 
   if (isConnected && address) {
     return (
       <button
-        onClick={() => disconnect()}
+        onClick={() => (appKitEnabled ? open({ view: "Account" }) : disconnect())}
         className="rounded-button border border-border px-3 py-1.5 text-sm text-text-secondary hover:text-text-primary"
-        title="Disconnect"
+        title={appKitEnabled ? "Account" : "Disconnect"}
       >
         {shortAddress(address)}
       </button>
     );
   }
 
-  const connector = connectors[0];
-
-  if (!connector) {
-    return (
-      <span className="rounded-button border border-border px-3 py-1.5 text-sm text-text-muted">
-        No wallet found
-      </span>
-    );
-  }
+  const onConnect = () => {
+    if (appKitEnabled) {
+      open();
+      return;
+    }
+    const injected = connectors[0];
+    if (injected) connect({ connector: injected });
+  };
 
   return (
     <button
-      onClick={() => connect({ connector })}
+      onClick={onConnect}
       disabled={isPending}
       className="rounded-button bg-green px-3.5 py-1.5 text-sm font-semibold text-bg hover:opacity-90 disabled:opacity-60"
     >

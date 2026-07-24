@@ -14,16 +14,20 @@ import { defineChain } from "viem";
 // mainnet 4663 therefore mismatched the app's target and wagmi reported the wrong
 // id — the "undefined"/id-1 fallback the launch bug surfaced. One chain, no toggle.
 
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
+// Public Robinhood RPC. Two jobs: it's what wallet_addEthereumChain hands the
+// user's wallet (which must reach it directly — a same-origin proxy is useless
+// there), and it's the client transport's fallback. The app's OWN reads go
+// through the /api/rpc proxy (lib/wagmi.ts), which holds the dedicated RPC key
+// server-side — so no RPC key ever reaches the browser bundle.
+export const PUBLIC_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
 
 export const robinhoodChain = defineChain({
   id: 4663,
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: [RPC_URL] },
-    public: { http: ["https://rpc.mainnet.chain.robinhood.com"] },
+    default: { http: [PUBLIC_RPC_URL] },
+    public: { http: [PUBLIC_RPC_URL] },
   },
   blockExplorers: {
     default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
