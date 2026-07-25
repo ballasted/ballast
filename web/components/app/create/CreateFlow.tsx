@@ -513,7 +513,17 @@ function PreviewCard(p: {
         <div className="rounded-input border border-accent bg-bg p-4">
           <div className="text-xs uppercase tracking-wide text-text-faint">Backing per token</div>
           <div className="mt-1 figure-primary text-3xl">
-            {p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "None"}
+            {/* Keyed by the formatted value so a change crossfades the new figure
+                in (Phase 3) — it appears settled, never counts up toward a value
+                (hard rule 2). Reduced-motion makes this an instant swap. */}
+            {(() => {
+              const v = p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "None";
+              return (
+                <span key={v} className="anim-fade inline-block">
+                  {v}
+                </span>
+              );
+            })()}
           </div>
           {p.backed && (
             <div className="metric-secondary mt-0.5">
