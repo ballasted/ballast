@@ -17,7 +17,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="mx-auto flex h-14 max-w-content items-center justify-between px-5">
             <Wordmark />
             <div className="flex items-center gap-3">
-              <WalletBalance />
+              <WalletBalance className="hidden sm:inline" />
               <ConnectButton />
             </div>
           </div>

@@ -36,7 +36,7 @@ export function WalletBalance({ className }: { className?: string }) {
 
   return (
     <span
-      className={cn("hidden tabular-nums text-xs sm:inline", tone, className)}
+      className={cn("tabular-nums text-xs", tone, className)}
       title="Native ETH balance, read through the app's own RPC transport"
     >
       {text}
