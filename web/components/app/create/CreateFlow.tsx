@@ -86,8 +86,8 @@ export function CreateFlow() {
   const now = useNow();
   const { address: account } = useAccount();
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
-  const { assets, isConfigured: registryReady, isLoading: assetsLoading, hasAssets } = useAssets();
-  const { split: feeSplit } = useFeeSplit();
+  const { assets, isConfigured: registryReady, isLoading: assetsLoading, isError: assetsError, hasAssets } = useAssets();
+  const { split: feeSplit, isLoading: feeLoading, configured: feeConfigured } = useFeeSplit();
   const runner = useLaunchRunner();
 
   const selected = assets.find((a) => a.address === assetAddr);
@@ -294,7 +294,14 @@ export function CreateFlow() {
             ) : !registryReady ? (
               <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</InlineNotice>
             ) : assetsLoading ? (
-              <div className="h-40 animate-pulse rounded-input bg-bg" />
+              <Field label="Treasury asset">
+                <AssetPickerSkeleton />
+              </Field>
+            ) : assetsError ? (
+              <InlineNotice tone="warning">
+                Couldn&apos;t read the asset registry from the chain right now — the RPC may be rate-limited or down.
+                This isn&apos;t &ldquo;no assets&rdquo;; it&apos;s a failed read. Retry in a moment.
+              </InlineNotice>
             ) : !hasAssets ? (
               <InlineNotice>
                 The registry has no allowed assets yet. The protocol owner allowlists assets (by canonical contract
@@ -451,6 +458,8 @@ export function CreateFlow() {
               amount={amount}
               preview={preview}
               feeSplit={feeSplit}
+              feeLoading={feeLoading}
+              feeConfigured={feeConfigured}
               freshness={freshness}
             />
           </div>
@@ -467,6 +476,8 @@ export function CreateFlow() {
           preview={preview}
           noticeDays={noticeDays}
           feeSplit={feeSplit}
+          feeLoading={feeLoading}
+          feeConfigured={feeConfigured}
           account={account}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={confirmAndLaunch}
@@ -482,6 +493,8 @@ function PreviewCard(p: {
   backed: boolean; selected?: AllowedAsset; amount: string;
   preview: { usd: bigint; perToken: bigint } | null;
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number; feePct: number };
+  feeLoading?: boolean;
+  feeConfigured?: boolean;
   freshness?: { tier: string; label: string };
 }) {
   return (
@@ -518,7 +531,9 @@ function PreviewCard(p: {
                 {p.preview ? <span className="text-text-muted"> · {formatUsd(p.preview.usd, { compact: true })}</span> : null}
               </span>
             ) : (
-              <span className="text-text-muted">—</span>
+              <span className="text-right text-text-faint">
+                {p.selected ? "Enter an amount to deposit" : "Choose an asset below"}
+              </span>
             )}
           </PreviewRow>
         )}
@@ -528,19 +543,13 @@ function PreviewCard(p: {
             {p.freshness ? (
               <span className={p.freshness.tier === "fresh" ? "text-green" : "text-warning"}>{p.freshness.label}</span>
             ) : (
-              <span className="text-text-muted">—</span>
+              <span className="text-text-faint">checking feed…</span>
             )}
           </PreviewRow>
         )}
 
         <PreviewRow label="Fee split">
-          {p.feeSplit ? (
-            <span>
-              {p.feeSplit.creatorPct}% creator · {p.feeSplit.platformPct}% platform · {p.feeSplit.referrerPct}% referrer
-            </span>
-          ) : (
-            <span className="text-text-muted">read live from FeeConfig</span>
-          )}
+          <FeeSplitValue split={p.feeSplit} loading={p.feeLoading} configured={p.feeConfigured} />
         </PreviewRow>
 
         <PreviewRow label="Liquidity">Locked permanently</PreviewRow>
@@ -562,6 +571,7 @@ function ConfirmModal(p: {
   name: string; symbol: string; backed: boolean; selected?: AllowedAsset; amount: string;
   preview: { usd: bigint; perToken: bigint } | null; noticeDays: number;
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number };
+  feeLoading?: boolean; feeConfigured?: boolean;
   account?: Address; onCancel: () => void; onConfirm: () => void;
 }) {
   return (
@@ -576,12 +586,12 @@ function ConfirmModal(p: {
             label="Treasury"
             value={p.backed && p.selected ? `${p.amount} ${p.selected.symbol ?? "asset"}` : "None — unbacked"}
           />
-          <ConfirmRow label="Backing per token" value={p.backed && p.preview ? formatBackingPerToken(p.preview.perToken) : "—"} />
-          <ConfirmRow label="Withdrawal notice" value={p.backed ? `${p.noticeDays} days (permanent)` : "—"} />
           <ConfirmRow
-            label="Fee split"
-            value={p.feeSplit ? `${p.feeSplit.creatorPct}% / ${p.feeSplit.platformPct}% / ${p.feeSplit.referrerPct}%` : "read live"}
+            label="Backing per token"
+            value={p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "n/a — unbacked"}
           />
+          <ConfirmRow label="Withdrawal notice" value={p.backed ? `${p.noticeDays} days (permanent)` : "n/a — unbacked"} />
+          <ConfirmRow label="Fee split" value={feeSplitText(p.feeSplit, p.feeLoading, p.feeConfigured)} />
           <ConfirmRow label="Creator" value={p.account ? shortAddress(p.account) : "—"} mono />
           <ConfirmRow label="Network" value={activeChain.name} />
           <ConfirmRow label="Factory" value={FACTORY_ADDRESS ? shortAddress(FACTORY_ADDRESS) : "—"} mono />
@@ -818,6 +828,67 @@ function formatFeedPrice(price?: bigint, dec?: number): string {
   return `$${Intl.NumberFormat("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
 }
 
+// The live fee split, read from the deployed FeeConfig — never the string "read
+// live from FeeConfig" in place of the value (Phase 1). Three honest states:
+// resolved → the numbers; loading → a skeleton; configured-but-failed / unset →
+// a plain reason, so a failed read never masquerades as a value.
+function FeeSplitValue({
+  split,
+  loading,
+  configured,
+}: {
+  split?: { creatorPct: number; platformPct: number; referrerPct: number };
+  loading?: boolean;
+  configured?: boolean;
+}) {
+  if (split) {
+    return (
+      <span>
+        {split.creatorPct}% creator · {split.platformPct}% platform · {split.referrerPct}% referrer
+      </span>
+    );
+  }
+  if (loading) return <span className="inline-block h-4 w-40 animate-pulse rounded bg-surface-raised align-middle" />;
+  return (
+    <span className="text-text-faint">
+      {configured ? "couldn’t read FeeConfig — retry" : "FeeConfig not configured"}
+    </span>
+  );
+}
+
+// String form of the same for the blunt confirm modal (ConfirmRow takes a string).
+function feeSplitText(
+  split?: { creatorPct: number; platformPct: number; referrerPct: number },
+  loading?: boolean,
+  configured?: boolean,
+): string {
+  if (split) return `${split.creatorPct}% / ${split.platformPct}% / ${split.referrerPct}%`;
+  if (loading) return "reading…";
+  return configured ? "read failed" : "not configured";
+}
+
+// Skeleton that mirrors the asset-picker rows exactly, so the panel below the
+// treasury toggle is never a bare near-black rectangle while reads are in flight
+// (Phase 1 bug 3) and nothing shifts when the real rows land (Phase 3).
+function AssetPickerSkeleton() {
+  return (
+    <div className="grid gap-2" aria-hidden>
+      {[0, 1].map((i) => (
+        <div key={i} className="flex items-center justify-between rounded-input border border-border px-3 py-2.5">
+          <div className="space-y-1.5">
+            <div className="h-3.5 w-16 animate-pulse rounded bg-surface-raised" />
+            <div className="h-3 w-24 animate-pulse rounded bg-surface-raised" />
+          </div>
+          <div className="space-y-1.5 text-right">
+            <div className="ml-auto h-3.5 w-16 animate-pulse rounded bg-surface-raised" />
+            <div className="ml-auto h-3 w-12 animate-pulse rounded bg-surface-raised" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── small shared bits ───────────────────────────────────────────────────────
 function Field({
   label,
@@ -902,6 +973,17 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
   );
 }
 
-function InlineNotice({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-input border border-border bg-bg p-3 text-sm text-text-muted">{children}</p>;
+function InlineNotice({ children, tone }: { children: React.ReactNode; tone?: "warning" }) {
+  return (
+    <p
+      className={cn(
+        "rounded-input border p-3 text-sm",
+        tone === "warning"
+          ? "border-warning-border bg-warning-bg text-text-secondary"
+          : "border-border bg-bg text-text-muted",
+      )}
+    >
+      {children}
+    </p>
+  );
 }

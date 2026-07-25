@@ -20,8 +20,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <ConfigGuard />
         <NetworkGuard />
-        {/* pb accounts for the fixed bottom nav */}
-        <main className="mx-auto w-full max-w-content flex-1 px-5 pb-24 pt-4">
+        {/* Bottom padding clears the fixed bottom nav (~62px of content) PLUS the
+            device safe-area inset, so page content is never obscured on mobile
+            (Phase 1 bug 4). Keep in sync with BottomNav's height. */}
+        <main className="mx-auto w-full max-w-content flex-1 px-5 pb-[calc(72px+env(safe-area-inset-bottom))] pt-4">
           {children}
         </main>
         <BottomNav />

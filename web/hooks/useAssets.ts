@@ -99,6 +99,9 @@ export function useAssets() {
     assets,
     isConfigured: isRegistryConfigured,
     isLoading: listRes.isLoading || detailRes.isLoading || feedRes.isLoading,
+    // Distinguish "the allowlist read failed" (RPC down) from "the allowlist is
+    // genuinely empty" — otherwise a failed read masquerades as "no assets yet".
+    isError: listRes.isError,
     hasAssets: list.length > 0,
   };
 }
