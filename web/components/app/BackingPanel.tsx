@@ -59,7 +59,7 @@ export function BackingPanel({
   const seq = SEQ[backing.sequencerStatus] ?? "Unknown";
 
   return (
-    <section className="card p-5">
+    <section className="card border-accent p-5">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">
         Verified backing
       </h2>

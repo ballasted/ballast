@@ -498,7 +498,7 @@ function PreviewCard(p: {
   freshness?: { tier: string; label: string };
 }) {
   return (
-    <section className="card overflow-hidden">
+    <section className="card-raised overflow-hidden">
       <div className="flex items-center gap-3 border-b border-border p-4">
         <Logo src={ipfsToGateway(p.logoUri)} symbol={p.symbol} size={44} />
         <div className="min-w-0">
@@ -510,7 +510,7 @@ function PreviewCard(p: {
       <div className="space-y-4 p-4">
         {/* Backing per token — the reason the preview lives on the same screen.
             Reflects the input; it never counts up (Phase 4 motion rule 2). */}
-        <div className="rounded-input bg-bg p-4">
+        <div className="rounded-input border border-accent bg-bg p-4">
           <div className="text-xs uppercase tracking-wide text-text-faint">Backing per token</div>
           <div className="mt-1 figure-primary text-3xl">
             {p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "None"}

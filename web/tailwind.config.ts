@@ -13,7 +13,8 @@ const config: Config = {
       colors: {
         bg: "#0A0C0B", // Ground
         card: "#101412", // Surface
-        "surface-raised": "#161B18", // raised surfaces (nested panels, hovered cards)
+        "surface-raised": "#161B18", // elevated cards, the preview panel
+        "surface-hover": "#1A211C", // card hover lift
         border: "#1C211E",
         "border-strong": "#2E352F",
         green: {
@@ -55,6 +56,12 @@ const config: Config = {
         input: "11px",
         button: "14px",
         phone: "30px",
+      },
+      // `border-accent` — the quiet green-tinted border that marks a card as
+      // carrying backing data, so the panel that matters is visually distinct
+      // without a badge (visual-upgrade Phase 2, "Border accent #16301A").
+      borderColor: {
+        accent: "#16301A",
       },
       fontFamily: {
         sans: [

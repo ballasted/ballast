@@ -41,7 +41,7 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Portfolio</h1>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Portfolio</h1>
         <div className="mt-1 flex items-baseline gap-2">
           <span className="figure-primary text-3xl">{formatUsd(totalValue, { compact: true })}</span>
           <span className="metric-secondary">{hasMarketData ? "valued at market where a pool exists, else backing" : "valued at backing"}</span>
