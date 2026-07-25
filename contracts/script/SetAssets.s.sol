@@ -177,8 +177,13 @@ contract SetAssets is Script {
             console2.log("  token.decimals(): <none> (assuming 18)");
         }
 
-        // Feed identity: description must name the ticker AND USD (rule 16). This is
-        // the on-chain confirmation the feed matches the ticker.
+        // Feed identity: the description must name "Robinhood", the ticker, AND USD
+        // (rule 16; feeds are "Robinhood TICKER / USD" or "Robinhood TICKER-USD").
+        // Requiring "Robinhood" is the on-chain confirmation this is the Robinhood
+        // Standard proxy for the ticker and not a look-alike feed. (Standard-vs-SVR
+        // itself can't be told apart on-chain — the two proxies can be byte-identical
+        // today and diverge later — so getting the STANDARD proxyAddress right at
+        // input time remains the rule; see the env comments. rule 15.)
         string memory desc = "";
         try IDescribed(feed).description() returns (string memory d) {
             desc = d;
@@ -186,6 +191,7 @@ contract SetAssets is Script {
         } catch {
             revert(string.concat(c.ticker, ": feed has no description() - is this a Chainlink proxy?"));
         }
+        require(_contains(desc, "Robinhood"), string.concat(c.ticker, ": feed description does not contain 'Robinhood'"));
         require(_contains(desc, c.ticker), string.concat(c.ticker, ": feed description does not contain ticker"));
         require(_contains(desc, "USD"), string.concat(c.ticker, ": feed description is not a USD feed"));
 

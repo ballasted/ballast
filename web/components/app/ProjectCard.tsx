@@ -1,5 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
+import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { ipfsToGateway } from "@/lib/ipfs";
+import { Logo } from "@/components/app/Logo";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 
 // Card contents follow build-spec §9. Price / % change are shown as "—" until a
@@ -15,7 +20,11 @@ export function ProjectCard({
   hideSparkline?: boolean;
   firstLaunch?: boolean;
 }) {
-  const { symbol, name, backing, ballasted, token } = project;
+  const { symbol, name, backing, ballasted, token, metadataURI } = project;
+  // Resolve the pinned logo from the token's on-chain metadataURI — same source
+  // the token page uses. Without this the card only ever showed ticker initials
+  // (Part C bug 10). Logo falls back to initials if the CID is missing/broken.
+  const { meta } = useProjectMeta(metadataURI);
 
   return (
     <Link
@@ -24,9 +33,7 @@ export function ProjectCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-bg text-sm font-semibold text-green">
-            {(symbol ?? "•").slice(0, 3)}
-          </div>
+          <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={40} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-semibold text-text-primary">

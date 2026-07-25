@@ -5,7 +5,7 @@ import Link from "next/link";
 import { parseUnits, formatUnits, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
-import { useLaunchRunner } from "@/hooks/useLaunchRunner";
+import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { useNow } from "@/hooks/useNow";
@@ -82,6 +82,7 @@ export function CreateFlow() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pinning, setPinning] = useState(false);
   const [pinError, setPinError] = useState<string | undefined>();
+  const [launchParams, setLaunchParams] = useState<LaunchParams | null>(null);
 
   const now = useNow();
   const { address: account } = useAccount();
@@ -155,17 +156,28 @@ export function CreateFlow() {
         telegram: tgHandle.trim() ? `t.me/${cleanHandle(tgHandle)}` : undefined,
       });
       setPinning(false);
-      runner.run({
+      const params: LaunchParams = {
         name: name.trim(),
         symbol: symbolClean,
         noticePeriod: BigInt(noticeDays) * 86400n,
         metadataURI,
         deposit: backed && selected ? { asset: selected.address, amount: amountRaw } : undefined,
-      });
+      };
+      // Remember the pinned params so a resume/retry re-runs WITHOUT re-pinning
+      // (a new CID for the same metadata) — and the runner skips any step already
+      // on-chain, so it never re-deploys or re-deposits.
+      setLaunchParams(params);
+      runner.run(params);
     } catch (e) {
       setPinning(false);
       setPinError(e instanceof Error ? e.message : "Could not pin project metadata to IPFS.");
     }
+  }
+
+  // Re-run from where we left off, reusing the already-pinned metadata. Safe to
+  // call after an error or a lost step: the runner prechecks each step on-chain.
+  function resumeLaunch() {
+    if (launchParams) runner.run(launchParams);
   }
 
   if (!isFactoryConfigured) {
@@ -189,7 +201,8 @@ export function CreateFlow() {
         pinning={pinning}
         steps={runner.steps}
         isRunning={runner.isRunning}
-        onRetry={confirmAndLaunch}
+        launched={runner.launched}
+        onResume={resumeLaunch}
       />
     );
   }
@@ -620,9 +633,18 @@ function ConfirmModal(p: {
 function LaunchProgress(p: {
   symbol: string; pinning: boolean;
   steps: ReturnType<typeof useLaunchRunner>["steps"];
-  isRunning: boolean; onRetry: () => void;
+  isRunning: boolean;
+  launched: { token: Address; treasury: Address } | null;
+  onResume: () => void;
 }) {
-  const hasError = p.steps.some((s) => s.status === "error");
+  const errorStep = p.steps.find((s) => s.status === "error");
+  const lostStep = p.steps.find((s) => s.status === "lost");
+  // A lost LAUNCH tx is the one case we must NOT auto-retry: we never decoded the
+  // token, so retrying would deploy a duplicate. Every later lost step is safe to
+  // resume because the runner prechecks on-chain and skips completed work.
+  const lostAtLaunch = lostStep?.key === "launch";
+  const canResume = !p.isRunning && (Boolean(errorStep) || (Boolean(lostStep) && !lostAtLaunch));
+
   return (
     <div className="mx-auto max-w-md">
       <section className="card p-5">
@@ -636,12 +658,14 @@ function LaunchProgress(p: {
                 <div className="text-sm text-text-primary">{s.label}</div>
                 {s.txHash && (
                   <a
-                    className="text-xs text-text-faint hover:text-text-secondary"
+                    className="break-all text-xs text-text-faint hover:text-text-secondary"
                     href={`${activeChain.blockExplorers.default.url}/tx/${s.txHash}`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {s.status === "confirming" ? "Confirming" : "View"} on Blockscout ↗
+                    {s.status === "confirming"
+                      ? "Waiting for confirmation · view on Blockscout ↗"
+                      : "View on Blockscout ↗"}
                   </a>
                 )}
                 {s.error && <div className="text-xs text-negative">{s.error}</div>}
@@ -649,8 +673,41 @@ function LaunchProgress(p: {
             </li>
           ))}
         </ol>
-        {hasError && !p.isRunning && (
-          <button className="btn-primary mt-4 w-full" onClick={p.onRetry}>Retry</button>
+
+        {/* Lost = timed out, outcome unknown. Never a red X + blind Retry — the tx
+            may have succeeded and retrying could double-deploy. Show the hash and
+            send them to the explorer first. */}
+        {lostStep && !p.isRunning && (
+          <div className="mt-4 rounded-input border border-warning-border bg-warning-bg p-3 text-sm">
+            <div className="font-semibold text-warning">We lost track of this transaction</div>
+            <p className="mt-1 text-text-secondary">
+              It may still have succeeded — check Blockscout before retrying, so you don&apos;t send it twice.
+            </p>
+            {lostStep.txHash && (
+              <a
+                className="mt-2 block break-all font-mono text-xs text-text-primary underline underline-offset-2"
+                href={`${activeChain.blockExplorers.default.url}/tx/${lostStep.txHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {lostStep.txHash} ↗
+              </a>
+            )}
+            {p.launched && (
+              <Link
+                href={`/app/token/${p.launched.token}`}
+                className="mt-2 inline-block text-xs text-green underline underline-offset-2"
+              >
+                Open the token page — resume from there if the pool isn&apos;t seeded ↗
+              </Link>
+            )}
+          </div>
+        )}
+
+        {canResume && (
+          <button className="btn-primary mt-4 w-full" onClick={p.onResume}>
+            {lostStep ? "I checked Blockscout — resume" : "Resume"}
+          </button>
         )}
       </section>
     </div>
@@ -969,6 +1026,8 @@ function ConfirmRow({ label, value, mono }: { label: string; value: string; mono
 function StepDot({ status }: { status: string }) {
   if (status === "success") return <span className="mt-0.5 text-green">✓</span>;
   if (status === "error") return <span className="mt-0.5 text-negative">✕</span>;
+  // Lost = unknown outcome, not a failure — an amber question mark, never a red X.
+  if (status === "lost") return <span className="mt-0.5 text-warning">?</span>;
   if (status === "pending" || status === "confirming")
     return <span className="mt-0.5 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-green" />;
   return <span className="mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-border" />;

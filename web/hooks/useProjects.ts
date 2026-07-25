@@ -2,7 +2,7 @@
 
 import { useReadContract, useReadContracts } from "wagmi";
 import type { Address } from "viem";
-import { backingLensAbi, erc20Abi, ballastFactoryAbi } from "@/lib/abis";
+import { backingLensAbi, erc20Abi, ballastFactoryAbi, ballastTokenAbi } from "@/lib/abis";
 import {
   LENS_ADDRESS,
   FACTORY_ADDRESS,
@@ -32,6 +32,7 @@ export type Project = {
   creator: Address;
   name?: string;
   symbol?: string;
+  metadataURI?: string; // on-chain ipfs://CID → resolves to the logo/metadata JSON
   backing?: ProjectBacking;
   ballasted: boolean; // has any backing value
 };
@@ -96,6 +97,12 @@ export function useProjects() {
               functionName: "symbol",
               chainId: CHAIN_ID,
             } as const,
+            {
+              address: row[0],
+              abi: ballastTokenAbi,
+              functionName: "metadataURI",
+              chainId: CHAIN_ID,
+            } as const,
           ]
         : [],
     ),
@@ -110,7 +117,8 @@ export function useProjects() {
     const b = dataRes.data?.[cursor];
     const nm = dataRes.data?.[cursor + 1];
     const sy = dataRes.data?.[cursor + 2];
-    cursor += 3;
+    const uri = dataRes.data?.[cursor + 3];
+    cursor += 4;
     const backing =
       b?.status === "success" ? (b.result as unknown as ProjectBacking) : undefined;
     projects.push({
@@ -119,6 +127,7 @@ export function useProjects() {
       creator,
       name: nm?.status === "success" ? (nm.result as string) : undefined,
       symbol: sy?.status === "success" ? (sy.result as string) : undefined,
+      metadataURI: uri?.status === "success" ? (uri.result as string) : undefined,
       backing,
       ballasted: Boolean(backing && backing.totalValueUsd > 0n),
     });
