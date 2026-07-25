@@ -102,7 +102,7 @@ export default function TokenDetailPage() {
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
           {meta?.category && <Badge>{meta.category}</Badge>}
           <Badge>{activeChain.name}</Badge>
-          <CopyAddress address={token!} />
+          <CopyAddress address={token!} label="Token contract" />
           {meta?.x && <ExtLink href={toUrl(meta.x)}>X ↗</ExtLink>}
           {meta?.telegram && <ExtLink href={toUrl(meta.telegram)}>Telegram ↗</ExtLink>}
           {meta?.website && <ExtLink href={toUrl(meta.website)}>Website ↗</ExtLink>}
@@ -175,7 +175,7 @@ export default function TokenDetailPage() {
   );
 }
 
-function CopyAddress({ address }: { address: Address }) {
+function CopyAddress({ address, label }: { address: Address; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -185,10 +185,17 @@ function CopyAddress({ address }: { address: Address }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="rounded-full border border-border px-2.5 py-1 font-mono text-text-secondary transition-colors hover:border-text-faint"
-      title="Copy contract address"
+      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint"
+      title={`Copy ${label ? label.toLowerCase() : "contract"} address ${address}`}
     >
-      {copied ? "Copied" : shortAddress(address)}
+      {label && <span className="text-text-faint">{label}</span>}
+      <span className="font-mono">{copied ? "Copied ✓" : shortAddress(address)}</span>
+      {!copied && (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className="text-text-faint">
+          <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
+          <path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      )}
     </button>
   );
 }
