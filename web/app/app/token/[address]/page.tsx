@@ -5,9 +5,11 @@ import { useState } from "react";
 import type { Address } from "viem";
 import { useBacking } from "@/hooks/useBacking";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { useMarket } from "@/hooks/useMarket";
 import { useNow } from "@/hooks/useNow";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
+import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import {
@@ -22,6 +24,7 @@ import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress, formatBackingPerToken } from "@/lib/format";
+import { formatSmallUsd } from "@/lib/market";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. The treasury is
 // resolved on-chain from token.treasury(). Everything that can be sourced from
@@ -54,6 +57,7 @@ export default function TokenDetailPage() {
     found,
   } = useBacking(token);
   const { meta } = useProjectMeta(metadataURI);
+  const { market } = useMarket(token);
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -89,10 +93,24 @@ export default function TokenDetailPage() {
             </div>
           </div>
           <div className="text-right">
+            {/* Chain price wins when available (on-chain StateView); otherwise fall
+                back to GeckoTerminal, clearly labelled. Never a fabricated figure. */}
             <div className="figure-primary text-2xl">
-              {marketPriceUsd !== undefined ? formatBackingPerToken(marketPriceUsd) : "—"}
+              {marketPriceUsd !== undefined
+                ? formatBackingPerToken(marketPriceUsd)
+                : market?.priceUsd !== undefined
+                  ? formatSmallUsd(market.priceUsd)
+                  : "—"}
             </div>
-            <div className="metric-secondary">{hasPool ? "market price" : graduated ? "no liquidity" : "not launched"}</div>
+            <div className="metric-secondary">
+              {marketPriceUsd !== undefined
+                ? "market price · on-chain"
+                : market?.priceUsd !== undefined
+                  ? "market price · GeckoTerminal"
+                  : graduated
+                    ? "no market yet"
+                    : "not launched"}
+            </div>
             {ratio !== null && (
               <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>{ratio.toFixed(2)}× backing</div>
             )}
@@ -107,19 +125,28 @@ export default function TokenDetailPage() {
           {meta?.telegram && <ExtLink href={toUrl(meta.telegram)}>Telegram ↗</ExtLink>}
           {meta?.website && <ExtLink href={toUrl(meta.website)}>Website ↗</ExtLink>}
         </div>
-        {/* 24h change needs the indexer — labelled, never a fabricated %. */}
-        <div className="mt-2 text-xs text-text-faint">24h change: needs indexer</div>
+        {/* 24h change from GeckoTerminal when available, labelled with source;
+            otherwise say plainly it needs a market source — never a fabricated %. */}
+        <div className="mt-2 text-xs">
+          {market?.change24hPct != null ? (
+            <span className={market.change24hPct >= 0 ? "text-positive" : "text-negative"}>
+              {market.change24hPct >= 0 ? "+" : ""}
+              {market.change24hPct.toFixed(2)}% 24h{" "}
+              <span className="text-text-faint">· GeckoTerminal</span>
+            </span>
+          ) : (
+            <span className="text-text-faint">24h change: no market source yet</span>
+          )}
+        </div>
       </header>
 
       {/* Verified backing — above the chart, the reason the page exists. */}
       {backing && <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />}
 
-      {/* Price chart — pending the indexer / GeckoTerminal embed (Phase 3). A token
-          with no trades shows an honest empty state, never a flat line at zero. */}
-      <PendingDataPanel
-        title="Price chart"
-        what="The price chart activates once the pool has trades and the indexer is wired. It is never drawn as a flat line at zero when there's nothing to show."
-      />
+      {/* Market — price, 24h volume/change, chart embed and venues from
+          GeckoTerminal, clearly sourced; chain price governs when available. An
+          un-indexed token shows an honest empty state, never a flat line at zero. */}
+      <MarketPanel token={token!} symbol={symbol} chainPriceUsd={marketPriceUsd} />
 
       {/* Swap */}
       <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} spotPriceWeth={marketPriceWeth} />
