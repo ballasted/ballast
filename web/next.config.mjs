@@ -20,6 +20,20 @@ const nextConfig = {
     config.plugins.push(
       new webpack.IgnorePlugin({ resourceRegExp: /^@x402\// }),
     );
+
+    // WalletConnect/reown's dependency tree reaches for two optional packages
+    // that only exist in non-browser environments:
+    //   • @react-native-async-storage/async-storage — a React-Native storage
+    //     backend @metamask/sdk probes for; irrelevant in a web build.
+    //   • pino-pretty — a dev-only pretty-printer pino tries to require; we never
+    //     enable pretty logging in the browser.
+    // Alias both to false so webpack resolves them to an empty module instead of
+    // emitting "Can't resolve …" warnings. They are never executed at runtime.
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      "@react-native-async-storage/async-storage": false,
+      "pino-pretty": false,
+    };
     return config;
   },
 };
