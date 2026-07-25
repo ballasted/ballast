@@ -18,12 +18,41 @@ export const UNIVERSAL_ROUTER = "0x8876789976dEcBfCbBbe364623C63652db8C0904" as 
 /** UniversalRouter command id for a v4 swap. */
 export const CMD_V4_SWAP = "0x10";
 
+// ── Native-ETH commands (Part 2: buy with ETH / sell to ETH) ─────────────────
+// BALLAST pools are token/WETH, so ETH must be wrapped/unwrapped in the SAME
+// execute() call — no separate wrapping step for the user. UniversalRouter runs
+// commands in order, so:
+//   BUY  (ETH → token): [WRAP_ETH, V4_SWAP]   with msg.value = amountIn
+//   SELL (token → ETH): [V4_SWAP, UNWRAP_WETH] output taken to the router, then
+//                        unwrapped to the user as ETH.
+//
+// ⚠️ UNPROVEN ON THIS FORK. The WETH-only path is proven (ProveSwapMainnet); the
+// wrap/unwrap path is NOT. Two things MUST be pinned against the fork's own source
+// on Blockscout and proven with a ProveSwapEth script BEFORE wiring:
+//   1. Command ids — these are the STOCK universal-router values; this router is a
+//      fork, so confirm its Commands enum (V4_SWAP=0x10 was the only one verified).
+//   2. SETTLE semantics — the proven WETH path used SETTLE_ALL with the USER as
+//      payer (Permit2 pull). After WRAP_ETH the WETH sits in the ROUTER, so the
+//      swap must settle from the router, not pull from the user — that likely
+//      needs SETTLE (payerIsUser=false) rather than SETTLE_ALL. Getting this wrong
+//      reverts or strands funds. Prove it, don't guess it.
+export const CMD_WRAP_ETH = "0x0b"; // inputs: (address recipient, uint256 amount)
+export const CMD_UNWRAP_WETH = "0x0c"; // inputs: (address recipient, uint256 amountMin)
+
+// UniversalRouter address sentinels (recipient/amount placeholders it substitutes).
+export const UR_ADDRESS_THIS = "0x0000000000000000000000000000000000000002" as Address; // the router itself
+export const UR_MSG_SENDER = "0x0000000000000000000000000000000000000001" as Address; // the caller
+export const UR_CONTRACT_BALANCE = (1n << 255n); // "use the router's full balance"
+
 /** v4 Action ids used inside a V4_SWAP input. Single-hop only — BALLAST does not
- *  ship multi-hop (SWAP_EXACT_IN = 0x07); see research §4. */
+ *  ship multi-hop (SWAP_EXACT_IN = 0x07); see research §4. SETTLE (0x0b, with a
+ *  payerIsUser flag) is added for the router-funded native-ETH path above. */
 export const V4_ACTIONS = {
   SWAP_EXACT_IN_SINGLE: 0x06,
-  SETTLE_ALL: 0x0c,
-  TAKE_ALL: 0x0f,
+  SETTLE: 0x0b, // (currency, amount, payerIsUser) — payer=router after WRAP_ETH
+  SETTLE_ALL: 0x0c, // (currency, maxAmount) — payer=user via Permit2 (proven WETH path)
+  TAKE: 0x0e, // (currency, recipient, amount) — take output to router before UNWRAP
+  TAKE_ALL: 0x0f, // (currency, minAmount) — take output to the user (WETH path)
 } as const;
 
 // abi params for the SINGLE-hop swap struct (what a graduated token/WETH pool

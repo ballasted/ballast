@@ -10,6 +10,7 @@ import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { WalletBalance } from "@/components/app/WalletBalance";
 import { Logo } from "@/components/app/Logo";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
@@ -451,9 +452,17 @@ export function CreateFlow() {
               {isSwitching ? "Switching…" : "Switch to Robinhood Chain"}
             </button>
           ) : (
-            <button className="btn-primary w-full" disabled={!formValid} onClick={openConfirm}>
-              Review &amp; launch ${symbolClean || "TICKER"}
-            </button>
+            <>
+              {/* Show funds before launching, read through our own transport (not
+                  reown's modal) so a zero balance is visible up front. */}
+              <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
+                <span>Wallet balance</span>
+                <WalletBalance />
+              </div>
+              <button className="btn-primary w-full" disabled={!formValid} onClick={openConfirm}>
+                Review &amp; launch ${symbolClean || "TICKER"}
+              </button>
+            </>
           )}
           {pinError && <p className="text-center text-xs text-negative">{pinError}</p>}
         </div>

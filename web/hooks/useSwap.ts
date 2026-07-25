@@ -16,6 +16,7 @@ import { poolKeyForToken, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE } from "@/lib/pool
 import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
+import { pollReceipt } from "@/lib/waitForReceipt";
 
 const CHAIN_ID = activeChain.id;
 const MAX_EXPIRATION = 2n ** 48n - 1n;
@@ -99,10 +100,18 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
     setError(undefined);
     setTxHash(undefined);
 
+    // Backoff polling that rides out a flaky RPC (Part A) instead of turning a
+    // successful tx into an error. A "lost" swap is NOT auto-retried — retrying a
+    // swap that actually executed would spend twice — so we surface the hash and
+    // stop, letting the user check Blockscout.
     const send = async (write: () => Promise<`0x${string}`>) => {
       const hash = await write();
-      const r = await publicClient.waitForTransactionReceipt({ hash });
-      if (r.status !== "success") throw new Error("Transaction reverted");
+      setTxHash(hash);
+      const outcome = await pollReceipt(publicClient, hash);
+      if (outcome.status === "lost") {
+        throw new Error(`We lost track of the transaction — check Blockscout before retrying: ${hash}`);
+      }
+      if (outcome.status === "reverted") throw new Error("Transaction reverted");
       return hash;
     };
 
