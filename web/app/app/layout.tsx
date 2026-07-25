@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Providers } from "./providers";
 import { BottomNav } from "@/components/app/BottomNav";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { WalletBalance } from "@/components/app/WalletBalance";
 import { ConfigGuard } from "@/components/app/ConfigGuard";
 import { NetworkGuard } from "@/components/app/NetworkGuard";
 import { Wordmark } from "@/components/Wordmark";
@@ -15,7 +16,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-content items-center justify-between px-5">
             <Wordmark />
-            <ConnectButton />
+            <div className="flex items-center gap-3">
+              <WalletBalance />
+              <ConnectButton />
+            </div>
           </div>
         </header>
         <ConfigGuard />

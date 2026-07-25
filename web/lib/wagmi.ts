@@ -16,11 +16,26 @@ export const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 export const appKitEnabled = projectId.length > 0;
 
 // Reads go through the same-origin /api/rpc proxy (dedicated key server-side),
-// falling back to the public Robinhood RPC if the proxy errors or during SSR.
-export const RPC_TRANSPORT = fallback([
-  http("/api/rpc", { batch: true }),
-  http(PUBLIC_RPC_URL, { batch: true }),
-]);
+// falling back to the public Robinhood RPC if the proxy errors.
+//
+// Two things this must get right, both of which produced the "reads time out"
+// bug:
+//   1. SSR — a relative URL ("/api/rpc") has no origin on the server, so on the
+//      server we talk to the public RPC directly. Only the browser uses the proxy.
+//   2. Hangs — every http transport gets an explicit `timeout`, so a stalled
+//      upstream fails FAST and the `fallback` moves to the next transport rather
+//      than the request hanging until receipt polling gives up. `fallback` tries
+//      transports in listed order and switches on failure (rank off).
+const isBrowser = typeof window !== "undefined";
+export const RPC_TRANSPORT = isBrowser
+  ? fallback(
+      [
+        http("/api/rpc", { batch: true, timeout: 12_000, retryCount: 2 }),
+        http(PUBLIC_RPC_URL, { batch: true, timeout: 12_000, retryCount: 2 }),
+      ],
+      { rank: false },
+    )
+  : http(PUBLIC_RPC_URL, { batch: true, timeout: 12_000, retryCount: 2 });
 
 // AppKit needs the chain in its own CAIP-tagged shape; mirror lib/chain.ts exactly
 // so the wallet picker, the wagmi config, and wallet_addEthereumChain all describe
