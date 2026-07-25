@@ -305,22 +305,20 @@ export function CreateFlow() {
                 <Field label="Treasury asset">
                   <div className="grid gap-2">
                     {assets.map((a) => (
-                      <button
+                      <AssetPickerOption
                         key={a.address}
-                        type="button"
-                        onClick={() => setAssetAddr(a.address)}
-                        className={cn(
-                          "flex items-center justify-between rounded-input border px-3 py-2.5 text-left text-sm transition-colors",
-                          assetAddr === a.address ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
-                        )}
-                      >
-                        <span className="font-medium text-text-primary">{a.symbol ?? "asset"}</span>
-                        <span className="metric-secondary">
-                          {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
-                        </span>
-                      </button>
+                        a={a}
+                        now={now}
+                        selected={assetAddr === a.address}
+                        onSelect={() => setAssetAddr(a.address)}
+                      />
                     ))}
                   </div>
+                  <p className="mt-1.5 text-xs text-text-faint">
+                    Price and freshness are read live from each asset&apos;s Chainlink feed. A backed launch can only
+                    price against a feed that&apos;s trading — an asset showing anything but a live feed is why a launch
+                    is gated outside market hours.
+                  </p>
                 </Field>
 
                 <Field label="Amount to deposit">
@@ -759,6 +757,65 @@ function LogoUploader({
       )}
     </div>
   );
+}
+
+// One row in the treasury-asset picker. Shows the live feed price and the SAME
+// freshness classification the launch gate uses, so a creator can see at a glance
+// why a backed launch might be blocked (a resting/stale feed) before they commit.
+function AssetPickerOption({
+  a,
+  selected,
+  onSelect,
+  now,
+}: {
+  a: AllowedAsset;
+  selected: boolean;
+  onSelect: () => void;
+  now: number;
+}) {
+  const freshness =
+    a.updatedAt !== undefined && now > 0
+      ? classifyFreshness(Number(a.updatedAt), a.marketHours, false, now)
+      : undefined;
+  const tone =
+    freshness?.tier === "fresh"
+      ? "text-green"
+      : freshness?.tier === "stale"
+        ? "text-negative"
+        : "text-warning";
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-input border px-3 py-2.5 text-left transition-colors",
+        selected ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
+      )}
+    >
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
+        <span className="metric-secondary">
+          {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
+        </span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block text-sm font-medium text-text-primary">{formatFeedPrice(a.price, a.priceDecimals)}</span>
+        {freshness && (
+          <span className={cn("metric-secondary inline-flex items-center gap-1", tone)}>
+            <span aria-hidden>•</span> {freshness.label}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// Raw Chainlink answer (price + its own decimals) → a dollar string. Feed decimals
+// are read live per asset, never assumed 8 (CLAUDE.md rule 9 / research §3).
+function formatFeedPrice(price?: bigint, dec?: number): string {
+  if (price === undefined || dec === undefined) return "—";
+  const v = Number(price) / 10 ** dec;
+  return `$${Intl.NumberFormat("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
 }
 
 // ── small shared bits ───────────────────────────────────────────────────────
