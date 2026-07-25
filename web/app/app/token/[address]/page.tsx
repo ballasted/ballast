@@ -7,6 +7,7 @@ import { useBacking } from "@/hooks/useBacking";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useNow } from "@/hooks/useNow";
 import { BackingPanel } from "@/components/app/BackingPanel";
+import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import {
@@ -72,6 +73,10 @@ export default function TokenDetailPage() {
     <div className="space-y-4">
       {/* Pending withdrawal — above everything when active (spec 5). */}
       {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
+
+      {/* Half-launched: token exists but pool never seeded. Offer to finish it
+          (permissionless graduate) rather than leaving a dead token (Part B). */}
+      {!graduated && <ResumeLaunchPanel token={token!} symbol={symbol} />}
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <header className="card p-5">
