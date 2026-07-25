@@ -41,7 +41,7 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-text-primary">Portfolio</h1>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Portfolio</h1>
         <div className="mt-1 flex items-baseline gap-2">
           <span className="figure-primary text-3xl">{formatUsd(totalValue, { compact: true })}</span>
           <span className="metric-secondary">{hasMarketData ? "valued at market where a pool exists, else backing" : "valued at backing"}</span>
@@ -86,7 +86,20 @@ export default function PortfolioPage() {
 
       <div key={tab} className="anim-fade">
         {isLoading ? (
-          <div className="card h-24 animate-pulse" />
+          <div className="space-y-2" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="card flex items-center justify-between p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 animate-pulse rounded-full bg-surface-raised" />
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-20 animate-pulse rounded bg-surface-raised" />
+                    <div className="h-3 w-28 animate-pulse rounded bg-surface-raised" />
+                  </div>
+                </div>
+                <div className="h-5 w-16 animate-pulse rounded bg-surface-raised" />
+              </div>
+            ))}
+          </div>
         ) : tab === "holdings" ? (
           holdings.length === 0 ? (
             <Notice title="No holdings" body="You don't hold any BALLAST tokens on this network yet. Find one on Discover." />

@@ -14,6 +14,9 @@
   body {
     @apply bg-bg text-text-primary font-sans antialiased;
     text-rendering: optimizeLegibility;
+    /* Tabular figures everywhere so columns align and a value never jitters
+       sideways when it updates (visual-upgrade Phase 2, Typography). */
+    font-variant-numeric: tabular-nums;
   }
 
   ::selection {
@@ -75,7 +78,7 @@
     transition: background-color 150ms ease-out, border-color 150ms ease-out;
   }
   .card-hover:hover {
-    background-color: #141a17;
+    background-color: theme("colors.surface-hover");
     border-color: theme("colors.text.faint");
   }
 
@@ -113,6 +116,11 @@
 
   .card {
     @apply bg-card border border-border rounded-card;
+  }
+  /* Elevated surface — the create preview panel and other lifted cards. Depth
+     comes from a lighter surface + border, never a shadow (cheap on near-black). */
+  .card-raised {
+    @apply bg-surface-raised border border-border rounded-card;
   }
 
   .input {

@@ -1,0 +1,262 @@
+# BALLAST — visual and analytics upgrade
+
+Read `CLAUDE.md` and `docs/BALLAST-build-spec.md` first. All hard rules still
+apply — copy rules, valuation rules, contract invariants. Nothing here
+overrides them.
+
+Reference for quality bar: `ponsfamily.com/launchpad` and
+`ponsfamily.com/analytics`. The goal is not to copy Pons but to exceed it,
+using a visual language they do not have.
+
+Run every phase in order. Auto-approve your own edits. Commit after each phase.
+Push to GitHub at the end.
+
+---
+
+## PHASE 0 — Verify something that may save a month of work
+
+Pons' analytics page is powered by **Dune** — the footer reads "Data is
+supplied by Dune from indexed onchain activity" with a "View on Dune" link.
+
+If Dune indexes Robinhood Chain (4663), it may replace much of what our Ponder
+indexer is being built for, at zero hosting cost.
+
+Investigate and report before building anything analytics-related:
+
+1. Does Dune index chain 4663? Check their supported-chains list.
+2. If yes, which tables exist — raw logs and transactions, or decoded
+   contract tables?
+3. Can Dune query results be fetched from a web app without a paid plan?
+   What are the free-tier rate limits?
+4. What would Dune NOT cover that Ponder does? Specifically: per-token OHLC
+   candles, holder lists, live trade feeds, per-wallet position history.
+
+Then give a recommendation: Dune only, Ponder only, or both. If both, say
+exactly which numbers come from which source, because §3.2 of the upgrade spec
+requires every figure to reconcile — two sources disagreeing is worse than one
+source missing.
+
+Do not build on Dune before reporting.
+
+---
+
+## PHASE 1 — Fix what is visibly broken
+
+From the live create page at `ballasted.xyz/app/create`:
+
+1. **"Fee split" shows the string "read live from FeeConfig"** instead of the
+   actual split. It should read `50% creator · 35% platform · 15% referrer`,
+   read live from the deployed FeeConfig. If the read is failing, surface why
+   — never ship a label describing where a value would come from in place of
+   the value.
+
+2. **"Treasury" shows a dash** with no explanation. Either show the value or
+   say plainly why it is empty.
+
+3. **An empty black box sits below the "Ballast this launch" toggle.** Either
+   the asset picker failed to render or its empty state is missing. Fix it and
+   give it a real empty state.
+
+4. **Page content runs under the bottom navigation.** Add bottom padding equal
+   to the nav height plus safe-area inset so nothing is ever obscured on
+   mobile.
+
+5. Audit every other screen for the same class of problem: a placeholder
+   string where a value belongs, a bare dash with no explanation, or content
+   colliding with fixed chrome.
+
+---
+
+## PHASE 2 — Build the fixes into the visual system
+
+The interface currently reads as unfinished: near-black, one green, flat
+surfaces, no depth. Pons looks more finished because of spacing, contrast
+hierarchy, and card elevation — not because it is more colourful.
+
+We already have a stronger visual language available and are not using it. The
+brand assets introduced bone/marble, the Greek meander, and serif capitals.
+Bring all three into the product so the X profile, the marketing site and the
+app finally look like one thing.
+
+### Palette — extend, don't brighten
+
+```
+Ground            #0A0C0B
+Surface           #101412
+Surface raised    #161B18      elevated cards, the preview panel
+Surface hover     #1A211C
+Border            #1C211E
+Border strong     #2E352F
+Border accent     #16301A      on cards carrying backing data
+
+Accent (patina)   #00C805
+Accent deep       #0E2A12
+Accent mid        #2E6B33
+
+Bone              #DDD8CA      headings, brand moments, primary emphasis
+Bone muted        #8A938D
+Faint             #5F665F
+
+Positive          #00C805
+Negative          #FF5A52
+Warning           #EF9F27
+Warning surface   #1A1509
+
+Chart series      #00C805  #2E6B33  #DDD8CA  #6E8B77  #C9A96A
+```
+
+Bone as the heading tone is the single biggest change. It stops the interface
+reading as monochrome without adding a decorative colour. Green stays strictly
+functional — price direction, backing, confirmation.
+
+### Typography
+
+Two registers, consistently applied:
+
+- **Serif** (from the brand assets): page titles, token names on the token
+  page, section headings, the numbers in the analytics hero. Letterspaced,
+  bone-toned.
+- **Sans**: body, labels, form controls, table data, anything dense.
+
+Loosen the header wordmark from `tracking-tight` to about `tracking-[0.15em]`
+so it matches the brand lockup.
+
+Numbers use tabular figures everywhere so columns align and values do not jitter
+when they update.
+
+### Depth and spacing
+
+- Cards get `Surface raised` plus a 1px border, not a shadow. Shadows read as
+  cheap on near-black.
+- Cards carrying backing data get `Border accent` — this makes the panel that
+  matters visually distinct without a badge.
+- Increase vertical rhythm. The current layout is cramped; Pons breathes more.
+  Section spacing ~48px desktop, ~32px mobile.
+- The create-page preview card is **sticky** on desktop and stays in view while
+  the form scrolls.
+
+### Meander
+
+Use the Greek meander pattern from the brand assets as a section rule: beneath
+page titles, above the footer, as the divider inside the backing panel. Two per
+screen maximum. This is what visually ties app, marketing and social together,
+and no competitor has anything like it.
+
+---
+
+## PHASE 3 — Motion
+
+Motion has been specified twice and has not landed. Implement it properly this
+time and verify it in the browser, not just in code.
+
+**Tone.** Precision instruments — Linear, Stripe, Vercel. Not pump.fun. Things
+settle into place; they do not perform. 150–250ms, ease-out, transform and
+opacity only.
+
+**Marketing site**
+- Hero entrance on load: heading, subhead, CTAs stagger over ~400ms total. Once
+  only, never on scroll-back.
+- Section reveals via IntersectionObserver: opacity 0→1 with small translateY.
+  Fire once, generous threshold.
+- The "what ballast is / is not" panel reveals as **two column units**, never
+  item-by-item. A checklist ticking in one by one reads as salesmanship.
+- FAQ accordions: smooth height transition, not a jump.
+- Header background and border shift once scrolled past the hero.
+- Links and buttons: 150ms colour and border transitions. No scale bounce.
+
+**App**
+- Skeleton loaders for every chain read, matching final layout exactly so
+  nothing shifts when data lands. This is the single biggest perceived-quality
+  win — chain reads are slow and a blank panel reads as broken.
+- Discover cards stagger in ~40ms apart as data resolves, capped so a long list
+  does not crawl.
+- Card hover: background lifts to `Surface hover`, border brightens. No
+  transform scale.
+- Tab switches: crossfade content, underline slides between tabs.
+- Backing split bar animates width from 0 on first paint only. It is a
+  proportion, so it may animate — unlike a price.
+- Create form: the preview card's backing figure crossfades when it changes.
+- Transaction progress: each step's state change animates; the active step has
+  a subtle indeterminate indicator.
+- Route transitions: crossfade under 200ms.
+
+**Hard rules**
+1. `prefers-reduced-motion: reduce` disables all non-essential motion —
+   actually off, not merely faster. Test it in the browser.
+2. Never animate a number counting up toward its value. On a backing figure
+   that reads as growth, a claim we do not make. Crossfade or appear settled.
+3. Warning states never pulse or flash. Pulsing trains alarm fatigue. Static,
+   legible, unmissable by contrast alone.
+4. The confirm modal gets no motion beyond focus states. It is deliberately
+   blunt.
+5. Marketing must stay free of the web3 bundle. CSS and Web Animations API
+   preferred; `framer-motion` only inside `/app`, and only if the bundle barely
+   moves.
+
+---
+
+## PHASE 4 — Analytics page
+
+Pons has one and it is good. Build ours at `/app/analytics`, wired to whatever
+Phase 0 concluded.
+
+**Hero row** — three figures, serif, large, with delta versus prior period:
+- 24h volume
+- launches (24h and all time)
+- 24h trades
+
+**Below** — daily bar charts for volume and launches, latest bar highlighted,
+using the chart series colours.
+
+**What Pons cannot show, and we can — put it above the charts:**
+- **Total ballast**: the sum of all verified treasury value across every
+  project on the platform
+- **Median backing ratio**: how the market prices projects against their
+  backing
+- **Ballasted share**: what fraction of launches carry a treasury
+
+That block is the whole thesis expressed as numbers. No other launchpad on this
+chain can produce it.
+
+**Rules**
+- Every figure states its source and freshness, exactly as Pons does with
+  "Dune updated 4:09 PM, latest complete day Jul 24 UTC".
+- Figures must reconcile with Discover and the token pages. Protocol totals
+  equal the sum of what Discover lists. No separately maintained counters.
+- If the data source is unreachable or lagging, show "data delayed" with the
+  last update time. Never a stale figure presented as current, never zero.
+- With no launches yet, show a real empty state explaining that, not zeros.
+
+Add Analytics to the bottom navigation.
+
+---
+
+## PHASE 5 — Build warnings
+
+Three warnings on Vercel, non-fatal but they should not be permanent:
+
+```
+Can't resolve '@react-native-async-storage/async-storage' in @metamask/sdk
+Can't resolve 'pino-pretty' in pino
+```
+
+Both come from the WalletConnect/reown dependency tree reaching for optional
+packages that do not exist in a browser build. Resolve them properly in
+`next.config.ts` — alias to `false` or mark external — rather than suppressing
+the output. Confirm the build is clean afterwards and that wallet connection
+still works.
+
+---
+
+## FINAL
+
+Commit each phase separately with a clear message. Push to
+`ballast-core-and-marketing` at the end.
+
+Report:
+- The Dune finding and your recommendation
+- Each visible bug, what caused it, what fixed it
+- Before/after bundle sizes for marketing and `/app`
+- Confirmation that reduced-motion fully disables motion, verified in a browser
+- What the analytics page shows today versus what needs the data layer
+- Anything you chose not to animate, and why

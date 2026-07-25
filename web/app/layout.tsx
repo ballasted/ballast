@@ -38,6 +38,9 @@ export const viewport: Viewport = {
   themeColor: "#0A0C0B",
   width: "device-width",
   initialScale: 1,
+  // Let content extend under the notch/home-indicator so env(safe-area-inset-*)
+  // resolves to real values — the app's bottom nav relies on it (Phase 1 bug 4).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

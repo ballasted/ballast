@@ -58,7 +58,7 @@ export default function TokenDetailPage() {
   if (!isConfigured) {
     return <Notice title="Not configured" body="BackingLens isn't set. Deploy the core contracts and set NEXT_PUBLIC_LENS_ADDRESS." />;
   }
-  if (isLoading) return <div className="card h-40 animate-pulse" />;
+  if (isLoading) return <TokenSkeleton />;
   if (!found || !treasury) {
     return <Notice title="Nothing here" body="No BALLAST token found at this address on the active chain." />;
   }
@@ -212,6 +212,41 @@ function Notice({ title, body }: { title: string; body: string }) {
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h1 className="font-serif font-semibold text-bone">{title}</h1>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+    </div>
+  );
+}
+
+// Loading skeleton shaped like the real token page — header card (logo, name,
+// price) above the accent-bordered backing panel — so the layout doesn't jump
+// when the chain reads land (Phase 3).
+function TokenSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden>
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 animate-pulse rounded-full bg-surface-raised" />
+            <div className="space-y-2">
+              <div className="h-6 w-24 animate-pulse rounded bg-surface-raised" />
+              <div className="h-3 w-36 animate-pulse rounded bg-surface-raised" />
+            </div>
+          </div>
+          <div className="h-7 w-20 animate-pulse rounded bg-surface-raised" />
+        </div>
+        <div className="mt-4 flex gap-2">
+          <div className="h-5 w-16 animate-pulse rounded bg-surface-raised" />
+          <div className="h-5 w-24 animate-pulse rounded bg-surface-raised" />
+        </div>
+      </div>
+      <div className="card border-accent p-5">
+        <div className="h-3 w-28 animate-pulse rounded bg-surface-raised" />
+        <div className="mt-3 h-9 w-40 animate-pulse rounded bg-surface-raised" />
+        <div className="mt-4 h-2.5 w-full animate-pulse rounded-full bg-surface-raised" />
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="h-12 animate-pulse rounded bg-surface-raised" />
+          <div className="h-12 animate-pulse rounded bg-surface-raised" />
+        </div>
+      </div>
     </div>
   );
 }

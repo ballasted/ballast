@@ -1,0 +1,309 @@
+"use client";
+
+import { useProtocolStats } from "@/hooks/useProtocolStats";
+import { useAnalyticsSeries, type AnalyticsSeries } from "@/hooks/useAnalyticsSeries";
+import { useNow } from "@/hooks/useNow";
+import { formatUsd } from "@/lib/format";
+import { formatEt } from "@/lib/marketHours";
+import { BarChart } from "@/components/app/analytics/BarChart";
+import { Meander } from "@/components/Meander";
+import { cn } from "@/lib/cn";
+
+// Analytics (visual-upgrade Phase 4). Two data tiers, each labelled with its
+// source and freshness:
+//   • Chain-live  — total ballast, ballasted share, all-time launches. Read from
+//     the factory registry + BackingLens via the SAME hook Discover uses, so the
+//     totals reconcile with Discover by construction.
+//   • Indexer     — 24h volume/trades and daily bars. Degrade to "data delayed"
+//     with the last indexed time; never a stale or zero value (spec §3.2).
+export function AnalyticsView() {
+  const now = useNow();
+  const stats = useProtocolStats();
+  const series = useAnalyticsSeries();
+
+  if (!stats.isConfigured) {
+    return (
+      <Panel center>
+        <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+        <h2 className="font-serif font-semibold text-bone">Not configured yet</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
+          The factory and BackingLens addresses aren&apos;t set. Deploy the core contracts and set
+          NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS, and these figures read the registry live.
+        </p>
+      </Panel>
+    );
+  }
+
+  if (!stats.isLoading && !stats.hasLaunches) {
+    return (
+      <Panel center>
+        <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+        <h2 className="font-serif font-semibold text-bone">Nothing to measure yet</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
+          No projects have launched on this network, so there are no protocol figures to show — not zeros, just
+          nothing yet. The moment the first launch confirms, its treasury shows up here and in Discover with the same
+          numbers.
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Source & freshness banner — like Pons' "Dune updated…", but honest about
+          which tier each figure comes from. */}
+      <FreshnessBanner series={series} now={now} />
+
+      {/* ── Hero row — three figures, serif, large, with delta vs prior period ── */}
+      <section className="grid gap-3 sm:grid-cols-3">
+        <HeroFigure
+          label="24h volume"
+          value={series.available ? usdNum(series.volume24hUsd) : undefined}
+          fallback={degradeLabel(series)}
+          delta={<Delta cur={series.volume24hUsd} prev={series.volumePrev24hUsd} />}
+          source={series.available ? "Indexer" : undefined}
+        />
+        <HeroFigure
+          label="Launches"
+          value={stats.isLoading ? undefined : String(stats.launchesAllTime)}
+          fallback="reading chain…"
+          sub={
+            series.available
+              ? `${series.launches24h ?? 0} in last 24h`
+              : `all time · 24h ${degradeLabel(series).toLowerCase()}`
+          }
+          source="Chain-live"
+        />
+        <HeroFigure
+          label="24h trades"
+          value={series.available ? numFmt(series.trades24h) : undefined}
+          fallback={degradeLabel(series)}
+          delta={<Delta cur={series.trades24h} prev={series.tradesPrev24h} />}
+          source={series.available ? "Indexer" : undefined}
+        />
+      </section>
+
+      {/* ── The thesis, expressed as numbers — above the charts. No other
+          launchpad on this chain can produce this block. ── */}
+      <section>
+        <h2 className="field-label mb-3 text-text-faint">What only BALLAST can show</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <ThesisFigure
+            label="Total ballast"
+            value={stats.isLoading ? undefined : formatUsd(stats.totalBallastUsd, { compact: true })}
+            sub={`${formatUsd(stats.lockedBallastUsd, { compact: true })} locked forever`}
+            source="Chain-live"
+            accent
+          />
+          <ThesisFigure
+            label="Median backing ratio"
+            value={stats.medianBackingRatio !== null ? `${stats.medianBackingRatio.toFixed(2)}×` : undefined}
+            fallback="needs a market source"
+            sub="market price ÷ backing"
+            source={stats.medianBackingRatio !== null ? "Chain-live" : undefined}
+          />
+          <ThesisFigure
+            label="Ballasted share"
+            value={
+              stats.ballastedSharePct === undefined ? undefined : `${Math.round(stats.ballastedSharePct)}%`
+            }
+            fallback="reading chain…"
+            sub={`${stats.ballastedCount} of ${stats.launchesAllTime} carry a treasury`}
+            source="Chain-live"
+            accent
+          />
+        </div>
+      </section>
+
+      <Meander className="opacity-60" />
+
+      {/* ── Daily bar charts — volume + launches, latest bar highlighted ── */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <ChartCard title="Daily volume" series={series}>
+          {series.available && series.daily.length > 0 ? (
+            <BarChart
+              ariaLabel="Daily traded volume in USD"
+              data={series.daily.map((d) => ({ label: d.day, value: d.volumeUsd }))}
+              formatValue={(n) => usdNum(n)}
+            />
+          ) : null}
+        </ChartCard>
+        <ChartCard title="Daily launches" series={series}>
+          {series.available && series.daily.length > 0 ? (
+            <BarChart
+              ariaLabel="Projects launched per day"
+              data={series.daily.map((d) => ({ label: d.day, value: d.launches }))}
+              formatValue={(n) => numFmt(n)}
+            />
+          ) : null}
+        </ChartCard>
+      </section>
+    </div>
+  );
+}
+
+// ── freshness / source ────────────────────────────────────────────────────────
+function FreshnessBanner({ series, now }: { series: AnalyticsSeries; now: number }) {
+  const chainLine = "Backing & totals read live from chain";
+  const indexer = series.available
+    ? `Indexer live${series.lastIndexedAt ? ` · updated ${formatEt(series.lastIndexedAt)}` : ""}`
+    : `Volume & trades ${degradeLabel(series).toLowerCase()}${
+        series.lastIndexedAt ? ` · last indexed ${formatEt(series.lastIndexedAt)}` : ""
+      }`;
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-faint">
+      <span className="inline-flex items-center gap-1 text-green">
+        <span aria-hidden>●</span> {chainLine}
+      </span>
+      <span aria-hidden>·</span>
+      <span className={series.available ? "text-text-muted" : "text-warning"}>{indexer}</span>
+      {now > 0 && <span className="ml-auto text-text-faint">as of {formatEt(now)}</span>}
+    </div>
+  );
+}
+
+function degradeLabel(series: AnalyticsSeries): string {
+  if (series.available) return "";
+  switch (series.reason) {
+    case "unconfigured":
+      return "Needs indexer";
+    case "down":
+      return "Indexer unreachable";
+    default:
+      return "Data delayed";
+  }
+}
+
+// ── figure tiles ──────────────────────────────────────────────────────────────
+function HeroFigure({
+  label,
+  value,
+  fallback,
+  sub,
+  delta,
+  source,
+}: {
+  label: string;
+  value?: string;
+  fallback?: string;
+  sub?: string;
+  delta?: React.ReactNode;
+  source?: string;
+}) {
+  return (
+    <div className="card p-5">
+      <div className="field-label mb-0 text-text-faint">{label}</div>
+      <div className="mt-2 font-serif text-3xl font-semibold tabular-nums text-bone">
+        {value ?? <span className="text-text-faint">{fallback}</span>}
+      </div>
+      <div className="mt-1 min-h-[18px] text-xs">
+        {value && delta ? delta : sub ? <span className="text-text-muted">{sub}</span> : null}
+      </div>
+      {source && <SourceTag source={source} />}
+    </div>
+  );
+}
+
+function ThesisFigure({
+  label,
+  value,
+  fallback,
+  sub,
+  source,
+  accent,
+}: {
+  label: string;
+  value?: string;
+  fallback?: string;
+  sub?: string;
+  source?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className={cn("card p-5", accent && "border-accent")}>
+      <div className="field-label mb-0 text-text-faint">{label}</div>
+      <div className="mt-2 font-serif text-3xl font-semibold tabular-nums text-bone">
+        {value ?? <span className="text-base font-sans font-normal text-text-faint">{fallback}</span>}
+      </div>
+      {sub && <div className="mt-1 text-xs text-text-muted">{sub}</div>}
+      {source && <SourceTag source={source} />}
+    </div>
+  );
+}
+
+function SourceTag({ source }: { source: string }) {
+  const chain = source === "Chain-live";
+  return (
+    <div className={cn("mt-3 inline-flex items-center gap-1 text-[11px]", chain ? "text-green" : "text-text-faint")}>
+      <span aria-hidden>{chain ? "●" : "◴"}</span> {source}
+    </div>
+  );
+}
+
+function Delta({ cur, prev }: { cur?: number; prev?: number }) {
+  if (cur === undefined || prev === undefined || prev === 0) {
+    return <span className="text-text-faint">no prior period</span>;
+  }
+  const pct = ((cur - prev) / prev) * 100;
+  const up = pct >= 0;
+  return (
+    <span className={up ? "text-positive" : "text-negative"}>
+      {up ? "+" : ""}
+      {pct.toFixed(1)}% vs prior 24h
+    </span>
+  );
+}
+
+function ChartCard({
+  title,
+  series,
+  children,
+}: {
+  title: string;
+  series: AnalyticsSeries;
+  children: React.ReactNode;
+}) {
+  const hasData = series.available && series.daily.length > 0;
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
+        <span className="text-[11px] text-text-faint">Last 30 days · Indexer</span>
+      </div>
+      <div className="mt-4">
+        {hasData ? (
+          children
+        ) : (
+          <div className="flex h-40 flex-col items-center justify-center rounded-input border border-dashed border-border text-center">
+            <p className="text-sm text-warning">{series.available ? "No activity in this window yet" : degradeLabel(series)}</p>
+            <p className="mt-1 max-w-xs text-xs text-text-faint">
+              {series.available
+                ? "Bars appear here as trades and launches accrue."
+                : "This chart is drawn from the Ponder indexer. It fills in once the indexer is wired and caught up — never with a fabricated series."}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Panel({ children, center }: { children: React.ReactNode; center?: boolean }) {
+  return <div className={cn("card p-8", center && "text-center")}>{children}</div>;
+}
+
+// Plain-number USD (indexer values are JS numbers, not 1e18 bigints).
+function usdNum(n?: number): string {
+  if (n === undefined) return "—";
+  return Intl.NumberFormat("en", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
+function numFmt(n?: number): string {
+  if (n === undefined) return "—";
+  return Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
