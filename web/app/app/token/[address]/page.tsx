@@ -97,11 +97,16 @@ export default function TokenDetailPage() {
             {/* Chain price wins when available (on-chain StateView); otherwise fall
                 back to GeckoTerminal, clearly labelled. Never a fabricated figure. */}
             <div className="figure-primary text-2xl">
-              {marketPriceUsd !== undefined
-                ? formatBackingPerToken(marketPriceUsd)
-                : market?.priceUsd !== undefined
-                  ? formatSmallUsd(market.priceUsd)
-                  : "—"}
+              {(() => {
+                const v =
+                  marketPriceUsd !== undefined
+                    ? formatBackingPerToken(marketPriceUsd)
+                    : market?.priceUsd !== undefined
+                      ? formatSmallUsd(market.priceUsd)
+                      : "—";
+                // Crossfade the price on change; never count it up.
+                return <span key={v} className="anim-fade inline-block">{v}</span>;
+              })()}
             </div>
             <div className="metric-secondary">
               {marketPriceUsd !== undefined
