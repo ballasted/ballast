@@ -5,6 +5,7 @@ import Link from "next/link";
 import { formatUnits } from "viem";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { Meander } from "@/components/Meander";
 import { formatUsd, formatBackingPerToken } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
 import { cn } from "@/lib/cn";
@@ -102,14 +103,30 @@ export default function PortfolioPage() {
           </div>
         ) : tab === "holdings" ? (
           holdings.length === 0 ? (
-            <Notice title="No holdings" body="You don't hold any BALLAST tokens on this network yet. Find one on Discover." />
+            <Notice
+              title="You hold nothing yet"
+              body="No BALLAST tokens in this wallet on this network. Once you hold some, the backed-versus-unbacked exposure bar above fills in with your real split."
+              action={
+                <Link href="/app/discover" className="btn-primary inline-block px-5">
+                  Find a project on Discover
+                </Link>
+              }
+            />
           ) : (
             <div className="space-y-2">
               {holdings.map((h) => <HoldingRow key={h.project.token} h={h} />)}
             </div>
           )
         ) : myLaunches.length === 0 ? (
-          <Notice title="No launches" body="You haven't launched a project from this wallet. Create one to see it here." />
+          <Notice
+            title="No launches yet"
+            body="You haven't launched a project from this wallet. When you do, it appears here with its live treasury value."
+            action={
+              <Link href="/app/create" className="btn-primary inline-block px-5">
+                Create a launch
+              </Link>
+            }
+          />
         ) : (
           <div className="space-y-2">{myLaunches.map((p) => <LaunchRow key={p.token} p={p} />)}</div>
         )}
@@ -166,11 +183,13 @@ function LaunchRow({ p }: { p: Project }) {
   );
 }
 
-function Notice({ title, body }: { title: string; body: string }) {
+function Notice({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return (
-    <div className="card p-8 text-center">
-      <h2 className="font-semibold text-text-primary">{title}</h2>
+    <div className="card p-10 text-center">
+      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+      <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }

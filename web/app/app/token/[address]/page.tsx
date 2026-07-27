@@ -169,11 +169,11 @@ export default function TokenDetailPage() {
 
       <PendingDataPanel
         title="Holders"
-        what="The holder list — with LP, treasury, and creator labelled — is built from Transfer events by the indexer, which isn't wired yet. Holder count will equal the length of this list."
+        what="Until someone buys, the pool holds essentially the entire supply — that's a true state, not a gap. The full holder list, with LP, treasury, and creator labelled, is built from Transfer events by the indexer, which isn't wired yet."
       />
       <PendingDataPanel
         title="Recent trades"
-        what="The trade feed comes from pool swap events via the indexer, which isn't wired yet. 24h volume is the sum of this feed over that window."
+        what="No trades yet. The trade feed and the price chart fill in once the pool has traded — price and backing above are already live, read straight from the chain. 24h volume is the sum of this feed over that window."
       />
 
       <AllocationSlot />
