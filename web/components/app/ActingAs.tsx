@@ -13,16 +13,10 @@ export function ActingAs({ className, label = "Acting as" }: { className?: strin
   const { address, isConnected } = useAccount();
   if (!isConnected || !address) return null;
   return (
-    <div
-      className={cn(
-        "flex items-center justify-center gap-2 rounded-input border border-border bg-bg px-3 py-1.5 text-xs",
-        className,
-      )}
-      title={address}
-    >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-green" aria-hidden />
-      <span className="text-text-faint">{label}</span>
-      <span className="font-mono font-medium text-text-primary">{shortAddress(address)}</span>
+    <div className={cn("flex items-center gap-1.5 text-xs text-text-faint", className)} title={address}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green/80" aria-hidden />
+      <span>{label}</span>
+      <span className="font-mono text-text-secondary">{shortAddress(address)}</span>
     </div>
   );
 }
