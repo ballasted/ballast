@@ -10,6 +10,7 @@ import { useNow } from "@/hooks/useNow";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { MarketPanel } from "@/components/app/token/MarketPanel";
+import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import {
@@ -139,6 +140,11 @@ export default function TokenDetailPage() {
           )}
         </div>
       </header>
+
+      {/* $BALLAST-only: it shares the platform name and routes creator fees to the
+          protocol vault, so a permanent "not a protocol token" notice sits here,
+          above the fold, right under the name (see ProtocolTokenNotice). */}
+      <ProtocolTokenNotice token={token} />
 
       {/* Verified backing — above the chart, the reason the page exists. */}
       {backing && <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />}

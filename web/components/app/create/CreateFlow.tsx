@@ -11,6 +11,7 @@ import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
+import { ActingAs } from "@/components/app/ActingAs";
 import { Logo } from "@/components/app/Logo";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
@@ -453,8 +454,10 @@ export function CreateFlow() {
             </button>
           ) : (
             <>
-              {/* Show funds before launching, read through our own transport (not
-                  reown's modal) so a zero balance is visible up front. */}
+              {/* Which wallet is launching, and its funds — both read through our
+                  own transport (not reown's modal) so the acting address and a zero
+                  balance are both visible up front. */}
+              <ActingAs className="mb-2 w-full" label="Launching from" />
               <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
                 <span>Wallet balance</span>
                 <WalletBalance />
