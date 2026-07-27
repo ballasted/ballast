@@ -64,9 +64,11 @@ export function BackingPanel({
         Verified backing
       </h2>
 
-      {/* Combined backing per token — the headline figure. */}
+      {/* Combined backing per token — the headline figure. Keyed by its formatted
+          value so a change crossfades the settled figure in; it never counts up
+          toward a value (that would read as growth — a claim we don't make). */}
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="figure-primary text-3xl">
+        <span key={formatBackingPerToken(backing.backingPerToken)} className="figure-primary anim-fade text-3xl">
           {formatBackingPerToken(backing.backingPerToken)}
         </span>
         <span className="metric-secondary">backing per token</span>

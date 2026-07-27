@@ -1,0 +1,194 @@
+# BALLAST — making the interface feel finished
+
+Read `CLAUDE.md`, `docs/BALLAST-build-spec.md`, and `docs/BALLAST-visual-upgrade.md`
+first. This extends that visual spec rather than replacing it — the palette,
+typography and motion rules there still stand.
+
+The problem this document solves: **the interface reads as empty black.** Not
+because it's badly styled, but for three specific reasons that need different
+fixes.
+
+Run every phase, commit after each, push at the end.
+
+---
+
+## Why it looks empty — the actual causes
+
+1. **Content sprawls across the full viewport.** The Discover page puts one
+   card in a 1900px-wide space. Nothing anchors the eye. This is the single
+   biggest contributor and the cheapest to fix.
+
+2. **The background is one flat near-black.** `#0A0C0B` edge to edge with no
+   variation. Every good dark interface has ambient depth — Pons's background
+   carries a faint olive warmth, not pure black.
+
+3. **The surface steps are too close together.** Ground `#0A0C0B` against
+   surface `#101412` is barely 2% apart. Cards don't read as cards.
+
+Underneath all three is an honest fact: there genuinely is very little data
+yet. Two test tokens, no trades. So empty states aren't an edge case here —
+they're the default view, and they must be designed as compositions rather
+than left as gaps.
+
+---
+
+## PHASE 1 — Structure
+
+### Constrain the content
+
+- Max width **1200px**, centred, with 24px gutters on mobile and 48px on
+  desktop.
+- The token page's two-column layout (swap panel left, chart right) keeps its
+  proportions but sits inside that container.
+- Discover cards go to a responsive grid: 1 column mobile, 2 at 768px, 3 at
+  1100px. With one launch that still leaves a gap — so make the card wider and
+  taller at low counts rather than stranding a small card in a wide row.
+
+### Widen the surface steps
+
+```
+Ground          #0A0C0B
+Surface         #12171400 → use #131917
+Surface raised  #181F1B
+Surface hover   #1D251F
+Border          #232B25
+Border strong   #313A33
+Border accent   #1B3A20      cards carrying backing data
+```
+
+The point is that a card must be visibly a card without needing a shadow.
+Shadows read as cheap on near-black; contrast steps don't.
+
+### Ambient background
+
+Not a flat fill. Apply, in order of subtlety:
+
+- A very large, very faint radial gradient anchored top-centre — patina green
+  at roughly 3% opacity fading to nothing by 60% of the viewport height. This
+  gives the page a light source.
+- Beneath the fold, a second radial in bone at ~2%, bottom-right.
+- An optional fine noise texture at ~1.5% opacity to kill banding on the
+  gradients.
+
+Test on an OLED phone. If any of it reads as a visible blob, halve it. The
+goal is that removing it should feel like something is missing, while adding it
+should never be noticeable as a discrete element.
+
+### Meander as watermark
+
+Beyond the section rules already specced: a single very large meander,
+outlined, at 2–3% opacity, bleeding off the top-right of the Discover and
+Analytics pages. It fills dead space with brand rather than decoration.
+
+Never behind body text. Never on the confirm modal or the deposit flow.
+
+---
+
+## PHASE 2 — Empty states as designed compositions
+
+Every empty state gets: the meander mark, a serif headline in bone, one or two
+sentences of plain explanation, and a relevant action where one exists. Never a
+bare sentence floating in space.
+
+Write them honestly, in the voice of the rest of the product:
+
+- **Discover, no launches**: "Nothing has launched yet." Then: the first
+  projects will appear here as they launch, and what the Ballasted tab will
+  show when they do. Action: Create a launch.
+- **Discover, filtered to empty**: name the filter and offer to clear it.
+- **Portfolio, empty wallet**: "You hold nothing yet." Explain that the
+  backed-versus-unbacked exposure bar appears once you do.
+- **Analytics, no data**: state plainly that protocol totals appear once
+  projects launch. Do not render zeroed charts — a chart of nothing reads as
+  broken.
+- **Token page, no trades**: "No trades yet." Explain that the chart appears
+  once the pool has traded, and that price and backing are already live above.
+- **Holders, only the LP**: say so — the pool holds the supply and no wallet
+  has bought yet. That is a true and interesting state, not a gap.
+
+---
+
+## PHASE 3 — The swap panel
+
+Reference: Pons's token page. Ours differs in what it can honestly show.
+
+**Layout**
+- Buy / Sell as a segmented control at the top
+- Pay input with token selector, balance beneath, Max button
+- The pair-swap arrow, centred, on the divider between inputs
+- Receive amount, read-only, with the token symbol
+- Quick-size row: 25 / 50 / 75 / 100%
+- Slippage: 0.5 / 1 / 2% presets plus a custom field. Default 1%. Warn above
+  5%, block above 15%.
+- Detail rows: price impact, minimum received, network fee estimate. Each
+  labelled with what it means, not just a number.
+- One primary button whose label states the current state — Enter amount,
+  Insufficient ETH, Approve TOKEN, Buy, Sell, Wrapping…, Confirming…
+
+**States that matter**
+- Buy needs no approval — say so where the approval row would otherwise be:
+  "No approval needed — ETH is wrapped inside the swap." That's a genuine
+  advantage over most interfaces and it should be visible.
+- Sell shows the Permit2 steps explicitly, with each marked done as it
+  completes.
+- On revert, show the decoded reason in the panel, not a toast that vanishes.
+
+**Acting-as chip** stays where it is, but tighten it visually — it currently
+reads as a debug element rather than part of the design.
+
+---
+
+## PHASE 4 — Motion, specifically where it's missing
+
+The rules in `BALLAST-visual-upgrade.md` stand. What still isn't implemented,
+in priority order:
+
+1. **Skeletons for every chain read.** This is the single biggest perceived-
+   quality win and it's still absent. Chain reads take seconds; a blank panel
+   reads as broken. Skeletons must match the final layout exactly so nothing
+   shifts when data lands.
+2. **Discover cards stagger in** ~40ms apart as data resolves, capped at ~8.
+3. **The backing split bar** animates width from 0 on first paint only.
+4. **Swap panel**: the receive amount crossfades as the quote updates; the
+   primary button's label crossfades between states; the pair-swap arrow
+   rotates 180° on tap.
+5. **Page transitions** crossfade under 200ms.
+6. **Number changes crossfade.** Never count up — on a backing figure that
+   reads as growth, a claim we don't make.
+
+Verify `prefers-reduced-motion: reduce` actually disables all of it in a real
+browser, not just in code.
+
+---
+
+## PHASE 5 — Environment audit
+
+Print a complete, current audit of every environment variable, because several
+have been added since the last one (reown, RPC proxy, GeckoTerminal, indexer)
+and I need to configure Vercel in one pass.
+
+For each variable: name, which file it belongs in (root `.env`,
+`web/.env.local`, indexer host, or Vercel), which process reads it, public or
+secret, required or optional, and the actual value where you can determine it.
+
+Then three copy-paste blocks:
+- **BLOCK 1** — root `.env`
+- **BLOCK 2** — `web/.env.local`
+- **BLOCK 3** — Vercel, split into public `NEXT_PUBLIC_` and server-only
+
+Mark clearly which variables the deployed site needs to work **right now**
+versus which unlock later features.
+
+Flag anything set but unread, and anything read but missing from
+`.env.example`.
+
+---
+
+## FINAL REPORT
+
+- Before and after screenshots described in words: what specifically changed
+  about the sense of emptiness
+- Bundle sizes for marketing and `/app`
+- Confirmation that reduced-motion disables motion, verified in a browser
+- The environment audit
+- Anything you chose not to do, and why

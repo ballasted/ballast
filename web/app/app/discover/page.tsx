@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { Meander } from "@/components/Meander";
+import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
 
 type SortTab = "ballasted" | "trending" | "new";
@@ -51,7 +53,8 @@ export default function DiscoverPage() {
   }, [projects]);
 
   return (
-    <div>
+    <div className="relative overflow-hidden">
+      <MeanderWatermark />
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
 
       {/* Sort tabs — underline style. Ballasted is the default: the positioning
@@ -122,19 +125,45 @@ export default function DiscoverPage() {
           <SkeletonGrid />
         ) : !hasLaunches ? (
           <EmptyState
-            title="No projects have launched yet"
-            body="Nothing has been launched on this network. Be the first — Create a project, and it appears here the moment the launch confirms on-chain."
+            title="Nothing has launched yet"
+            body="The first projects appear here the moment a launch confirms on-chain. The Ballasted tab ranks them by verified treasury value locked forever — a project's backing is the default order, not an afterthought."
+            action={
+              <Link href="/app/create" className="btn-primary inline-block px-5">
+                Create a launch
+              </Link>
+            }
           />
         ) : sorted.length === 0 ? (
-          <EmptyState title="Nothing here" body="No projects match this view." />
+          <EmptyState
+            title="Nothing in this view"
+            body={`No projects match the ${sort} view right now.`}
+            action={
+              <button className="btn-secondary px-5" onClick={() => setSort("ballasted")}>
+                Show all, by backing
+              </button>
+            }
+          />
         ) : (
-          <div key={sort} className="grid gap-3 sm:grid-cols-2">
+          // Responsive grid: 1 / 2 / 3 columns. At very low counts (1) the card is
+          // featured and centred rather than stranded small in a wide row (§1).
+          <div
+            key={sort}
+            className={cn(
+              "grid gap-4",
+              sorted.length <= 1
+                ? "mx-auto max-w-xl grid-cols-1"
+                : sorted.length === 2
+                  ? "sm:grid-cols-2"
+                  : "sm:grid-cols-2 lg:grid-cols-3",
+            )}
+          >
             {sorted.map((p, i) => (
               <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <ProjectCard
                   project={p}
                   hideSparkline={sort === "new"}
                   firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
+                  featured={sorted.length <= 1}
                 />
               </div>
             ))}
@@ -166,12 +195,13 @@ function sortProjects(projects: Project[], sort: SortTab): Project[] {
   return copy; // "new" — preserve source order until the indexer provides timestamps
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
   return (
-    <div className="card p-8 text-center">
+    <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif font-semibold text-bone">{title}</h2>
+      <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }

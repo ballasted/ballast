@@ -194,7 +194,7 @@ function HeroFigure({
     <div className="card p-5">
       <div className="field-label mb-0 text-text-faint">{label}</div>
       <div className="mt-2 font-serif text-3xl font-semibold tabular-nums text-bone">
-        {value ?? <span className="text-text-faint">{fallback}</span>}
+        <FigureValue value={value} fallback={fallback} />
       </div>
       <div className="mt-1 min-h-[18px] text-xs">
         {value && delta ? delta : sub ? <span className="text-text-muted">{sub}</span> : null}
@@ -202,6 +202,23 @@ function HeroFigure({
       {source && <SourceTag source={source} />}
     </div>
   );
+}
+
+// A figure while its chain/indexer read is in flight shows a skeleton bar (not a
+// blank), then crossfades the settled value in. If the source is unavailable it
+// shows the honest fallback label instead — never a fabricated zero.
+function FigureValue({ value, fallback }: { value?: string; fallback?: string }) {
+  if (value !== undefined) {
+    return (
+      <span key={value} className="anim-fade inline-block">
+        {value}
+      </span>
+    );
+  }
+  if (fallback && /…$/.test(fallback)) {
+    return <span className="inline-block h-7 w-24 animate-pulse rounded bg-surface-raised align-middle" aria-hidden />;
+  }
+  return <span className="text-base font-sans font-normal text-text-faint">{fallback}</span>;
 }
 
 function ThesisFigure({
@@ -223,7 +240,7 @@ function ThesisFigure({
     <div className={cn("card p-5", accent && "border-accent")}>
       <div className="field-label mb-0 text-text-faint">{label}</div>
       <div className="mt-2 font-serif text-3xl font-semibold tabular-nums text-bone">
-        {value ?? <span className="text-base font-sans font-normal text-text-faint">{fallback}</span>}
+        <FigureValue value={value} fallback={fallback} />
       </div>
       {sub && <div className="mt-1 text-xs text-text-muted">{sub}</div>}
       {source && <SourceTag source={source} />}

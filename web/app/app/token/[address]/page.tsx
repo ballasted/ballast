@@ -97,11 +97,16 @@ export default function TokenDetailPage() {
             {/* Chain price wins when available (on-chain StateView); otherwise fall
                 back to GeckoTerminal, clearly labelled. Never a fabricated figure. */}
             <div className="figure-primary text-2xl">
-              {marketPriceUsd !== undefined
-                ? formatBackingPerToken(marketPriceUsd)
-                : market?.priceUsd !== undefined
-                  ? formatSmallUsd(market.priceUsd)
-                  : "—"}
+              {(() => {
+                const v =
+                  marketPriceUsd !== undefined
+                    ? formatBackingPerToken(marketPriceUsd)
+                    : market?.priceUsd !== undefined
+                      ? formatSmallUsd(market.priceUsd)
+                      : "—";
+                // Crossfade the price on change; never count it up.
+                return <span key={v} className="anim-fade inline-block">{v}</span>;
+              })()}
             </div>
             <div className="metric-secondary">
               {marketPriceUsd !== undefined
@@ -169,11 +174,11 @@ export default function TokenDetailPage() {
 
       <PendingDataPanel
         title="Holders"
-        what="The holder list — with LP, treasury, and creator labelled — is built from Transfer events by the indexer, which isn't wired yet. Holder count will equal the length of this list."
+        what="Until someone buys, the pool holds essentially the entire supply — that's a true state, not a gap. The full holder list, with LP, treasury, and creator labelled, is built from Transfer events by the indexer, which isn't wired yet."
       />
       <PendingDataPanel
         title="Recent trades"
-        what="The trade feed comes from pool swap events via the indexer, which isn't wired yet. 24h volume is the sum of this feed over that window."
+        what="No trades yet. The trade feed and the price chart fill in once the pool has traded — price and backing above are already live, read straight from the chain. 24h volume is the sum of this feed over that window."
       />
 
       <AllocationSlot />

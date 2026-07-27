@@ -12,9 +12,12 @@ import { Wordmark } from "@/components/Wordmark";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
+      {/* Ambient depth behind everything — a fixed, faint light source so the app
+          never reads as flat edge-to-edge black (density §1). */}
+      <div className="ambient-bg" aria-hidden />
       <div className="flex min-h-screen flex-col">
         <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-content items-center justify-between px-5">
+          <div className="mx-auto flex h-14 max-w-content items-center justify-between px-6 lg:px-12">
             <Wordmark />
             <div className="flex items-center gap-3">
               <WalletBalance className="hidden sm:inline" />
@@ -24,10 +27,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
         <ConfigGuard />
         <NetworkGuard />
-        {/* Bottom padding clears the fixed bottom nav (~62px of content) PLUS the
-            device safe-area inset, so page content is never obscured on mobile
-            (Phase 1 bug 4). Keep in sync with BottomNav's height. */}
-        <main className="mx-auto w-full max-w-content flex-1 px-5 pb-[calc(72px+env(safe-area-inset-bottom))] pt-4">
+        {/* Content sits in a 1200px column with 24px (mobile) / 48px (desktop)
+            gutters so it's anchored, not sprawling (density §1). Bottom padding
+            clears the fixed bottom nav PLUS the device safe-area inset, so content
+            is never obscured on mobile. Keep in sync with BottomNav's height. */}
+        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(72px+env(safe-area-inset-bottom))] pt-5 lg:px-12">
           {children}
         </main>
         <BottomNav />
