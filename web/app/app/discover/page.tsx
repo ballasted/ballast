@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { Meander } from "@/components/Meander";
+import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
 
 type SortTab = "ballasted" | "trending" | "new";
@@ -51,7 +52,8 @@ export default function DiscoverPage() {
   }, [projects]);
 
   return (
-    <div>
+    <div className="relative overflow-hidden">
+      <MeanderWatermark />
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
 
       {/* Sort tabs — underline style. Ballasted is the default: the positioning
@@ -128,13 +130,26 @@ export default function DiscoverPage() {
         ) : sorted.length === 0 ? (
           <EmptyState title="Nothing here" body="No projects match this view." />
         ) : (
-          <div key={sort} className="grid gap-3 sm:grid-cols-2">
+          // Responsive grid: 1 / 2 / 3 columns. At very low counts (1) the card is
+          // featured and centred rather than stranded small in a wide row (§1).
+          <div
+            key={sort}
+            className={cn(
+              "grid gap-4",
+              sorted.length <= 1
+                ? "mx-auto max-w-xl grid-cols-1"
+                : sorted.length === 2
+                  ? "sm:grid-cols-2"
+                  : "sm:grid-cols-2 lg:grid-cols-3",
+            )}
+          >
             {sorted.map((p, i) => (
               <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <ProjectCard
                   project={p}
                   hideSparkline={sort === "new"}
                   firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
+                  featured={sorted.length <= 1}
                 />
               </div>
             ))}

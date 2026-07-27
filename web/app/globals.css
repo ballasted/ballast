@@ -23,6 +23,28 @@
     background: rgba(0, 200, 5, 0.25);
   }
 
+  /* Ambient depth (density §1). A fixed layer behind /app content: a faint patina
+     glow top-centre (gives the page a light source), a fainter bone glow bottom-
+     right, and a ~1.5% noise wash to kill gradient banding on OLED. Never over
+     text — content sits above it. It should read as absence when removed, never
+     as a discrete blob when present; if any of it shows as a shape, halve it. */
+  .ambient-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 58% at 50% 0%, rgba(0, 200, 5, 0.035), rgba(0, 200, 5, 0) 60%),
+      radial-gradient(80% 50% at 100% 100%, rgba(221, 216, 202, 0.02), rgba(221, 216, 202, 0) 55%);
+  }
+  .ambient-bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
   a {
     @apply transition-colors duration-150;
   }

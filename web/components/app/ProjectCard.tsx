@@ -15,10 +15,14 @@ export function ProjectCard({
   project,
   hideSparkline,
   firstLaunch,
+  featured,
 }: {
   project: Project;
   hideSparkline?: boolean;
   firstLaunch?: boolean;
+  // At very low counts Discover renders one card "featured" — wider padding and a
+  // larger mark — rather than stranding a small card in a wide row (density §1).
+  featured?: boolean;
 }) {
   const { symbol, name, backing, ballasted, token, metadataURI } = project;
   // Resolve the pinned logo from the token's on-chain metadataURI — same source
@@ -29,11 +33,11 @@ export function ProjectCard({
   return (
     <Link
       href={`/app/token/${token}`}
-      className={`card card-hover block p-4 ${ballasted ? "border-accent" : ""}`}
+      className={`card card-hover block ${featured ? "p-6" : "p-4"} ${ballasted ? "border-accent" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={40} />
+          <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={featured ? 56 : 40} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-semibold text-text-primary">

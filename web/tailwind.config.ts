@@ -12,11 +12,11 @@ const config: Config = {
     extend: {
       colors: {
         bg: "#0A0C0B", // Ground
-        card: "#101412", // Surface
-        "surface-raised": "#161B18", // elevated cards, the preview panel
-        "surface-hover": "#1A211C", // card hover lift
-        border: "#1C211E",
-        "border-strong": "#2E352F",
+        card: "#131917", // Surface — widened step so a card reads as a card (density §1)
+        "surface-raised": "#181F1B", // elevated cards, the preview panel
+        "surface-hover": "#1D251F", // card hover lift
+        border: "#232B25",
+        "border-strong": "#313A33",
         green: {
           DEFAULT: "#00C805", // Accent (patina)
           bg: "#0E2A12", // Accent deep
@@ -61,7 +61,7 @@ const config: Config = {
       // carrying backing data, so the panel that matters is visually distinct
       // without a badge (visual-upgrade Phase 2, "Border accent #16301A").
       borderColor: {
-        accent: "#16301A",
+        accent: "#1B3A20",
       },
       fontFamily: {
         sans: [
@@ -89,7 +89,7 @@ const config: Config = {
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       maxWidth: {
-        content: "1080px",
+        content: "1200px", // density §1 — anchor content instead of sprawling edge-to-edge
         prose: "720px",
       },
     },
