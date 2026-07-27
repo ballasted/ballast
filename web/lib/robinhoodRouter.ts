@@ -26,16 +26,21 @@ export const CMD_V4_SWAP = "0x10";
 //   SELL (token → ETH): [V4_SWAP, UNWRAP_WETH] output taken to the router, then
 //                        unwrapped to the user as ETH.
 //
-// ⚠️ UNPROVEN ON THIS FORK. The WETH-only path is proven (ProveSwapMainnet); the
-// wrap/unwrap path is NOT. Two things MUST be pinned against the fork's own source
-// on Blockscout and proven with a ProveSwapEth script BEFORE wiring:
-//   1. Command ids — these are the STOCK universal-router values; this router is a
-//      fork, so confirm its Commands enum (V4_SWAP=0x10 was the only one verified).
-//   2. SETTLE semantics — the proven WETH path used SETTLE_ALL with the USER as
-//      payer (Permit2 pull). After WRAP_ETH the WETH sits in the ROUTER, so the
-//      swap must settle from the router, not pull from the user — that likely
-//      needs SETTLE (payerIsUser=false) rather than SETTLE_ALL. Getting this wrong
-//      reverts or strands funds. Prove it, don't guess it.
+// ENCODING VERIFIED against the deployed fork's own source on Blockscout
+// (2026-07-27), NOT the Uniswap SDK. Confirmed on-chain:
+//   1. Command ids: WRAP_ETH=0x0b, UNWRAP_WETH=0x0c, V4_SWAP=0x10 (Commands.sol).
+//   2. Sentinels: ADDRESS_THIS=address(2), MSG_SENDER=address(1),
+//      CONTRACT_BALANCE=1<<255, OPEN_DELTA=0 (ActionConstants.sol).
+//   3. SETTLE semantics (V4Router.sol + BaseActionsRouter/DeltaResolver):
+//      • SETTLE_ALL pays from msgSender() ALWAYS — usable only when the user holds
+//        the input (the sell), pulled via Permit2.
+//      • After WRAP_ETH the WETH is in the ROUTER, so the buy uses SETTLE with
+//        payerIsUser=false (→ _mapPayer = address(this)) and amount=CONTRACT_BALANCE
+//        (→ router's WETH balance); amount 0 is a no-op in _settle, so NOT 0.
+//      • Sell TAKEs WETH to ADDRESS_THIS (amount 0 = OPEN_DELTA = full credit) then
+//        UNWRAP_WETH to the user (reverts below minOut).
+// ⚠️ Still UNPROVEN with a real on-chain buy/sell — verified by source read, not by
+// execution. A ProveSwapEth run (or the human's retest) must confirm before trust.
 export const CMD_WRAP_ETH = "0x0b"; // inputs: (address recipient, uint256 amount)
 export const CMD_UNWRAP_WETH = "0x0c"; // inputs: (address recipient, uint256 amountMin)
 

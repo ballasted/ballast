@@ -37,3 +37,26 @@ export async function pollReceipt(
   }
   return { status: "lost" };
 }
+
+// A mined-and-reverted receipt carries NO reason (status="reverted" is all the
+// receipt says). To surface the actual error we replay the exact call with
+// eth_call at the block it was mined in — a reverting call throws a viem error
+// that carries the decoded `Error(string)` reason (e.g. TRANSFER_FROM_FAILED) or
+// the raw revert data. We return that error (never throw) so the caller can feed
+// it to decodeTxError; `undefined` means the replay unexpectedly did NOT revert.
+export async function replayForRevert(client: PublicClient, hash: Hash): Promise<unknown> {
+  try {
+    const tx = await client.getTransaction({ hash });
+    await client.call({
+      account: tx.from,
+      to: tx.to ?? undefined,
+      data: tx.input,
+      value: tx.value,
+      gas: tx.gas,
+      blockNumber: tx.blockNumber ?? undefined,
+    });
+    return undefined; // did not revert on replay — nothing to decode
+  } catch (e) {
+    return e;
+  }
+}

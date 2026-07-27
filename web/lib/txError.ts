@@ -30,6 +30,21 @@ const REVERT_COPY: Record<string, string> = {
   SelfBackingForbidden: "A project cannot back itself with its own token.",
 };
 
+// Solidity `Error(string)` reverts (Solmate/OpenZeppelin), which arrive as a plain
+// reason string rather than a named custom error — including via a replayed
+// eth_call (see replayForRevert). Matched as substrings of the decoded message.
+const STRING_REVERT_COPY: Array<[string, string]> = [
+  [
+    "TRANSFER_FROM_FAILED",
+    "The input transfer failed — for a sell, your wallet may not hold enough of the token, or the Permit2 approval didn't go through. Check your balance and try again.",
+  ],
+  ["TRANSFER_FAILED", "A token transfer failed. Check your balance and try again."],
+  ["STF", "The input transfer failed — check your balance and allowance, then try again."],
+  ["V4TooLittleReceived", "Price moved past your slippage tolerance. Raise the tolerance or try a smaller size."],
+  ["AllowanceExpired", "Your Permit2 approval expired. Approve again and retry."],
+  ["InsufficientAllowance", "Your Permit2 approval is insufficient. Approve again and retry."],
+];
+
 export function decodeTxError(err: unknown): string {
   // 1. Full object to the console for diagnosis — never shown to the user.
   //    Surfaces `code` and `data` that the raw message string drops.
@@ -44,6 +59,14 @@ export function decodeTxError(err: unknown): string {
       if (name) return `Transaction reverted: ${name}.`;
     }
     const short = err.shortMessage || err.message;
+    // String reverts (incl. those recovered by replaying a reverted tx) surface
+    // their reason inside the message rather than as a named error — scan for the
+    // ones we can explain. Checked against the full message so a reason buried in
+    // "execution reverted: TRANSFER_FROM_FAILED" is still matched.
+    const detail = `${short} ${err.message}`;
+    for (const [needle, copy] of STRING_REVERT_COPY) {
+      if (detail.includes(needle)) return copy;
+    }
     if (/user rejected|denied|rejected the request/i.test(short)) {
       return "You rejected the transaction in your wallet.";
     }

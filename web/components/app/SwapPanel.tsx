@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useSwap } from "@/hooks/useSwap";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { ActingAs } from "@/components/app/ActingAs";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
 import { isSwapConfigured } from "@/lib/contracts";
@@ -54,8 +55,13 @@ export function SwapPanel({
     );
   }
 
-  const inLabel = side === "buy" ? "WETH" : symbol;
-  const outLabel = side === "buy" ? symbol : "WETH";
+  // Buys spend native ETH (the hook wraps it to WETH under the hood), so label the
+  // input ETH — showing "WETH" would be misleading when the wallet holds ETH.
+  // Buys spend native ETH and receive the token; sells spend the token and receive
+  // native ETH. The wrap/unwrap to WETH happens inside the router, so the user only
+  // ever sees ETH — labelling the leg "WETH" would be misleading.
+  const inLabel = side === "buy" ? "ETH" : symbol;
+  const outLabel = side === "buy" ? symbol : "ETH";
   const busy = s.phase === "approving" || s.phase === "swapping";
 
   // Price impact vs the pool mid: compare the quote's effective price to spot.
@@ -105,6 +111,11 @@ export function SwapPanel({
         placeholder="0.0"
         disabled={busy}
       />
+      <p className="mt-1 text-xs text-text-faint">
+        {side === "buy"
+          ? "Paid in native ETH — wrapped to WETH inside the swap, in one transaction."
+          : "Received as native ETH — the WETH output is unwrapped for you in the same transaction."}
+      </p>
 
       <div className="mt-3 flex items-center justify-between text-sm">
         <span className="text-text-muted">You receive ({outLabel})</span>
@@ -152,6 +163,7 @@ export function SwapPanel({
       </div>
 
       <div className="mt-4">
+        {account && <ActingAs className="mb-2 w-full" />}
         {!account ? (
           <div className="flex justify-center"><ConnectButton /></div>
         ) : s.phase === "success" ? (

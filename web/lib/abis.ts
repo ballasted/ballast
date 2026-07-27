@@ -139,6 +139,27 @@ export const erc20Abi = [
   },
 ] as const;
 
+// WETH — on this chain WETH is an ERC-20 (18 dec) and the pools are token/WETH,
+// but wallets hold NATIVE ETH. A buy therefore wraps ETH → WETH first (deposit is
+// payable and mints WETH 1:1 for the ETH sent). Pulling that WETH into the swap
+// still goes through Permit2 (see useSwap). `withdraw` unwraps back to ETH.
+export const wethAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+] as const;
+
 // ── BallastFactory ──────────────────────────────────────────────────────────
 // The launch registry (the ONLY per-launch address source — never hardcode).
 export const ballastFactoryAbi = [
