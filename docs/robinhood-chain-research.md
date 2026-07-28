@@ -74,6 +74,12 @@ Behavioural model: `docs.chain.link/data-feeds/tokenized-equity-feeds/robinhood`
 
 Standard `AggregatorV3Interface` via the feed **proxy** address. `latestRoundData()` returns `(roundId, answer, startedAt, updatedAt, answeredInRound)`. Most USD feeds use **8 decimals**, but call `decimals()` — never hardcode.
 
+### Observation: two `description()` naming formats coexist (verified 2026-07-28)
+
+The canonical Chainlink directory (`reference-data-directory.vercel.app/feeds-robinhood-mainnet.json`) labels every equity feed uniformly as `Robinhood TICKER / USD`, but the **on-chain `description()` is not uniform**. Reading it live on mainnet 4663, most feeds return `Robinhood TICKER / USD` (SGOV returns `Robinhood SGOV-USD`), while a subset returns an `RH`-prefixed form: `RHNVDA / USD`, `RHTSLA / USD`, `RHMSFT / USD`, `RHSPY / USD`. In every case the feed's `proxyAddress` still matches the directory exactly — the addresses are correct; only the on-chain description string differs.
+
+This is an observation, not a problem. The takeaway for sourcing: **the address from the canonical directory is the identity guard, not the description string** — `description()` is publisher-controlled free text (any contract can return any string), so it only usefully catches a paste error, which "exact ticker + `USD`" verifies under either prefix. Our allowlist gate therefore accepts both forms; the exact string verified per asset at approval time is recorded in `web/scripts/setAssets.ts`. Do not gate on the literal word "Robinhood" alone — it would reject four legitimate feeds. (See CLAUDE.md rule 16.)
+
 ### The multiplier is already in the price
 
 `latestRoundData()` returns the **full per-token price**, already including the corporate-action multiplier. **Do not apply `uiMultiplier()` to it yourself** — doing so double-counts and inflates your valuation. Only use the multiplier if you want to convert to share terms for display.

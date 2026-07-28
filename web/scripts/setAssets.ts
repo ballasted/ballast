@@ -90,6 +90,27 @@ const CANDIDATES: Candidate[] = [
   { ticker: "QQQ", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
 ];
 
+// ── Approval-time record ─────────────────────────────────────────────────────────
+// The exact on-chain feed.description() and feed address verified when these assets
+// were approved (2026-07-28, mainnet 4663). Recorded so that if a feed's
+// description ever changes we know what it said at approval — the run warns on any
+// drift. The feed ADDRESS, sourced from Chainlink's canonical directory, is the
+// real anti-impostor guard; this string only catches paste errors (CLAUDE.md
+// rule 16). Two on-chain naming formats coexist here: "Robinhood TICKER / USD"
+// (or "…-USD") and "RHTICKER / USD".
+const APPROVED_DESCRIPTIONS: Record<string, { feed: string; description: string }> = {
+  SGOV: { feed: "0xa0DF4ee0fFf975306345875E3548Fcc519577A11", description: "Robinhood SGOV-USD" },
+  NVDA: { feed: "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15", description: "RHNVDA / USD" },
+  TSLA: { feed: "0x4A1166a659A55625345e9515b32adECea5547C38", description: "RHTSLA / USD" },
+  GOOGL: { feed: "0xF6f373a037c30F0e5010d854385cA89185AE638b", description: "Robinhood GOOGL / USD" },
+  AAPL: { feed: "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0", description: "Robinhood AAPL / USD" },
+  MSFT: { feed: "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E", description: "RHMSFT / USD" },
+  AMZN: { feed: "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C", description: "Robinhood AMZN / USD" },
+  META: { feed: "0x7C38C00C30BEe9378381E7B6135d7283356D71b1", description: "Robinhood META / USD" },
+  SPY: { feed: "0x319724394D3A0e3669269846abE664Cd621f9f6A", description: "RHSPY / USD" },
+  QQQ: { feed: "0x80901d846d5D7B030F26B480776EE3b29374C2ae", description: "Robinhood QQQ / USD" },
+};
+
 // ── ABIs (minimal) ───────────────────────────────────────────────────────────────
 const erc20Abi = [
   { type: "function", name: "symbol", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
@@ -213,6 +234,14 @@ async function main() {
       const desc = await feedC.read.description();
       const [, answer, , updatedAt] = await feedC.read.latestRoundData();
 
+      // Drift vs the approval-time record (informational — the gate below is the
+      // real check). Flags a changed description OR an env feed address that no
+      // longer matches what was approved.
+      const rec = APPROVED_DESCRIPTIONS[c.ticker];
+      let drift = "";
+      if (rec && rec.description !== desc) drift += ` ⚠ DESC DRIFT (approved "${rec.description}")`;
+      if (rec && rec.feed.toLowerCase() !== feed.toLowerCase()) drift += ` ⚠ FEED ADDR DRIFT (approved ${rec.feed})`;
+
       // Gate: the on-chain description must anchor the exact ticker to a Robinhood
       // prefix and be a USD feed. ⚠️ FLAG (CLAUDE.md rule 16 conflict): rule 16 says
       // feeds are "Robinhood TICKER / USD", and most are — but SOME feeds on chain
@@ -261,7 +290,7 @@ async function main() {
         token,
         feed,
         status: "PASS",
-        detail: `"${desc}" · age ${ageSec}s`,
+        detail: `"${desc}" · age ${ageSec}s${drift}`,
         tokenDecimals,
         feedDecimals,
         price,
