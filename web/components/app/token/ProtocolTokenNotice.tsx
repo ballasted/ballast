@@ -1,31 +1,45 @@
 import type { Address } from "viem";
 
-// $BALLAST — the first token launched on this launchpad, by the BALLAST team, as a
-// live test. It shares the platform's name, sits first on Discover, and routes its
-// creator fees to the protocol vault, so a reader could easily mistake it for a
-// protocol token / equity. It is NOT one. This notice says so, bluntly, above the
-// fold — the same voice as "what BALLAST is not".
+// $BALLAST — the protocol's OWN token, launched by the BALLAST team on BALLAST
+// under the same rules as every other launch. "Official protocol token" makes
+// people assume rights it doesn't grant, so this notice states plainly what it
+// confers (nothing) and leads with the true, strong fact: the team holds none of
+// it. Above the fold, same blunt voice as "what BALLAST is not".
+//
+// The record is amended, not rewritten silently: this page previously said
+// $BALLAST was NOT a protocol token; that changed on the date below, before any
+// trading occurred. A disclosure product shouldn't quietly edit its own history.
 //
 // ⚠️ HARDCODED per-launch address — a deliberate, user-approved exception to the
-// "never hardcode per-launch addresses" convention (there is no per-token notice
-// mechanism yet, and this is acceptable for one token). When a per-token disclosure
-// flag exists in launch metadata, drive this from that instead and delete the
-// constant. Lowercased for a case-insensitive compare.
-const PROTOCOL_TEST_TOKEN = "0x069a260370c61d91bd3e9842d81d378f9750f7f3";
+// "never hardcode per-launch addresses" convention. When launch metadata carries a
+// protocol-token flag, drive this (and the Discover pin) from that instead and
+// delete the constant. Lowercased for a case-insensitive compare. Exported so the
+// Discover pin resolves the same token from one source of truth.
+export const PROTOCOL_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as const;
 
-export function isProtocolTestToken(token: Address | undefined): boolean {
-  return Boolean(token) && token!.toLowerCase() === PROTOCOL_TEST_TOKEN;
+export function isProtocolToken(token: Address | undefined): boolean {
+  return Boolean(token) && token!.toLowerCase() === PROTOCOL_TOKEN_ADDRESS;
 }
 
 export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
-  if (!isProtocolTestToken(token)) return null;
+  if (!isProtocolToken(token)) return null;
   return (
-    <section className="card border-accent p-4" role="note">
-      <h2 className="text-sm font-semibold text-text-primary">This is not a protocol token</h2>
-      <p className="mt-2 text-sm text-text-secondary">
-        Launched by the BALLAST team as the first test of this launchpad. This is not a protocol token. It confers no
-        ownership, revenue share, or claim on BALLAST. Its creator fees route to the protocol vault.
-      </p>
+    <section className="card border-accent p-5" role="note">
+      <h2 className="font-serif text-lg font-semibold text-bone">The protocol token</h2>
+      <div className="mt-2 space-y-2 text-sm text-text-secondary">
+        <p>
+          Launched by the BALLAST team on BALLAST, under exactly the same rules as every other launch: 100% of supply
+          seeded the pool, no presale, no team allocation. We hold none of it.
+        </p>
+        <p>
+          It confers no ownership, no revenue share, no governance, and no claim on the protocol or its fees. Its
+          creator fees route to the protocol vault.
+        </p>
+        <p className="text-text-faint">
+          Previously this page stated $BALLAST was not a protocol token. That changed on 28 July 2026 — before any
+          trading occurred.
+        </p>
+      </div>
     </section>
   );
 }
