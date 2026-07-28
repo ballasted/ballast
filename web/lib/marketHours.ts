@@ -25,9 +25,12 @@ export interface Freshness {
   label: string;
 }
 
-// During an open market this is the longest gap tolerated before the feed is
-// considered broken. Equity feeds update well within it.
-const TRADING_STALE_SEC = 3600; // 1h
+// Cosmetic split only, NOT a staleness threshold: under this age we label a feed a
+// plain "Live"; above it (but still within its per-asset outer bound) it reads
+// "Live · quiet". Both are the FRESH tier. Age is not a proxy for inaccuracy on a
+// deviation-threshold feed — a quiet-but-recent price is correct — so a long gap is
+// only ever "quiet", never stale, until the feed passes its outer bound.
+const QUIET_LABEL_SEC = 3600; // 1h
 
 // ── NYSE calendar ──────────────────────────────────────────────────────────
 // Hardcoded because holidays are irregular (Good Friday, observed-date shifts).
@@ -136,8 +139,8 @@ export function isMarketOpenAt(unixSec: number): boolean {
  * The next instant the US-equities 24/5 market opens at or after `nowSec`, or
  * null if that falls beyond the holiday calendar (we won't guess). Scanned at
  * 30-min resolution — matches lastCloseSec and is robust across holidays. Used by
- * the create flow to tell a creator when a resting-feed backed launch can proceed,
- * rather than letting them discover FeedRestingAtLaunch as a revert after signing.
+ * the create flow to tell a creator when a market-closed backed launch can proceed,
+ * rather than letting them discover a resting feed only after signing.
  */
 export function nextOpenSec(nowSec: number): number | null {
   if (isMarketOpenAt(nowSec)) return nowSec;
@@ -154,58 +157,59 @@ export function nextOpenSec(nowSec: number): number | null {
   return null;
 }
 
-// Most recent instant the market closed at or before `nowSec` (assumes closed
-// now). Scanned at 30-min resolution — cheap and robust across holiday boundaries.
-function lastCloseSec(nowSec: number): number {
-  const STEP = 1800;
-  for (let t = nowSec - STEP; t > nowSec - 14 * 86400; t -= STEP) {
-    if (isMarketOpenAt(t)) return t + STEP;
-  }
-  return nowSec; // no open sample found in range → treat as just closed
-}
-
+/**
+ * Classify a feed's freshness for display and for the create-flow gate.
+ *
+ * `beyondBound` is the per-asset outer staleness flag: age > AssetRegistry
+ * .staleAfter(asset), computed on-chain (BackingLens.stale) or off-chain by the
+ * caller. It — NOT a blunt trading-hours window — is what separates a correct,
+ * quiet price from a genuinely dead feed. The bounds are chosen per asset to clear
+ * a legitimate market closure (96h equities / 120h SGOV), so a feed within its
+ * bound over a weekend is RESTING, never falsely STALE.
+ */
 export function classifyFreshness(
   updatedAtSec: number,
   marketHours: number,
-  outerStale: boolean,
+  beyondBound: boolean,
   nowSec: number,
 ): Freshness {
   const age = Math.max(0, nowSec - updatedAtSec);
+  const quiet = age > QUIET_LABEL_SEC;
 
   if (marketHours === MarketHoursClass.Crypto24_7) {
-    return age <= TRADING_STALE_SEC
-      ? { tier: "fresh", label: "Live" }
-      : { tier: "stale", label: `No update ${fmtAge(age)}` };
+    // Crypto trades 24/7, so there's no "resting" — within bound it's live, past
+    // its bound it's stale.
+    if (beyondBound) return { tier: "stale", label: `No update ${fmtAge(age)}` };
+    return quiet ? { tier: "fresh", label: `Live · quiet (${fmtAge(age)})` } : { tier: "fresh", label: "Live" };
   }
 
   if (marketHours === MarketHoursClass.UsEquities24_5) {
     // Beyond the calendar we cannot know holidays. Fail SAFE: never a false STALE.
     if (isCalendarExhausted(nowSec)) {
-      return age <= TRADING_STALE_SEC
-        ? { tier: "fresh", label: "Live" }
-        : { tier: "resting", label: "Calendar out of date — freshness unverified" };
+      return quiet
+        ? { tier: "resting", label: "Calendar out of date — freshness unverified" }
+        : { tier: "fresh", label: "Live" };
     }
 
     if (isMarketOpenAt(nowSec)) {
-      // Market open → the feed should be updating. A long gap is a real fault.
-      return age <= TRADING_STALE_SEC
-        ? { tier: "fresh", label: "Live" }
-        : { tier: "stale", label: `Market open, no update ${fmtAge(age)}` };
+      // Market open. A long-but-within-bound gap is LIVE (quiet), not stale — age is
+      // not inaccuracy on a deviation-threshold feed. Only past the outer bound is a
+      // real fault.
+      if (beyondBound) return { tier: "stale", label: `Market open, no update ${fmtAge(age)}` };
+      return quiet ? { tier: "fresh", label: `Live · quiet (${fmtAge(age)})` } : { tier: "fresh", label: "Live" };
     }
 
-    // Market closed (weekend / holiday / early close). Resting is expected — but
-    // only if the feed was still fresh at the last close. If it went quiet before
-    // close, it's stale, not resting. (No blunt outer bound here; the calendar
-    // already knows how long the market has legitimately been shut.)
-    const lc = lastCloseSec(nowSec);
-    if (updatedAtSec >= lc - TRADING_STALE_SEC) {
-      return { tier: "resting", label: "Valued at last close" };
-    }
-    return { tier: "stale", label: "Went quiet before close" };
+    // Market closed (weekend / holiday / early close). Resting is expected unless the
+    // feed is already past its outer bound — then it went quiet well before this
+    // close and is genuinely stale. (Tradeoff: the bound is now-relative, so at the
+    // very tail of an unusually long closure a slow feed could tip to stale; the
+    // per-asset bounds are sized to clear normal closures, so in practice it doesn't.)
+    if (beyondBound) return { tier: "stale", label: "Went quiet before close" };
+    return { tier: "resting", label: "Valued at last close" };
   }
 
   // Unknown class: fall back to the on-chain outer bound only.
-  return outerStale ? { tier: "stale", label: `No update ${fmtAge(age)}` } : { tier: "fresh", label: "Recent" };
+  return beyondBound ? { tier: "stale", label: `No update ${fmtAge(age)}` } : { tier: "fresh", label: "Recent" };
 }
 
 function fmtAge(sec: number): string {
