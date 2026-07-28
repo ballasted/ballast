@@ -139,6 +139,37 @@ export const erc20Abi = [
   },
 ] as const;
 
+// BallastHook — the singleton v4 hook that skims the 1% WETH swap fee and accrues
+// it per RECIPIENT (creator / platform vault / referrer) in `owed`. Distribution is
+// pull-not-push: each recipient calls `claim()` to sweep their OWN balance. `owed`
+// is keyed by address, not by token, so a creator's balance is the sum across all
+// their launches and one claim() takes all of it. The platform vault claims via the
+// exact same path (whoever controls that address calls claim()).
+export const ballastHookAbi = [
+  {
+    type: "function",
+    name: "owed",
+    stateMutability: "view",
+    inputs: [{ name: "recipient", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "Claimed",
+    inputs: [
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
 // WETH — on this chain WETH is an ERC-20 (18 dec) and the pools are token/WETH,
 // but wallets hold NATIVE ETH. A buy therefore wraps ETH → WETH first (deposit is
 // payable and mints WETH 1:1 for the ETH sent). Pulling that WETH into the swap

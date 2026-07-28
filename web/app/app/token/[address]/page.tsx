@@ -13,6 +13,7 @@ import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { SwapPanel } from "@/components/app/SwapPanel";
+import { FeePanel } from "@/components/app/FeePanel";
 import {
   MarketOverview,
   AllocationSlot,
@@ -161,6 +162,11 @@ export default function TokenDetailPage() {
 
       {/* Swap */}
       <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} spotPriceWeth={marketPriceWeth} />
+
+      {/* Creator fees — only the creator sees this, shown even at zero so they know
+          where fees land. The balance is the creator's aggregate across all their
+          launches (owed is per-recipient), so one claim sweeps everything. */}
+      {creator && <FeePanel requireAccount={creator} alwaysShow />}
 
       {/* About */}
       {meta?.description && (

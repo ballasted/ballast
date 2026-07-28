@@ -6,11 +6,12 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Logo } from "@/components/app/Logo";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
+import { formatSmallUsd } from "@/lib/market";
 
-// Card contents follow build-spec §9. Price / % change are shown as "—" until a
-// market source (pool/quoter) exists — we never invent a number we can't measure.
-// The backing row is real, read live from BackingLens. The whole card links to the
-// token detail page (keyed by treasury address for now; see that page's note).
+// Card contents follow build-spec §9. The market price is read live on-chain from
+// the v4 StateView (via useProjects) — always available once a pool exists — so a
+// trading token never shows "price n/a". The backing row is read from BackingLens.
+// The whole card links to the token detail page.
 export function ProjectCard({
   project,
   hideSparkline,
@@ -24,7 +25,8 @@ export function ProjectCard({
   // larger mark — rather than stranding a small card in a wide row (density §1).
   featured?: boolean;
 }) {
-  const { symbol, name, backing, ballasted, token, metadataURI } = project;
+  const { symbol, name, backing, ballasted, token, metadataURI, hasPool, marketPriceUsd } = project;
+  const priceStr = marketPriceUsd !== undefined ? formatSmallUsd(Number(marketPriceUsd) / 1e18) : "—";
   // Resolve the pinned logo from the token's on-chain metadataURI — same source
   // the token page uses. Without this the card only ever showed ticker initials
   // (Part C bug 10). Logo falls back to initials if the CID is missing/broken.
@@ -49,9 +51,9 @@ export function ProjectCard({
           </div>
         </div>
         <div className="text-right">
-          {/* Market price/change require a pool + quoter (not built). Honest "—". */}
-          <div className="figure-primary">—</div>
-          <div className="metric-secondary">price n/a</div>
+          {/* Live on-chain market price (pool mid × ETH/USD). Crossfades on change. */}
+          <div key={priceStr} className="figure-primary anim-fade">{priceStr}</div>
+          <div className="metric-secondary">{hasPool ? "market price" : "no pool yet"}</div>
         </div>
       </div>
 
@@ -74,7 +76,11 @@ export function ProjectCard({
             )}
           </div>
         ) : (
-          <span className="text-sm text-text-muted">Not ballasted · no treasury</span>
+          // No treasury — but distinguish a live pool from a token with none, so
+          // "no treasury" doesn't blur into "nothing launched" on a trading token.
+          <span className="text-sm text-text-muted">
+            {hasPool ? "No treasury · trading" : "No treasury · no pool yet"}
+          </span>
         )}
       </div>
 

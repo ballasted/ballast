@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { ProjectCard } from "@/components/app/ProjectCard";
+import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
+import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
@@ -11,10 +13,10 @@ import { cn } from "@/lib/cn";
 type SortTab = "ballasted" | "trending" | "new";
 type Category = "all" | "index" | "treasury" | "meme";
 
-const SORT_TABS: { id: SortTab; label: string; pendingIndexer?: boolean }[] = [
+const SORT_TABS: { id: SortTab; label: string }[] = [
   { id: "ballasted", label: "Ballasted" },
-  { id: "trending", label: "Trending", pendingIndexer: true },
-  { id: "new", label: "New", pendingIndexer: true },
+  { id: "trending", label: "Trending" },
+  { id: "new", label: "New" },
 ];
 
 const CATEGORIES: { id: Category; label: string }[] = [
@@ -39,7 +41,13 @@ export default function DiscoverPage() {
     if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
   }, [sort]);
 
-  const sorted = useMemo(() => sortProjects(projects, sort), [projects, sort]);
+  // The protocol token is PINNED, not ranked — pull it out and rank everything else
+  // separately, so it never appears to have earned a spot in the sorted list.
+  const protocolProject = useMemo(() => projects.find((p) => isProtocolToken(p.token)), [projects]);
+  const ranked = useMemo(
+    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort),
+    [projects, sort],
+  );
 
   // A wallet is "known" once it has launched before. First-time creators get an
   // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
@@ -107,12 +115,13 @@ export default function DiscoverPage() {
         })}
       </div>
 
-      {sort !== "ballasted" && (
-        <p className="mt-4 rounded-card border border-warning-border bg-warning-bg px-3 py-2 text-sm text-warning">
-          {sort === "trending"
-            ? "Trending ranking needs trade volume from the indexer — not wired yet. Showing all projects by backing."
-            : "New-launch ordering and elapsed time need the indexer — not wired yet."}
-        </p>
+      {/* Pinned protocol token — top of Discover, on every tab and filter, visually
+          distinct from and excluded from the ranked list below (a placement, not a
+          ranking result). */}
+      {isConfigured && !isLoading && protocolProject && (
+        <div className="mt-5">
+          <PinnedProtocolCard project={protocolProject} />
+        </div>
       )}
 
       <div className="mt-5">
@@ -133,14 +142,19 @@ export default function DiscoverPage() {
               </Link>
             }
           />
-        ) : sorted.length === 0 ? (
+        ) : sort === "trending" ? (
+          // Trending needs trade data we don't have yet — so say that, rather than
+          // showing an unsorted list dressed up as a ranking (which reads identical
+          // to Ballasted and is quietly misleading).
+          <TrendingNotice />
+        ) : ranked.length === 0 ? (
           <EmptyState
-            title="Nothing in this view"
-            body={`No projects match the ${sort} view right now.`}
+            title="Only the protocol token so far"
+            body="No other projects have launched yet. The next launch appears here, ranked by backing on Ballasted and by launch time on New."
             action={
-              <button className="btn-secondary px-5" onClick={() => setSort("ballasted")}>
-                Show all, by backing
-              </button>
+              <Link href="/app/create" className="btn-primary inline-block px-5">
+                Create a launch
+              </Link>
             }
           />
         ) : (
@@ -150,20 +164,20 @@ export default function DiscoverPage() {
             key={sort}
             className={cn(
               "grid gap-4",
-              sorted.length <= 1
+              ranked.length <= 1
                 ? "mx-auto max-w-xl grid-cols-1"
-                : sorted.length === 2
+                : ranked.length === 2
                   ? "sm:grid-cols-2"
                   : "sm:grid-cols-2 lg:grid-cols-3",
             )}
           >
-            {sorted.map((p, i) => (
+            {ranked.map((p, i) => (
               <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <ProjectCard
                   project={p}
                   hideSparkline={sort === "new"}
                   firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
-                  featured={sorted.length <= 1}
+                  featured={ranked.length <= 1}
                 />
               </div>
             ))}
@@ -176,23 +190,41 @@ export default function DiscoverPage() {
 
 function sortProjects(projects: Project[], sort: SortTab): Project[] {
   const copy = [...projects];
-  if (sort === "ballasted") {
-    // Ballasted first, ranked by locked backing (the figure that cannot leave).
-    return copy.sort((a, b) => {
-      if (a.ballasted !== b.ballasted) return a.ballasted ? -1 : 1;
-      const al = a.backing?.lockedValueUsd ?? 0n;
-      const bl = b.backing?.lockedValueUsd ?? 0n;
-      return bl > al ? 1 : bl < al ? -1 : 0;
-    });
+  if (sort === "new") {
+    // The factory registry is append-only, so its index order IS launch order.
+    // Newest-first = reverse. Computable from chain alone — no indexer needed.
+    return copy.reverse();
   }
-  if (sort === "trending") {
-    return copy.sort((a, b) => {
-      const av = a.backing?.totalValueUsd ?? 0n;
-      const bv = b.backing?.totalValueUsd ?? 0n;
-      return bv > av ? 1 : bv < av ? -1 : 0;
-    });
-  }
-  return copy; // "new" — preserve source order until the indexer provides timestamps
+  // "ballasted" (default): ballasted first, then locked backing (the figure that
+  // cannot leave) descending. "trending" never reaches here — it renders a notice.
+  return copy.sort((a, b) => {
+    if (a.ballasted !== b.ballasted) return a.ballasted ? -1 : 1;
+    const al = a.backing?.lockedValueUsd ?? 0n;
+    const bl = b.backing?.lockedValueUsd ?? 0n;
+    return bl > al ? 1 : bl < al ? -1 : 0;
+  });
+}
+
+// Trending is intentionally not faked. It requires trade data — volume AND unique
+// buyers — that neither the chain (at read speed) nor a wired indexer gives us yet.
+// Ranking on volume alone would let two wallets wash-trade into the top slot, so
+// when we build it, it ranks on unique buyers + volume. Until then we say so.
+function TrendingNotice() {
+  return (
+    <div className="card p-10 text-center">
+      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+      <h2 className="font-serif text-lg font-semibold text-bone">Trending isn&apos;t live yet</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
+        Trending needs trade data — volume and the number of distinct buyers — which comes from the indexer, not wired
+        yet. We won&apos;t fake it by re-sorting the same list, because that reads as a ranking it hasn&apos;t earned.
+        When it&apos;s live it ranks on unique buyers plus volume, so two wallets trading with each other can&apos;t buy
+        the top spot.
+      </p>
+      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
+        Meanwhile, Ballasted ranks by verified locked backing, and New by launch time — both live from the chain.
+      </p>
+    </div>
+  );
 }
 
 function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {

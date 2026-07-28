@@ -5,6 +5,7 @@ import Link from "next/link";
 import { formatUnits } from "viem";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { FeePanel } from "@/components/app/FeePanel";
 import { Meander } from "@/components/Meander";
 import { formatUsd, formatBackingPerToken } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
@@ -69,6 +70,11 @@ export default function PortfolioPage() {
           </div>
         </div>
       </section>
+
+      {/* Accrued swap fees + Claim. Page-level (not buried under a tab) so it also
+          reaches the platform vault and referrers, who have no launches but do
+          accrue fees. Self-hides when nothing is owed. */}
+      <FeePanel title="Claimable swap fees" />
 
       <div className="flex gap-6 border-b border-border">
         {(["holdings", "launches"] as const).map((t) => (
