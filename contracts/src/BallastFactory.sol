@@ -42,11 +42,19 @@ contract BallastFactory {
     /// @notice Chainlink ETH/USD feed — converts USD backing to the pool's WETH/token P0.
     address public immutable ethUsdFeed;
 
+    /// @notice Absolute outer freshness bound for the ETH/USD leg at graduation, in
+    ///         seconds. This is a COARSE on-chain backstop — its only job is to stop a
+    ///         backed launch pricing P0 against a truly dead feed permanently. The
+    ///         fine RESTING-vs-STALE, market-hours-aware gate lives off-chain
+    ///         (web/lib/marketHours.ts + the create flow); it must never live here,
+    ///         because an on-chain calendar that reverts would brick launches exactly
+    ///         the way a reverting stale-check bricks valuation (CLAUDE.md rule 6).
+    ///         Treasury feeds take their per-asset bound from AssetRegistry.staleAfter;
+    ///         ETH/USD isn't in the registry, so it gets this immutable arg. 24h given
+    ///         observed gaps up to ~2.8h on this chain.
+    uint256 public immutable ethUsdStaleWindow;
+
     int24 public constant TICK_SPACING = 60;
-    /// @notice Feed must be this fresh at graduation. Matches the display path's
-    ///         trading-hours FRESH window (web/lib/marketHours.ts TRADING_STALE_SEC),
-    ///         so a backed launch can only price against a LIVE feed (market hours).
-    uint256 public constant FRESH_WINDOW = 1 hours;
     /// @notice Constant opening tick for UNBACKED launches (no oracle dependency).
     ///         ~1e-9 WETH/token; tunable product parameter. Multiple of TICK_SPACING.
     int24 public constant UNBACKED_TICK = -207240;
@@ -80,24 +88,36 @@ contract BallastFactory {
     error WrongOrdering();
     error NotLaunchToken();
     error AlreadyGraduated();
-    /// @notice A backed launch's feed was RESTING (not live) at graduation, so P0
-    ///         would be set from a stale price permanently. Launch during market
-    ///         hours, when the feed is fresh.
-    error FeedRestingAtLaunch(address asset);
+    /// @notice A backed launch's feed was stale beyond its outer bound at graduation
+    ///         (treasury feed: past AssetRegistry.staleAfter; ETH/USD: past
+    ///         ethUsdStaleWindow), so P0 would be set from a dead price permanently.
+    ///         This is the coarse backstop — the off-chain create flow additionally
+    ///         gates on market hours, so in practice this only trips on a genuinely
+    ///         broken feed, not on an expected weekend/holiday rest.
+    error FeedStaleAtLaunch(address asset);
 
-    constructor(address registry_, address weth_, BallastSeeder seeder_, address ethUsdFeed_) {
+    constructor(
+        address registry_,
+        address weth_,
+        BallastSeeder seeder_,
+        address ethUsdFeed_,
+        uint256 ethUsdStaleWindow_
+    ) {
         if (registry_ == address(0) || weth_ == address(0) || address(seeder_) == address(0) || ethUsdFeed_ == address(0)) {
             revert ZeroAddress();
         }
+        if (ethUsdStaleWindow_ == 0) revert ZeroAddress();
         registry = registry_;
         weth = weth_;
         seeder = seeder_;
         ethUsdFeed = ethUsdFeed_;
+        ethUsdStaleWindow = ethUsdStaleWindow_;
     }
 
     /// @notice Seed the token/WETH pool at P0 and lock LP. Backed launches derive P0
-    ///         from live backing (all treasury feeds must be FRESH — see
-    ///         FeedRestingAtLaunch); unbacked launches use a constant P0.
+    ///         from live backing (each treasury feed must be within its own outer
+    ///         staleness bound — see FeedStaleAtLaunch); unbacked launches use a
+    ///         constant P0.
     function graduate(address token) external {
         uint256 idPlus1 = launchIdOf[token];
         if (idPlus1 == 0) revert NotLaunchToken();
@@ -114,7 +134,12 @@ contract BallastFactory {
         emit Graduated(token, treasury, tickLower, backingUsd);
     }
 
-    /// @dev P0 tick + backing USD. Reverts if any held treasury feed is resting.
+    /// @dev P0 tick + backing USD. Reverts if any held treasury feed is stale beyond
+    ///      its per-asset outer bound (AssetRegistry.staleAfter), or the ETH/USD leg
+    ///      beyond ethUsdStaleWindow. Age is NOT a proxy for inaccuracy on a
+    ///      deviation-threshold feed — a quiet-but-recent SGOV price is correct — so
+    ///      this bound is the asset's real cadence (e.g. 120h SGOV / 96h equities),
+    ///      not a blunt trading-hours window.
     function _p0Tick(address treasury) internal view returns (int24 tickLower, uint256 backingUsd1e18) {
         address[] memory assets = ProjectTreasury(treasury).assets();
         bool backed;
@@ -125,7 +150,9 @@ contract BallastFactory {
             address feed = IAssetRegistry(registry).feedOf(assets[i]);
             (, int256 ans,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
             require(ans > 0, "invalid price");
-            if (block.timestamp - updatedAt > FRESH_WINDOW) revert FeedRestingAtLaunch(assets[i]);
+            if (block.timestamp - updatedAt > IAssetRegistry(registry).staleAfter(assets[i])) {
+                revert FeedStaleAtLaunch(assets[i]);
+            }
             uint256 usd = FullMath.mulDiv(held, uint256(ans), 10 ** AggregatorV3Interface(feed).decimals());
             backingUsd1e18 += FullMath.mulDiv(usd, 1e18, 10 ** IERC20Metadata(assets[i]).decimals());
         }
@@ -133,7 +160,7 @@ contract BallastFactory {
 
         (, int256 e,, uint256 eUpd,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
         require(e > 0, "invalid eth price");
-        if (block.timestamp - eUpd > FRESH_WINDOW) revert FeedRestingAtLaunch(ethUsdFeed);
+        if (block.timestamp - eUpd > ethUsdStaleWindow) revert FeedStaleAtLaunch(ethUsdFeed);
         uint256 ethUsd = FullMath.mulDiv(uint256(e), 1e18, 10 ** AggregatorV3Interface(ethUsdFeed).decimals());
         // Permanent-effect P0 math, isolated + fuzzed in BackingMath.
         tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, ethUsd, TICK_SPACING);
