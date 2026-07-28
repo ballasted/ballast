@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { Address } from "viem";
+import { formatUnits, type Address } from "viem";
 import { useProjects } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { useHolders } from "@/hooks/useHolders";
 import { useIndexerStatus } from "@/hooks/useIndexerStatus";
 import { formatUsd, shortAddress } from "@/lib/format";
+import { formatCompactUsd } from "@/lib/market";
+import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
+import { formatEt } from "@/lib/marketHours";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
@@ -13,18 +17,23 @@ import { cn } from "@/lib/cn";
 const WAD = 10n ** 18n;
 
 // ── Market overview ─────────────────────────────────────────────────────────
-// FDV is derived live on-chain (market price × supply). Liquidity in USD, holder
-// count, and 24h volume are NOT readable from chain state at speed — they need the
-// indexer (Phase 3) — so they carry an honest "needs indexer" label instead of a
-// fabricated number. A figure with no source never gets shown as if it had one.
+// FDV is derived live on-chain (market price × supply). Liquidity + 24h volume come
+// from GeckoTerminal, holder count from Blockscout — each labelled with its source.
+// A figure whose source is unavailable shows "—", never a fabricated number.
 export function MarketOverview({
   marketPriceUsd,
   totalSupply,
   hasPool,
+  liquidityUsd,
+  volume24hUsd,
+  holdersCount,
 }: {
   marketPriceUsd?: bigint;
   totalSupply?: bigint;
   hasPool: boolean;
+  liquidityUsd?: number; // GeckoTerminal, top pool reserve
+  volume24hUsd?: number; // GeckoTerminal
+  holdersCount?: number; // Blockscout
 }) {
   const fdv =
     marketPriceUsd !== undefined && totalSupply !== undefined
@@ -36,15 +45,139 @@ export function MarketOverview({
       <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Market overview</h2>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
         <Stat label="FDV" value={fdv !== undefined ? formatUsd(fdv, { compact: true }) : hasPool ? "—" : "no market"} />
-        <Stat label="Liquidity" pending value="needs indexer" />
-        <Stat label="Holders" pending value="needs indexer" />
-        <Stat label="24h volume" pending value="needs indexer" />
+        <Stat label="Liquidity" value={liquidityUsd !== undefined ? formatCompactUsd(liquidityUsd) : "—"} />
+        <Stat label="Holders" value={holdersCount !== undefined ? holdersCount.toLocaleString("en") : "—"} />
+        <Stat label="24h volume" value={volume24hUsd !== undefined ? formatCompactUsd(volume24hUsd) : "—"} />
       </dl>
       <p className="mt-4 text-xs text-text-faint">
-        FDV is market price × total supply, computed live. Liquidity, holders, and volume come from the indexer, which
-        isn&apos;t wired yet — shown as labels rather than guessed.
+        FDV is market price × total supply, computed live on-chain. Liquidity and 24h volume are from GeckoTerminal;
+        holder count from Blockscout. A dash means that source has nothing for this token yet.
       </p>
     </section>
+  );
+}
+
+// ── Holders (Blockscout) ──────────────────────────────────────────────────────
+// Full history from block zero via Blockscout's free API — a better source than our
+// own indexer (which would start at a deploy block). Labels the LP, seeder, creator,
+// and treasury so a reader understands WHY one address can hold most of the supply
+// (the seeded, permanently-locked pool position), rather than reading it as a rug.
+export function HoldersPanel({
+  token,
+  creator,
+  treasury,
+  now,
+}: {
+  token: Address;
+  creator?: Address;
+  treasury?: Address;
+  now: number;
+}) {
+  const { holders, isLoading } = useHolders(token);
+
+  return (
+    <section className="card p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Holders</h2>
+        {holders?.holdersCount !== undefined && (
+          <span className="text-sm text-text-secondary">
+            <span className="font-semibold text-text-primary">{holders.holdersCount.toLocaleString("en")}</span> total
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="mt-4 space-y-2" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-9 animate-pulse rounded bg-surface-raised" />
+          ))}
+        </div>
+      ) : !holders?.available || holders.holders.length === 0 ? (
+        <div className="mt-4 flex flex-col items-center py-6 text-center">
+          <Meander className="mb-4 max-w-[100px] opacity-60" />
+          <p className="max-w-sm text-sm text-text-muted">
+            {holders?.reason === "not-found"
+              ? "No transfers indexed for this token yet — until someone trades, the pool holds essentially the whole supply."
+              : "Blockscout is unreachable right now, so the holder list is shown as unavailable rather than a stale figure."}
+          </p>
+        </div>
+      ) : (
+        <>
+          <ul className="mt-4 space-y-1.5">
+            {holders.holders.slice(0, 10).map((h) => (
+              <HolderRow
+                key={h.address}
+                h={h}
+                decimals={holders.decimals ?? 18}
+                totalSupply={holders.totalSupply}
+                label={holderLabel(h, creator, treasury)}
+              />
+            ))}
+          </ul>
+          <p className="mt-4 text-[11px] text-text-faint">
+            Source: Blockscout (full transfer history){holders.fetchedAt ? ` · updated ${formatEt(holders.fetchedAt)}` : ""}.
+            Balances are chain truth; labels explain known addresses.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
+type HolderKind = "lp" | "seeder" | "creator" | "treasury" | "contract" | "wallet";
+
+function holderLabel(h: Holder, creator?: Address, treasury?: Address): { text: string; kind: HolderKind } | null {
+  const a = h.address.toLowerCase();
+  if (creator && a === creator.toLowerCase()) return { text: "Creator", kind: "creator" };
+  if (treasury && a === treasury.toLowerCase()) return { text: "Treasury", kind: "treasury" };
+  const name = h.name ?? "";
+  if (/poolmanager/i.test(name)) return { text: "Liquidity pool · locked", kind: "lp" };
+  if (/seeder/i.test(name)) return { text: "Seeder", kind: "seeder" };
+  if (name) return { text: name, kind: "contract" };
+  if (h.isContract) return { text: "Contract", kind: "contract" };
+  return null;
+}
+
+function HolderRow({
+  h,
+  decimals,
+  totalSupply,
+  label,
+}: {
+  h: Holder;
+  decimals: number;
+  totalSupply?: string;
+  label: { text: string; kind: HolderKind } | null;
+}) {
+  const amount = Number(formatUnits(BigInt(h.value || "0"), decimals)).toLocaleString("en", {
+    maximumFractionDigits: 2,
+    notation: "compact",
+  });
+  const pct = holderSharePct(h.value, totalSupply);
+  const tone =
+    label?.kind === "lp"
+      ? "bg-green-bg text-green"
+      : label?.kind === "creator"
+        ? "bg-warning-bg text-warning"
+        : "bg-border text-text-secondary";
+  return (
+    <li className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <a
+          href={`${BLOCKSCOUT_URL}/address/${h.address}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-text-primary hover:text-green"
+        >
+          {shortAddress(h.address as Address)}
+        </a>
+        {label && <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-medium", tone)}>{label.text}</span>}
+      </div>
+      <div className="shrink-0 text-right">
+        <span className="text-text-primary">{amount}</span>
+        {pct !== undefined && <span className="metric-secondary ml-2">{pct < 0.01 ? "<0.01" : pct.toFixed(2)}%</span>}
+      </div>
+    </li>
   );
 }
 

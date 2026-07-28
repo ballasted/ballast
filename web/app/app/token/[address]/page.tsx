@@ -19,8 +19,10 @@ import {
   AllocationSlot,
   MetadataHistory,
   CreatorTrackRecord,
+  HoldersPanel,
   PendingDataPanel,
 } from "@/components/app/token/TokenSections";
+import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
@@ -60,6 +62,7 @@ export default function TokenDetailPage() {
   } = useBacking(token);
   const { meta } = useProjectMeta(metadataURI);
   const { market } = useMarket(token);
+  const { holders } = useHolders(token);
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -176,12 +179,17 @@ export default function TokenDetailPage() {
         </section>
       )}
 
-      <MarketOverview marketPriceUsd={marketPriceUsd} totalSupply={totalSupply ?? backing?.totalSupply} hasPool={hasPool} />
-
-      <PendingDataPanel
-        title="Holders"
-        what="Until someone buys, the pool holds essentially the entire supply — that's a true state, not a gap. The full holder list, with LP, treasury, and creator labelled, is built from Transfer events by the indexer, which isn't wired yet."
+      <MarketOverview
+        marketPriceUsd={marketPriceUsd}
+        totalSupply={totalSupply ?? backing?.totalSupply}
+        hasPool={hasPool}
+        liquidityUsd={market?.top?.reserveUsd}
+        volume24hUsd={market?.volume24hUsd}
+        holdersCount={holders?.holdersCount}
       />
+
+      <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
+
       <PendingDataPanel
         title="Recent trades"
         what="No trades yet. The trade feed and the price chart fill in once the pool has traded — price and backing above are already live, read straight from the chain. 24h volume is the sum of this feed over that window."
