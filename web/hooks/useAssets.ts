@@ -15,6 +15,7 @@ export type AllowedAsset = {
   feed: Address;
   marketHours: number; // 0 Unknown, 1 UsEquities24_5, 2 Crypto24_7
   minDeposit: bigint;
+  staleAfter?: bigint; // per-asset outer freshness bound (seconds)
   price?: bigint; // raw feed answer
   priceDecimals?: number;
   updatedAt?: bigint;
@@ -89,6 +90,7 @@ export function useAssets() {
       feed: cfg[1],
       marketHours: Number(cfg[4]),
       minDeposit: cfg[3] as bigint,
+      staleAfter: cfg[2] as bigint,
       price: rd ? (rd[1] as bigint) : undefined,
       priceDecimals: fdec?.status === "success" ? (fdec.result as number) : undefined,
       updatedAt: rd ? (rd[3] as bigint) : undefined,
