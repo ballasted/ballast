@@ -68,10 +68,12 @@ contract SetAssets is Script {
         MarketHours marketHours;
     }
 
-    // staleAfter is only the outer absolute bound behind the on-chain `stale` flag;
-    // the RESTING-vs-STALE tier the UI shows is computed off-chain from marketHours +
-    // updatedAt (web/lib/marketHours.ts), and graduation uses its own 1h FRESH_WINDOW.
-    // So these bounds just need to comfortably clear a legitimate market closure:
+    // staleAfter is the outer absolute bound behind the on-chain `stale` flag AND the
+    // coarse freshness backstop graduation now uses (BallastFactory._p0Tick reads
+    // registry.staleAfter per asset — no separate FRESH_WINDOW). The fine
+    // RESTING-vs-STALE tier the UI shows is still computed off-chain from marketHours +
+    // updatedAt (web/lib/marketHours.ts). So these bounds just need to comfortably
+    // clear a legitimate market closure:
     //   • Equities (us_equities_24/5): 96h clears a Fri/Mon-holiday 3-day weekend.
     //   • SGOV (T-bill ETF): 120h — an ultra-low-volatility instrument whose price
     //     resting across a long holiday break is entirely expected, so a looser outer

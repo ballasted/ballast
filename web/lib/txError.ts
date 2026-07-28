@@ -9,14 +9,17 @@ import { BaseError, ContractFunctionRevertedError } from "viem";
 //      names we know to plain copy.
 //
 // viem attaches the ABI to writeContract/simulate errors, so a revert like
-// `FeedRestingAtLaunch(address)` arrives as a ContractFunctionRevertedError with
+// `FeedStaleAtLaunch(address)` arrives as a ContractFunctionRevertedError with
 // `data.errorName` — no manual 4-byte selector matching needed.
 
 // Known custom errors across the factory, treasury, and token. Keys are the
 // Solidity error names; values are what the user reads.
 const REVERT_COPY: Record<string, string> = {
-  FeedRestingAtLaunch:
-    "A treasury feed is resting — its market is closed. A backed launch prices against a live feed, so launch during market hours.",
+  // The coarse on-chain backstop: a feed past its outer staleness bound. The create
+  // flow gates on market hours before signing, so a user should rarely hit this —
+  // it means the feed is genuinely broken, not merely resting for the weekend.
+  FeedStaleAtLaunch:
+    "A treasury feed is stale — it hasn't published within its expected window, so its price can't be trusted to open the pool. This usually means the feed is down; try again once it's publishing.",
   BadNoticePeriod: "The withdrawal notice period must be 7, 30, or 90 days.",
   WrongOrdering: "Token address mining failed on-chain. Retry — a fresh salt is mined each attempt.",
   CouldNotMineCurrency0: "Could not mine a valid token address in the search window. Retry.",

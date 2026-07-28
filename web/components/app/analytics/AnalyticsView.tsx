@@ -11,11 +11,11 @@ import { cn } from "@/lib/cn";
 
 // Analytics (visual-upgrade Phase 4). Two data tiers, each labelled with its
 // source and freshness:
-//   • Chain-live  — total ballast, ballasted share, all-time launches. Read from
+//   • Chain-live    — total ballast, ballasted share, all-time launches. Read from
 //     the factory registry + BackingLens via the SAME hook Discover uses, so the
 //     totals reconcile with Discover by construction.
-//   • Indexer     — 24h volume/trades and daily bars. Degrade to "data delayed"
-//     with the last indexed time; never a stale or zero value (spec §3.2).
+//   • GeckoTerminal — 24h volume/trades and the daily-volume series. Degrade to
+//     "unavailable" with the last fetch time; never a stale or zero value (spec §3.2).
 export function AnalyticsView() {
   const now = useNow();
   const stats = useProtocolStats();
@@ -61,25 +61,21 @@ export function AnalyticsView() {
           value={series.available ? usdNum(series.volume24hUsd) : undefined}
           fallback={degradeLabel(series)}
           delta={<Delta cur={series.volume24hUsd} prev={series.volumePrev24hUsd} />}
-          source={series.available ? "Indexer" : undefined}
+          source={series.available ? "GeckoTerminal" : undefined}
         />
         <HeroFigure
           label="Launches"
           value={stats.isLoading ? undefined : String(stats.launchesAllTime)}
           fallback="reading chain…"
-          sub={
-            series.available
-              ? `${series.launches24h ?? 0} in last 24h`
-              : `all time · 24h ${degradeLabel(series).toLowerCase()}`
-          }
+          sub="all time"
           source="Chain-live"
         />
         <HeroFigure
           label="24h trades"
           value={series.available ? numFmt(series.trades24h) : undefined}
           fallback={degradeLabel(series)}
-          delta={<Delta cur={series.trades24h} prev={series.tradesPrev24h} />}
-          source={series.available ? "Indexer" : undefined}
+          sub={series.available ? "across all launches" : undefined}
+          source={series.available ? "GeckoTerminal" : undefined}
         />
       </section>
 
@@ -117,23 +113,17 @@ export function AnalyticsView() {
 
       <Meander className="opacity-60" />
 
-      {/* ── Daily bar charts — volume + launches, latest bar highlighted ── */}
-      <section className="grid gap-4 lg:grid-cols-2">
+      {/* ── Daily volume — from GeckoTerminal OHLCV, summed across launch pools.
+          Per-day trade counts and per-day launches aren't available without an
+          indexer (the trades endpoint is a short window), so we don't chart a
+          fabricated series — only real daily volume. ── */}
+      <section>
         <ChartCard title="Daily volume" series={series}>
           {series.available && series.daily.length > 0 ? (
             <BarChart
               ariaLabel="Daily traded volume in USD"
               data={series.daily.map((d) => ({ label: d.day, value: d.volumeUsd }))}
               formatValue={(n) => usdNum(n)}
-            />
-          ) : null}
-        </ChartCard>
-        <ChartCard title="Daily launches" series={series}>
-          {series.available && series.daily.length > 0 ? (
-            <BarChart
-              ariaLabel="Projects launched per day"
-              data={series.daily.map((d) => ({ label: d.day, value: d.launches }))}
-              formatValue={(n) => numFmt(n)}
             />
           ) : null}
         </ChartCard>
@@ -145,10 +135,10 @@ export function AnalyticsView() {
 // ── freshness / source ────────────────────────────────────────────────────────
 function FreshnessBanner({ series, now }: { series: AnalyticsSeries; now: number }) {
   const chainLine = "Backing & totals read live from chain";
-  const indexer = series.available
-    ? `Indexer live${series.lastIndexedAt ? ` · updated ${formatEt(series.lastIndexedAt)}` : ""}`
+  const market = series.available
+    ? `Volume & trades via GeckoTerminal${series.fetchedAt ? ` · updated ${formatEt(series.fetchedAt)}` : ""}`
     : `Volume & trades ${degradeLabel(series).toLowerCase()}${
-        series.lastIndexedAt ? ` · last indexed ${formatEt(series.lastIndexedAt)}` : ""
+        series.fetchedAt ? ` · last fetch ${formatEt(series.fetchedAt)}` : ""
       }`;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-faint">
@@ -156,7 +146,7 @@ function FreshnessBanner({ series, now }: { series: AnalyticsSeries; now: number
         <span aria-hidden>●</span> {chainLine}
       </span>
       <span aria-hidden>·</span>
-      <span className={series.available ? "text-text-muted" : "text-warning"}>{indexer}</span>
+      <span className={series.available ? "text-text-muted" : "text-warning"}>{market}</span>
       {now > 0 && <span className="ml-auto text-text-faint">as of {formatEt(now)}</span>}
     </div>
   );
@@ -164,14 +154,7 @@ function FreshnessBanner({ series, now }: { series: AnalyticsSeries; now: number
 
 function degradeLabel(series: AnalyticsSeries): string {
   if (series.available) return "";
-  switch (series.reason) {
-    case "unconfigured":
-      return "Needs indexer";
-    case "down":
-      return "Indexer unreachable";
-    default:
-      return "Data delayed";
-  }
+  return "GeckoTerminal unreachable";
 }
 
 // ── figure tiles ──────────────────────────────────────────────────────────────
@@ -285,7 +268,7 @@ function ChartCard({
     <div className="card p-5">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text-primary">{title}</h3>
-        <span className="text-[11px] text-text-faint">Last 30 days · Indexer</span>
+        <span className="text-[11px] text-text-faint">Last 30 days · GeckoTerminal</span>
       </div>
       <div className="mt-4">
         {hasData ? (
@@ -295,8 +278,8 @@ function ChartCard({
             <p className="text-sm text-warning">{series.available ? "No activity in this window yet" : degradeLabel(series)}</p>
             <p className="mt-1 max-w-xs text-xs text-text-faint">
               {series.available
-                ? "Bars appear here as trades and launches accrue."
-                : "This chart is drawn from the Ponder indexer. It fills in once the indexer is wired and caught up — never with a fabricated series."}
+                ? "Bars appear here as pools trade — drawn from GeckoTerminal daily OHLCV, never a fabricated series."
+                : "GeckoTerminal didn't respond. The series fills in once it's reachable again; totals above are read live from the chain."}
             </p>
           </div>
         )}

@@ -32,7 +32,7 @@ interface IWETH9c {
 
 /// @dev Slice-3 end-to-end on a mainnet fork: launch -> deposit backing -> graduate
 ///      (backing-derived P0, freshness-gated) -> buy -> claim fees. Plus unbacked
-///      launch and the FeedRestingAtLaunch gate. Uses MOCK fresh feeds (the real
+///      launch and the FeedStaleAtLaunch gate. Uses MOCK fresh feeds (the real
 ///      SGOV feed is resting on the fork). Skips offline.
 contract BallastGraduateForkTest is Test {
     using StateLibrary for IPoolManager;
@@ -66,7 +66,7 @@ contract BallastGraduateForkTest is Test {
         require(address(hook) == ha, "hook");
         seeder = new BallastSeeder(MANAGER, WETH, address(hook));
         ethFeed = new MockAggregator(8, 3000e8, block.timestamp); // ETH = $3000, fresh
-        factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed));
+        factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours);
         swap = new PoolSwapTest(MANAGER);
         vm.deal(address(this), 2000 ether);
         IWETH9c(WETH).deposit{value: 1000 ether}();
@@ -224,18 +224,57 @@ contract BallastGraduateForkTest is Test {
         assertApproxEqRel(poolP0, expectedP0, 0.01e18, "mixed-asset backing sum wrong");
     }
 
-    function test_graduateReverts_whenBackingFeedResting() public {
+    // Coarse backstop: a treasury feed stale beyond its per-asset staleAfter (3d
+    // here) reverts, so P0 can never be pinned to a dead price permanently.
+    function test_graduateReverts_whenBackingFeedStaleBeyondBound() public {
         if (!forked) return;
         MockStockToken stock = new MockStockToken("Mock AAPL", "MAAPL", 18);
-        MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 2 hours); // RESTING (>1h)
+        MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 4 days); // > 3d staleAfter
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Rest", "RST", 30 days, "");
+        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "");
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
 
-        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedRestingAtLaunch.selector, address(stock)));
+        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, address(stock)));
+        factory.graduate(token);
+    }
+
+    // The behavioral change from the old 1h FRESH_WINDOW: a feed that's QUIET but
+    // still within its outer bound (2h old, 3d staleAfter) is a CORRECT price on a
+    // deviation-threshold feed, so graduation now proceeds instead of reverting.
+    // The old 1h constant would have bricked this launch.
+    function test_graduateSucceeds_whenBackingFeedQuietButWithinBound() public {
+        if (!forked) return;
+        MockStockToken stock = new MockStockToken("Mock AAPL", "MAAPL", 18);
+        MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 2 hours); // quiet, < 3d bound
+        registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
+
+        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "");
+        stock.mint(address(this), 500e18);
+        stock.approve(treasury, type(uint256).max);
+        ProjectTreasury(treasury).deposit(address(stock), 500e18);
+
+        factory.graduate(token); // no revert
+        assertGt(MANAGER.getLiquidity(_poolKey(token).toId()), 0, "quiet-but-fresh feed must still seed");
+    }
+
+    // The ETH/USD leg uses the immutable ethUsdStaleWindow (24h), not the registry.
+    // Beyond it, graduation reverts even when the treasury feed is fine.
+    function test_graduateReverts_whenEthFeedStaleBeyondWindow() public {
+        if (!forked) return;
+        MockStockToken stock = new MockStockToken("Mock NVDA", "MNVDA", 18);
+        MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp); // treasury feed fresh
+        registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
+
+        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "");
+        stock.mint(address(this), 500e18);
+        stock.approve(treasury, type(uint256).max);
+        ProjectTreasury(treasury).deposit(address(stock), 500e18);
+
+        ethFeed.setAnswer(3000e8, block.timestamp - 25 hours); // ETH feed > 24h window
+        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, address(ethFeed)));
         factory.graduate(token);
     }
 }

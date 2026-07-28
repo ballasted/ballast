@@ -16,7 +16,7 @@ import { Logo } from "@/components/app/Logo";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
-import { classifyFreshness, nextOpenSec, formatEt } from "@/lib/marketHours";
+import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
 import { activeChain } from "@/lib/chain";
 import { cn } from "@/lib/cn";
@@ -49,6 +49,23 @@ function backingPreview(amountRaw: bigint, a: AllowedAsset): { usd: bigint; perT
   const usd = (amountRaw * a.price * 10n ** 18n) / (10n ** BigInt(a.priceDecimals) * 10n ** BigInt(a.decimals));
   const perToken = (usd * 10n ** 18n) / TOTAL_SUPPLY;
   return { usd, perToken };
+}
+
+// Freshness for an asset, computing the REAL per-asset out-of-bound flag
+// (age > staleAfter) so a genuinely dead feed reads stale while a merely quiet one
+// reads live. Shared by the gate, the preview, and the asset picker so they never
+// disagree.
+function freshnessOf(a: AllowedAsset, now: number): Freshness | undefined {
+  if (a.updatedAt === undefined || now <= 0) return undefined;
+  const beyondBound = a.staleAfter !== undefined && now - Number(a.updatedAt) > Number(a.staleAfter);
+  return classifyFreshness(Number(a.updatedAt), a.marketHours, beyondBound, now);
+}
+
+// Whole-number-friendly age: "42m", "10.8h", "3.1d". For the last-published line.
+function fmtPublishedAge(sec: number): string {
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  if (sec < 86400) return `${(sec / 3600).toFixed(1)}h`;
+  return `${(sec / 86400).toFixed(1)}d`;
 }
 
 // Strip any leading @ or platform prefix so we store a bare handle.
@@ -121,12 +138,19 @@ export function CreateFlow() {
 
   // Market-hours classification — same classifier the display path uses, so the
   // gate and the UI can never disagree (spec 2.3).
-  const freshness =
-    selected?.updatedAt !== undefined && now > 0
-      ? classifyFreshness(Number(selected.updatedAt), selected.marketHours, false, now)
-      : undefined;
-  const feedResting = backed && freshness ? freshness.tier !== "fresh" : false;
+  const freshness = selected ? freshnessOf(selected, now) : undefined;
+  // The gate is MARKET HOURS: a backed launch prices P0 off a live feed, and the
+  // feed only rests when the market is closed. We additionally block a genuinely
+  // stale feed (past its outer bound during open hours — a broken feed), so a
+  // creator never signs into a graduate() revert. A merely QUIET open-market feed
+  // is live and does NOT block.
+  const marketOpen = now > 0 ? isMarketOpenAt(now) : true;
+  const feedBlocked = backed && Boolean(selected) && (!marketOpen || freshness?.tier === "stale");
   const nextOpen = now > 0 ? nextOpenSec(now) : null;
+  // Real last-published age, shown as information (not a block) while the market is
+  // open — a quiet feed is current, and saying so beats an unexplained silence.
+  const lastPublishedAgeSec =
+    selected?.updatedAt !== undefined && now > 0 ? Math.max(0, now - Number(selected.updatedAt)) : undefined;
 
   const belowMin = Boolean(selected && amountRaw > 0n && amountRaw < selected.minDeposit);
   const overBalance = Boolean(balance !== undefined && amountRaw > balance);
@@ -134,7 +158,7 @@ export function CreateFlow() {
 
   const projectValid = Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink;
   const treasuryValid = backed
-    ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedResting
+    ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedBlocked
     : true;
   const formValid = projectValid && treasuryValid;
 
@@ -395,15 +419,20 @@ export function CreateFlow() {
                   </p>
                 </Field>
 
-                {/* Market-hours gate — surfaced HERE, before signing (spec 2.3). */}
-                {feedResting && (
+                {/* Market-hours gate — surfaced HERE, before signing (spec 2.3). The
+                    gate is market hours; a quiet-but-live feed is shown as info, not
+                    blocked. */}
+                {selected && !marketOpen ? (
                   <div className="rounded-card border border-warning-border bg-warning-bg p-4 text-sm">
                     <div className="flex items-center gap-2 font-semibold text-warning">
                       <span aria-hidden>⚠</span> Market closed — a backed launch can&apos;t price yet
                     </div>
                     <p className="mt-2 text-text-secondary">
-                      {selected?.symbol}&apos;s feed is {freshness?.label.toLowerCase()}. A backed launch opens the pool at
-                      your treasury&apos;s live value, so its feed must be trading, not resting.{" "}
+                      A backed launch opens the pool at your treasury&apos;s live value, so {selected.symbol}&apos;s market
+                      must be open.{" "}
+                      {lastPublishedAgeSec !== undefined && (
+                        <>Its feed last published {fmtPublishedAge(lastPublishedAgeSec)} ago. </>
+                      )}
                       {nextOpen ? (
                         <>Next window opens <span className="font-semibold text-text-primary">{formatEt(nextOpen)}</span>.</>
                       ) : (
@@ -411,7 +440,25 @@ export function CreateFlow() {
                       )}
                     </p>
                   </div>
-                )}
+                ) : selected && freshness?.tier === "stale" ? (
+                  <div className="rounded-card border border-negative/40 bg-negative/10 p-4 text-sm">
+                    <div className="flex items-center gap-2 font-semibold text-negative">
+                      <span aria-hidden>⚠</span> {selected.symbol}&apos;s feed looks down
+                    </div>
+                    <p className="mt-2 text-text-secondary">
+                      The market is open but the feed hasn&apos;t published within its expected window
+                      {lastPublishedAgeSec !== undefined && <> (last update {fmtPublishedAge(lastPublishedAgeSec)} ago)</>}, so
+                      its price can&apos;t be trusted to open the pool. Try again once it&apos;s publishing.
+                    </p>
+                  </div>
+                ) : selected && lastPublishedAgeSec !== undefined ? (
+                  // Open market, live feed: state the real age as information, so a
+                  // quiet-but-current price is explained rather than silently trusted.
+                  <p className="text-xs text-text-faint">
+                    {selected.symbol}&apos;s feed last published {fmtPublishedAge(lastPublishedAgeSec)} ago —{" "}
+                    {lastPublishedAgeSec > 3600 ? "quiet market, price current." : "trading."}
+                  </p>
+                ) : null}
               </>
             )}
           </section>
@@ -862,10 +909,7 @@ function AssetPickerOption({
   onSelect: () => void;
   now: number;
 }) {
-  const freshness =
-    a.updatedAt !== undefined && now > 0
-      ? classifyFreshness(Number(a.updatedAt), a.marketHours, false, now)
-      : undefined;
+  const freshness = freshnessOf(a, now);
   const tone =
     freshness?.tier === "fresh"
       ? "text-green"

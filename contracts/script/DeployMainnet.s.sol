@@ -66,7 +66,13 @@ contract DeployMainnet is Script {
         console2.log("BallastHook:    ", address(hook));
         BallastSeeder seeder = new BallastSeeder(IPoolManager(e.pm), e.weth, address(hook));
         console2.log("BallastSeeder:  ", address(seeder));
-        console2.log("BallastFactory: ", address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed)));
+        // ETH/USD leg outer staleness bound (coarse backstop). 24h given observed
+        // gaps up to ~2.8h; owner can't retune an immutable, so it's set once here.
+        uint256 ethUsdStaleWindow = vm.envOr("ETH_USD_STALE_WINDOW", uint256(24 hours));
+        console2.log(
+            "BallastFactory: ",
+            address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed, ethUsdStaleWindow))
+        );
         vm.stopBroadcast();
         console2.log("sequencer feed (0x0 = Unknown, none on 4663):", e.sequencer);
     }

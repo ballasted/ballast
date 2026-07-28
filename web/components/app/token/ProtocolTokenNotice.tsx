@@ -7,8 +7,11 @@ import type { Address } from "viem";
 // it. Above the fold, same blunt voice as "what BALLAST is not".
 //
 // The record is amended, not rewritten silently: this page previously said
-// $BALLAST was NOT a protocol token; that changed on the date below, before any
-// trading occurred. A disclosure product shouldn't quietly edit its own history.
+// $BALLAST was NOT a protocol token; that changed on the date below. A disclosure
+// product shouldn't quietly edit its own history — so when the launch factory was
+// redeployed (corrected freshness gate), that too is recorded below as a dated
+// line, and $BALLAST was deliberately NOT relaunched: it stays the original launch
+// from the first factory, still listed via the multi-factory union.
 //
 // ⚠️ HARDCODED per-launch address — a deliberate, user-approved exception to the
 // "never hardcode per-launch addresses" convention. When launch metadata carries a
@@ -38,6 +41,11 @@ export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
         <p className="text-text-faint">
           Previously this page stated $BALLAST was not a protocol token. That changed on 28 July 2026 — before any
           trading occurred.
+        </p>
+        <p className="text-text-faint">
+          On 28 July 2026 the launch factory was redeployed with a corrected freshness gate for backed launches.
+          $BALLAST was not relaunched: it remains the original launch from the first factory and is still listed here.
+          Only new launches use the new factory; nothing about $BALLAST changed on-chain.
         </p>
       </div>
     </section>

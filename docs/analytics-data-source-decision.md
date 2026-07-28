@@ -1,5 +1,14 @@
 # Phase 0 — Dune vs Ponder (analytics data source)
 
+> **SUPERSEDED (2026-07-28).** This compared Dune vs a self-hosted Ponder indexer
+> and recommended Ponder. We have since deferred Ponder hosting **indefinitely**:
+> holders come from Blockscout, trades/volume/OHLCV/trending from GeckoTerminal, and
+> protocol totals from chain reads — no Railway/Neon to pay for. See the **Data
+> sources** table in `docs/BALLAST-build-spec.md §3`. The reconciliation reasoning
+> below (totals must equal the sum of what Discover lists) still holds and is now
+> satisfied because both Discover and analytics read the same chain source.
+
+
 Decision record for `docs/Ballast-visual-upgrade` Phase 0. Investigated before
 building anything analytics-related, as the spec requires.
 

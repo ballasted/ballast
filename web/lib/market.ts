@@ -28,6 +28,49 @@ export type MarketData = {
   top?: MarketPool;
 };
 
+// ── Recent trades (GeckoTerminal per-pool trades endpoint) ───────────────────
+// Direction is derived from the token addresses, not GeckoTerminal's pool-relative
+// `kind`, so "buy" always means someone bought THIS launch token regardless of how
+// the pool's base/quote happen to be assigned.
+export type Trade = {
+  kind: "buy" | "sell";
+  ts: number; // unix seconds
+  txHash: string;
+  wallet: string;
+  tokenAmount: number; // amount of the launch token
+  volumeUsd: number;
+  priceUsd: number; // price of the launch token in USD at the trade
+};
+
+export type TradesData = {
+  available: boolean;
+  source: "GeckoTerminal";
+  reason?: "no-token" | "not-indexed" | "unreachable";
+  fetchedAt?: number;
+  pool?: string;
+  trades: Trade[];
+};
+
+// ── Trending (aggregated from 24h trades across launches) ────────────────────
+export type TrendingItem = {
+  token: string;
+  uniqueBuyers: number;
+  volume24hUsd: number;
+  trades24h: number;
+};
+
+export type TrendingData = {
+  available: boolean;
+  source: "GeckoTerminal";
+  fetchedAt?: number;
+  // Thin = too little 24h activity to rank meaningfully. The UI says so rather than
+  // presenting a near-random order as a ranking.
+  thin: boolean;
+  // Some launches were not scored (rate/cap guard) — surfaced, never silently dropped.
+  capped?: number;
+  items: TrendingItem[]; // ranked: unique buyers desc, then 24h volume desc
+};
+
 export function geckoPoolUrl(pool: string): string {
   return `https://www.geckoterminal.com/${GT_NETWORK}/pools/${pool}`;
 }

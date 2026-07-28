@@ -1,6 +1,6 @@
 "use client";
 
-import { useReadContract, useReadContracts } from "wagmi";
+import { useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import {
   backingLensAbi,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/abis";
 import {
   LENS_ADDRESS,
-  FACTORY_ADDRESS,
+  FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
   isLensConfigured,
@@ -52,39 +52,71 @@ export type Project = {
 };
 
 /**
- * Enumerates every launch from the BallastFactory registry (launchCount +
- * launches[i]) — the ONLY per-launch address source — then reads each treasury's
- * backing through BackingLens and the token name/symbol, all batched via
- * multicall. No env address list: Discover is the registry, live.
+ * Enumerates every launch across the multi-factory UNION (each factory's
+ * launchCount + launches[i]) — the ONLY per-launch address source — dedupes by
+ * token (newest factory wins), then reads each treasury's backing through
+ * BackingLens plus the token name/symbol, all batched via multicall. No env
+ * address list of launches: Discover is the registry(ies), live. Factories are
+ * ordered newest-first (FACTORY_ADDRESSES); rows are emitted chronologically
+ * ascending so callers that reverse for "newest first" stay correct.
  */
 export function useProjects() {
-  const countRes = useReadContract({
-    address: FACTORY_ADDRESS,
-    abi: ballastFactoryAbi,
-    functionName: "launchCount",
-    chainId: CHAIN_ID,
-    query: { enabled: isFactoryConfigured },
-  });
-  const count = countRes.data ? Number(countRes.data) : 0;
+  const factories = FACTORY_ADDRESSES; // newest-first
 
-  // Registry rows: launches[0..count-1] => {token, treasury, creator}.
-  const rowsRes = useReadContracts({
+  // launchCount for each factory in the union.
+  const countsRes = useReadContracts({
     allowFailure: true,
-    contracts: Array.from({ length: count }, (_, i) => ({
-      address: FACTORY_ADDRESS!,
+    contracts: factories.map((address) => ({
+      address,
       abi: ballastFactoryAbi,
-      functionName: "launches",
-      args: [BigInt(i)],
+      functionName: "launchCount",
       chainId: CHAIN_ID,
     })),
-    query: { enabled: isFactoryConfigured && count > 0 },
+    query: { enabled: isFactoryConfigured && factories.length > 0 },
+  });
+  const counts = factories.map((_, k) => {
+    const r = countsRes.data?.[k];
+    return r?.status === "success" ? Number(r.result as bigint) : 0;
   });
 
-  const rows = (rowsRes.data ?? []).map((r) =>
-    r?.status === "success"
-      ? (r.result as unknown as readonly [Address, Address, Address])
-      : undefined,
-  );
+  // Flat (factoryIndex, launchIndex) refs across every factory.
+  const refs: { factoryIndex: number; i: number }[] = [];
+  factories.forEach((_, k) => {
+    const c = counts[k] ?? 0;
+    for (let i = 0; i < c; i++) refs.push({ factoryIndex: k, i });
+  });
+
+  // Registry rows: launches[i] => {token, treasury, creator}, per factory.
+  const rowsRes = useReadContracts({
+    allowFailure: true,
+    contracts: refs.map((ref) => ({
+      address: factories[ref.factoryIndex]!,
+      abi: ballastFactoryAbi,
+      functionName: "launches",
+      args: [BigInt(ref.i)],
+      chainId: CHAIN_ID,
+    })),
+    query: { enabled: isFactoryConfigured && refs.length > 0 },
+  });
+
+  // Dedupe by token and order chronologically. Each row gets a sequence number:
+  // older factory → smaller, and within a factory a higher launch index → larger,
+  // so seq ascending == launch order across the whole union. On the (defensive:
+  // CREATE2 mining makes it all but impossible) case of one token in two
+  // registries, the NEWEST factory wins — it's the live registry and its
+  // treasury/creator record is the authoritative one.
+  const byToken = new Map<string, { row: readonly [Address, Address, Address]; seq: number }>();
+  refs.forEach((ref, idx) => {
+    const r = rowsRes.data?.[idx];
+    if (r?.status !== "success") return;
+    const row = r.result as unknown as readonly [Address, Address, Address];
+    const rank = factories.length - 1 - ref.factoryIndex; // newest → highest
+    const seq = rank * 10_000_000 + ref.i;
+    const key = row[0].toLowerCase();
+    const existing = byToken.get(key);
+    if (!existing || seq > existing.seq) byToken.set(key, { row, seq });
+  });
+  const rows = [...byToken.values()].sort((a, b) => a.seq - b.seq).map((e) => e.row);
 
   // backingOf(treasury) + token name/symbol for each launch.
   const dataRes = useReadContracts({
@@ -128,7 +160,7 @@ export function useProjects() {
   // page never disagree. An on-chain price is always available once a pool exists;
   // Discover previously showed "—" only because it never asked (it read no pool
   // state at all). Gated on isSwapConfigured (needs StateView + hook + WETH).
-  const pids = rows.map((row) => (row && isSwapConfigured ? poolId(poolKeyForToken(row[0])!) : undefined));
+  const pids = rows.map((row) => (isSwapConfigured ? poolId(poolKeyForToken(row[0])!) : undefined));
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts: pids.flatMap((pid) =>
@@ -161,7 +193,6 @@ export function useProjects() {
   let cursor = 0;
   let poolCursor = 0;
   for (const row of rows) {
-    if (!row) continue;
     const [token, treasury, creator] = row;
     const b = dataRes.data?.[cursor];
     const nm = dataRes.data?.[cursor + 1];
@@ -205,13 +236,15 @@ export function useProjects() {
     });
   }
 
+  const count = rows.length; // deduped union size
+
   return {
     projects,
     isLoading:
-      countRes.isLoading || rowsRes.isLoading || (rows.some(Boolean) && dataRes.isLoading),
+      countsRes.isLoading || rowsRes.isLoading || (rows.length > 0 && dataRes.isLoading),
     isConfigured: isLensConfigured && isFactoryConfigured,
     hasLaunches: count > 0,
     count,
-    error: countRes.error ?? rowsRes.error,
+    error: countsRes.error ?? rowsRes.error,
   };
 }

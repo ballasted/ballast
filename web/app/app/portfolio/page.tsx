@@ -48,8 +48,17 @@ export default function PortfolioPage() {
           <span className="figure-primary text-3xl">{formatUsd(totalValue, { compact: true })}</span>
           <span className="metric-secondary">{hasMarketData ? "valued at market where a pool exists, else backing" : "valued at backing"}</span>
         </div>
-        {/* P&L needs cost basis, which needs trade history — no honest number without an indexer. */}
-        <p className="mt-1 text-xs text-text-faint">P&amp;L needs your entry prices; those come from trade history, which isn&apos;t indexed yet.</p>
+        {/* P&L is deliberately absent. Holdings and current value are exact (chain
+            balances × chain/market price). Cost basis would need your full buy
+            history at execution prices, which can't be reconstructed from public
+            data without guessing — transfers carry no price, gifts/OTC/self-moves
+            have no market price, and pre-graduation buys aren't in pool history. A
+            wrong P&L is worse than none. */}
+        <p className="mt-1 text-xs text-text-faint">
+          Holdings and current value are exact. We don&apos;t show profit/loss: reconstructing what you paid needs your
+          full buy history at execution prices, which can&apos;t be derived from public data without guessing — and a
+          wrong number is worse than none.
+        </p>
       </div>
 
       {/* Backed vs unbacked exposure (spec §9). */}

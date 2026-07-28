@@ -46,8 +46,42 @@ If a feature request conflicts with these rules, stop and flag it rather than im
 - **DEX:** Uniswap v2, v3, v4 and UniswapX are all live on this chain and Uniswap is the primary public AMM. **Use v4 with a custom hook** for fee capture on graduated pools.
 - **Oracles:** Chainlink. Read feed addresses, decimals and staleness parameters from `docs.chain.link/data-feeds/price-feeds/addresses?network=robinhood` at build time — **never hardcode them from this document**.
 - **Frontend:** Next.js (App Router), TypeScript, wagmi + viem, TailwindCSS.
-- **Indexer:** Ponder or a subgraph for UI reads. On-chain values are the source of truth; if indexer and chain disagree, show the chain value.
+- **Indexer:** **Ponder hosting is deferred indefinitely** — we do not run our own indexer. Every figure that a self-hosted indexer would have produced now comes from a free external API or from chain reads (see **Data sources** below). On-chain values remain the source of truth; if an external source and chain disagree, show the chain value.
 - **Auth:** X (Twitter) OAuth 2.0 with PKCE. Scopes: `users.read`, `tweet.read` only. Never request write scopes.
+
+### Data sources (no self-hosted indexer)
+
+Ponder would have cost hosting (Railway + Neon) to reproduce data that already
+exists elsewhere. Instead:
+
+| Figure | Source | How |
+| --- | --- | --- |
+| Backing per token, treasury value, price (on-chain), FDV, protocol totals (total ballast, launches, ballasted share) | **Chain** | BackingLens + factory union via multicall (`useProjects`, `useProtocolStats`, `heroStats`, `serverChain`). The reconciliation rule holds: analytics totals equal the sum of what Discover lists, because both read the same chain source. |
+| Holders list, holder count, top holders | **Blockscout** | `/api/v2/tokens/{t}/holders` + counters, proxied by `/api/holders` (server, ~45s cache). Full transfer history from block zero — strictly better than a deploy-block-start indexer. Key-less, ~10 rps/IP, so proxied + cached. LP / seeder / creator / treasury are labelled. |
+| Recent trades (direction, size, price, wallet, age) | **GeckoTerminal** | `/networks/{net}/pools/{pool}/trades` via `/api/trades`. Direction derived from token addresses. |
+| Trending | **GeckoTerminal** | `/api/trending` aggregates 24h trades across the launch union; ranks by **unique buyers** then 24h volume (wash-trading can't buy the top slot). Says "thin" rather than faking an order. |
+| 24h volume, 24h price change, OHLCV chart, per-pool liquidity | **GeckoTerminal** | `/api/market` (price/volume/change/pools + embedded chart) and `/api/analytics` (24h volume/trades + daily-volume series from OHLCV). |
+
+Rules for all external sources: every figure states its source + freshness; the
+chain wins on disagreement and the UI says it's showing chain state; on
+failure/lag show "unavailable"/"delayed" with the last update time, never a stale
+figure-as-current and never a zero; all calls are proxied server-side with caching
+so keys stay server-side and rate limits are respected. Blockscout needs no key.
+
+**Still genuinely needs a self-hosted indexer (deferred, labelled honestly in the
+UI, NOT faked):**
+
+- **Per-day trade counts / launches-per-day history** — GeckoTerminal's trades
+  endpoint is a short recent window, so daily *volume* is charted (from OHLCV) but
+  daily *trade counts* and *launches-per-day* are not. Only real series are drawn.
+- **Portfolio P&L / cost basis** — cannot be reconstructed from public data without
+  guessing (transfers carry no execution price; gifts/OTC/self-transfers have no
+  market price; pre-graduation buys aren't in pool OHLCV). Portfolio shows exact
+  holdings + current value and says plainly why there is no P&L. A wrong number is
+  worse than none.
+- **Dated metadata-change timeline and creator "active since"** — need
+  `MetadataUpdated`/`Launched` log timestamps over full history; shown as labels,
+  not invented. (Could later come from Blockscout logs if wanted.)
 
 ### Chain-specific rules that will bite if ignored
 

@@ -53,16 +53,28 @@ describe("isMarketOpenAt — sessions, weekends, holidays", () => {
 });
 
 describe("classifyFreshness — the core RESTING vs STALE distinction", () => {
-  it("feed dies Monday mid-session → STALE within the hour", () => {
+  // The reclassification: within its outer bound, a mid-session gap is NOT stale.
+  // Age is not inaccuracy on a deviation-threshold feed — a quiet price is correct.
+  it("mid-session but within bound → FRESH (Live · quiet), not stale", () => {
     const now = et(2026, 3, 16, 11, 0, true); // Mon 11:00 EDT, open
-    const updated = et(2026, 3, 16, 9, 30, true); // 90m earlier
-    expect(classifyFreshness(updated, EQ, false, now).tier).toBe("stale");
+    const updated = et(2026, 3, 16, 1, 0, true); // 10h earlier, still within bound
+    const f = classifyFreshness(updated, EQ, false, now);
+    expect(f.tier).toBe("fresh");
+    expect(f.label.toLowerCase()).toContain("quiet");
   });
 
-  it("fresh during session when updated within the hour", () => {
+  it("only PAST its outer bound mid-session → STALE", () => {
+    const now = et(2026, 3, 16, 11, 0, true);
+    const updated = et(2026, 3, 12, 9, 30, true); // days earlier; beyondBound=true
+    expect(classifyFreshness(updated, EQ, true, now).tier).toBe("stale");
+  });
+
+  it("fresh during session when updated within the hour → plain Live", () => {
     const now = et(2026, 3, 16, 11, 0, true);
     const updated = et(2026, 3, 16, 10, 30, true); // 30m
-    expect(classifyFreshness(updated, EQ, false, now).tier).toBe("fresh");
+    const f = classifyFreshness(updated, EQ, false, now);
+    expect(f.tier).toBe("fresh");
+    expect(f.label).toBe("Live");
   });
 
   it("Friday 8pm close, read Saturday → RESTING", () => {
@@ -71,10 +83,19 @@ describe("classifyFreshness — the core RESTING vs STALE distinction", () => {
     expect(classifyFreshness(updated, EQ, false, now).tier).toBe("resting");
   });
 
-  it("feed went quiet Thursday, read Saturday → STALE (died before close)", () => {
-    const updated = et(2026, 3, 12, 14, 0, true); // Thu afternoon
+  // The SGOV-flagship fix: a slow feed updated mid-week, read over the weekend, is
+  // RESTING as long as it's within its outer bound — the old lastClose+1h rule
+  // wrongly flagged this stale every weekend.
+  it("updated mid-week, read Saturday, within bound → RESTING (not stale)", () => {
+    const updated = et(2026, 3, 11, 14, 0, true); // Wed afternoon
     const now = et(2026, 3, 14, 12, 0, true); // Sat noon
-    expect(classifyFreshness(updated, EQ, false, now).tier).toBe("stale");
+    expect(classifyFreshness(updated, EQ, false, now).tier).toBe("resting");
+  });
+
+  it("feed past its outer bound, read Saturday → STALE (went quiet before close)", () => {
+    const updated = et(2026, 3, 9, 14, 0, true); // long before; beyondBound=true
+    const now = et(2026, 3, 14, 12, 0, true); // Sat noon
+    expect(classifyFreshness(updated, EQ, true, now).tier).toBe("stale");
   });
 
   it("Sunday reopen boundary: resting just before, fresh just after (with a fresh update)", () => {
@@ -107,10 +128,10 @@ describe("classifyFreshness — holidays must not false-alarm", () => {
     expect(classifyFreshness(updated, EQ, false, now).tier).toBe("resting");
   });
 
-  it("Christmas Eve early close: died before close → STALE", () => {
-    const updated = et(2026, 12, 24, 9, 0, false); // quiet since morning
+  it("Christmas Eve early close: past outer bound → STALE", () => {
+    const updated = et(2026, 12, 20, 9, 0, false); // quiet for days; beyondBound=true
     const now = et(2026, 12, 24, 15, 0, false); // after 1pm close
-    expect(classifyFreshness(updated, EQ, false, now).tier).toBe("stale");
+    expect(classifyFreshness(updated, EQ, true, now).tier).toBe("stale");
   });
 });
 
@@ -138,10 +159,13 @@ describe("classifyFreshness — DST transitions, both directions", () => {
 });
 
 describe("crypto 24/7", () => {
-  it("fresh within the hour, stale beyond", () => {
+  it("fresh within bound (even a Saturday), stale only past bound", () => {
     const now = et(2026, 3, 14, 12, 0, true); // even a Saturday
+    // Within bound: fresh, regardless of how quiet — no market-close concept.
     expect(classifyFreshness(now - 30 * 60, MarketHoursClass.Crypto24_7, false, now).tier).toBe("fresh");
-    expect(classifyFreshness(now - 3 * HOUR, MarketHoursClass.Crypto24_7, false, now).tier).toBe("stale");
+    expect(classifyFreshness(now - 3 * HOUR, MarketHoursClass.Crypto24_7, false, now).tier).toBe("fresh");
+    // Past its outer bound: stale.
+    expect(classifyFreshness(now - 3 * HOUR, MarketHoursClass.Crypto24_7, true, now).tier).toBe("stale");
   });
 });
 
