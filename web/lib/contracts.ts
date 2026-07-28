@@ -50,6 +50,57 @@ export const isFactoryConfigured = Boolean(FACTORY_ADDRESS);
 export const isRegistryConfigured = Boolean(ASSET_REGISTRY_ADDRESS);
 export const isFeeConfigConfigured = Boolean(FEE_CONFIG_ADDRESS);
 
+// ── Factory registry: multi-factory union ───────────────────────────────────
+// The launch registry is VERSIONED. Changing factory logic (e.g. graduate()'s
+// freshness gate) means deploying a NEW factory, and launches from older factories
+// must NOT vanish from Discover — $BALLAST itself lives in the first factory and is
+// the pinned protocol token. So READS union an ordered list of factories and WRITES
+// (launch/graduate) always target the current one (FACTORY_ADDRESS).
+//
+// This is a config ARRAY, not a hardcoded pair, so a third factory one day needs no
+// change to any read path — only the env below.
+//
+// Env:
+//   NEXT_PUBLIC_FACTORY_ADDRESS           the CURRENT factory. Every write targets
+//                                         it; it is the top (newest) of the read union.
+//   NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES   comma-separated OLDER factories, listed
+//                                         newest-first, read-only.
+//
+// Ordering matters: newest-first, so new launches sort above old and, on the rare
+// token-address collision across registries, the NEWEST factory wins dedup (it is
+// the live registry; see useProjects). All factories MUST share ONE AssetRegistry,
+// so the allowlist is unified across versions — a redeploy reuses
+// NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS untouched.
+export type FactoryRef = {
+  address: Address;
+  // Deprecated = a prior factory kept ONLY so its existing launches stay listed. It
+  // can be dropped from NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES once nothing it launched
+  // needs to appear on Discover. For the first factory that means: after $BALLAST is
+  // retired or migrated to a newer registry. Until then, dropping it delists $BALLAST.
+  deprecated: boolean;
+};
+
+function parseAddressList(v: string | undefined): Address[] {
+  if (!v) return [];
+  return v
+    .split(",")
+    .map((s) => asAddress(s.trim()))
+    .filter((a): a is Address => Boolean(a));
+}
+
+const PRIOR_FACTORY_ADDRESSES = parseAddressList(
+  process.env.NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES,
+);
+
+// Ordered newest-first: the current factory, then priors in the order given.
+export const FACTORIES: FactoryRef[] = [
+  ...(FACTORY_ADDRESS ? [{ address: FACTORY_ADDRESS, deprecated: false }] : []),
+  ...PRIOR_FACTORY_ADDRESSES.map((address) => ({ address, deprecated: true })),
+];
+
+// Just the addresses, newest-first — what the read hooks/servers enumerate.
+export const FACTORY_ADDRESSES: Address[] = FACTORIES.map((f) => f.address);
+
 // Core addresses the app cannot function without. `asAddress` already maps a
 // missing OR zero/malformed value to `undefined`, so this list catches both the
 // unset and the `0x0` case the spec calls out — a startup guard surfaces it as a

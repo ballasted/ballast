@@ -1,6 +1,7 @@
 import "server-only";
 import { createPublicClient, http, defineChain, parseAbiItem, type Address } from "viem";
 import { ballastFactoryAbi, backingLensAbi } from "@/lib/abis";
+import { FACTORY_ADDRESSES } from "@/lib/contracts";
 
 // Landing-page hero figures, read SERVER-SIDE only. The marketing tree must never
 // pull in wagmi/web3 (it's ~108 kB with none), so the browser receives plain
@@ -13,7 +14,9 @@ import { ballastFactoryAbi, backingLensAbi } from "@/lib/abis";
 // "unavailable" (never a zero, never a guess).
 
 const RPC = process.env.RPC_UPSTREAM_URL || "https://rpc.mainnet.chain.robinhood.com";
-const FACTORY = process.env.NEXT_PUBLIC_FACTORY_ADDRESS as Address | undefined;
+// Union of every factory (current + priors), newest-first — same source Discover
+// uses, so the hero figures reconcile with what Discover lists across versions.
+const FACTORIES = FACTORY_ADDRESSES;
 const LENS = process.env.NEXT_PUBLIC_LENS_ADDRESS as Address | undefined;
 
 // ~7 days at this chain's ~100ms blocks. "Launch block within 7 days" = a launch
@@ -40,27 +43,48 @@ export type HeroStats = {
 };
 
 export async function getHeroStats(): Promise<HeroStats> {
-  if (!FACTORY || !LENS) return { available: false };
+  if (FACTORIES.length === 0 || !LENS) return { available: false };
   try {
     const client = createPublicClient({ chain, transport: http(RPC) });
 
-    const count = Number(
-      await client.readContract({ address: FACTORY, abi: ballastFactoryAbi, functionName: "launchCount" }),
-    );
-    if (count === 0) return { available: true, ballastedProjects: 0, totalBallastUsd: 0, launchesThisWeek: 0 };
-
-    // Registry rows → treasuries (same enumeration Discover uses).
-    const rows = await client.multicall({
-      contracts: Array.from({ length: count }, (_, i) => ({
-        address: FACTORY,
+    // launchCount per factory in the union.
+    const counts = await client.multicall({
+      contracts: FACTORIES.map((address) => ({
+        address,
         abi: ballastFactoryAbi,
-        functionName: "launches" as const,
-        args: [BigInt(i)],
+        functionName: "launchCount" as const,
       })),
     });
-    const treasuries = rows
-      .map((r) => (r.status === "success" ? (r.result as readonly [Address, Address, Address])[1] : undefined))
-      .filter((t): t is Address => Boolean(t));
+    const perFactory = counts.map((r) => (r.status === "success" ? Number(r.result as bigint) : 0));
+    const total = perFactory.reduce((a, b) => a + b, 0);
+    if (total === 0) return { available: true, ballastedProjects: 0, totalBallastUsd: 0, launchesThisWeek: 0 };
+
+    // Registry rows across all factories (same enumeration Discover uses).
+    const refs: { f: Address; i: number }[] = [];
+    FACTORIES.forEach((f, k) => {
+      const c = perFactory[k] ?? 0;
+      for (let i = 0; i < c; i++) refs.push({ f, i });
+    });
+    const rows = await client.multicall({
+      contracts: refs.map((ref) => ({
+        address: ref.f,
+        abi: ballastFactoryAbi,
+        functionName: "launches" as const,
+        args: [BigInt(ref.i)],
+      })),
+    });
+    // Dedupe by token (newest factory first in FACTORIES → first-seen wins), so a
+    // token in two registries is counted once.
+    const seen = new Set<string>();
+    const treasuries: Address[] = [];
+    rows.forEach((r) => {
+      if (r.status !== "success") return;
+      const [token, treasury] = r.result as readonly [Address, Address, Address];
+      const key = token.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      treasuries.push(treasury);
+    });
 
     // backingOf(treasury) for each — the exact source Discover reads.
     const backings = await client.multicall({
@@ -81,18 +105,23 @@ export async function getHeroStats(): Promise<HeroStats> {
       totalWad += tvl;
     }
 
-    // Launches this week: Launched events within the ~7-day block window.
+    // Launches this week: Launched events within the ~7-day block window, summed
+    // across every factory.
     let launchesThisWeek = 0;
     try {
       const latest = await client.getBlockNumber();
       const fromBlock = latest > WEEK_BLOCKS ? latest - WEEK_BLOCKS : 0n;
-      const logs = await client.getLogs({ address: FACTORY, event: LAUNCHED_EVENT, fromBlock, toBlock: "latest" });
-      launchesThisWeek = logs.length;
+      const logsPerFactory = await Promise.all(
+        FACTORIES.map((address) =>
+          client.getLogs({ address, event: LAUNCHED_EVENT, fromBlock, toBlock: "latest" }),
+        ),
+      );
+      launchesThisWeek = logsPerFactory.reduce((a, logs) => a + logs.length, 0);
     } catch {
       // If the log scan fails but the reads above succeeded, fall back to the total
       // count rather than failing the whole strip — better a slightly loose "this
       // week" than dashes when we do have the other two figures.
-      launchesThisWeek = count;
+      launchesThisWeek = treasuries.length;
     }
 
     return {
