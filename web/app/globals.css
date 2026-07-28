@@ -45,6 +45,27 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 
+  /* Marketing-tuned ambient (density §1, landing variant). A larger, slightly
+     stronger patina glow behind and above the hero heading as a light source, a
+     cooler bone glow low to one side, and the same faint noise wash. Fixed, behind
+     content, never a visible shape. */
+  .ambient-bg-marketing {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(90% 55% at 50% -6%, rgba(0, 200, 5, 0.05), rgba(0, 200, 5, 0) 55%),
+      radial-gradient(70% 50% at 8% 96%, rgba(221, 216, 202, 0.02), rgba(221, 216, 202, 0) 55%);
+  }
+  .ambient-bg-marketing::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
   a {
     @apply transition-colors duration-150;
   }
