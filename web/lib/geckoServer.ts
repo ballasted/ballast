@@ -54,6 +54,30 @@ type GtTrade = {
   };
 };
 
+// Daily volume (USD) per pool, last `limit` days, from the OHLCV endpoint. Used to
+// build the protocol daily-volume series without an indexer. Returns [] on failure.
+export async function fetchPoolOhlcvDaily(pool: string, limit = 30): Promise<Array<{ ts: number; volumeUsd: number }>> {
+  const { signal, done } = withTimeout();
+  try {
+    const res = await fetch(`${GT}/networks/${GT_NETWORK}/pools/${pool}/ohlcv/day?limit=${limit}`, {
+      headers: { Accept: "application/json" },
+      signal,
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: { attributes?: { ohlcv_list?: number[][] } } };
+    const rows = json.data?.attributes?.ohlcv_list ?? [];
+    // Each row: [timestamp, open, high, low, close, volume].
+    return rows
+      .filter((r) => Array.isArray(r) && r.length >= 6)
+      .map((r) => ({ ts: num(r[0]), volumeUsd: num(r[5]) }));
+  } catch {
+    return [];
+  } finally {
+    done();
+  }
+}
+
 // Recent trades for a pool, normalized and with direction derived from the token
 // addresses (not GeckoTerminal's pool-relative `kind`), so "buy" always means the
 // launch token was bought. Returns [] on any failure.
