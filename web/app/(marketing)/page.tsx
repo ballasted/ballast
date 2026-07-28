@@ -2,15 +2,24 @@ import Link from "next/link";
 import { Container } from "@/components/Container";
 import { Reveal } from "@/components/Reveal";
 import { FaqList } from "@/components/marketing/FaqList";
+import { MeanderWatermark } from "@/components/MeanderWatermark";
+import { getHeroStats, type HeroStats } from "@/lib/heroStats";
+import { formatCompactUsd } from "@/lib/market";
 
 // Landing page. Copy is lifted from docs/BALLAST-landing-copy.md and respects the
 // hard copy rules: no "floor / guaranteed / protected / secured / safe / yield /
 // returns / insured" in relation to ballast. Negative sections are NOT softened.
 
-export default function LandingPage() {
+// The hero stats are read from chain SERVER-SIDE (see lib/heroStats). Revalidate
+// ~60s so we don't hammer RPC on every view; the browser gets plain numbers, never
+// a provider — the marketing tree stays free of the web3 bundle.
+export const revalidate = 60;
+
+export default async function LandingPage() {
+  const stats = await getHeroStats();
   return (
     <>
-      <Hero />
+      <Hero stats={stats} />
       <Problem />
       <Difference />
       <HowItWorks />
@@ -23,9 +32,14 @@ export default function LandingPage() {
   );
 }
 
-function Hero() {
+function Hero({ stats }: { stats: HeroStats }) {
+  const ballasted = stats.available ? String(stats.ballastedProjects) : "—";
+  const total = stats.available ? formatCompactUsd(stats.totalBallastUsd ?? 0) : "—";
+  const week = stats.available ? String(stats.launchesThisWeek) : "—";
   return (
-    <section className="border-b border-border">
+    <section className="relative overflow-hidden border-b border-border">
+      {/* Brand watermark bleeding off the corner — desktop only, ~2.5% opacity. */}
+      <MeanderWatermark />
       <Container className="py-20 sm:py-28">
         {/* Hero entrance — staggered, once on load. transform + opacity only. */}
         <h1 className="anim-enter max-w-3xl font-serif text-4xl font-semibold tracking-tight text-bone sm:text-6xl">
@@ -51,14 +65,21 @@ function Hero() {
           </Link>
         </div>
 
-        {/* Hero stat strip — LIVE data, not marketing figures. Rendered as neutral
-            placeholders until the indexer/Lens is wired; we never show a number we
-            have not measured. */}
+        {/* Hero stat strip — LIVE, read server-side from the chain (same source as
+            Discover, so they reconcile). Small real numbers, never a guess; on a
+            read failure the dashes stay with a quiet "unavailable" below. The whole
+            strip fades in with the hero — the figures never count up. */}
         <dl className="anim-enter anim-d3 mt-14 grid max-w-2xl grid-cols-1 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3">
-          <Stat label="Ballasted projects" value="—" />
-          <Stat label="Total ballast" value="—" />
-          <Stat label="Launches this week" value="—" />
+          <Stat label="Ballasted projects" value={ballasted} />
+          <Stat label="Total ballast" value={total} />
+          <Stat label="Launches this week" value={week} />
         </dl>
+        {!stats.available && (
+          <p className="anim-enter anim-d3 mt-2 max-w-2xl text-xs text-text-faint">
+            Live figures unavailable right now — reading from the chain failed. They&apos;ll fill in once it&apos;s
+            reachable.
+          </p>
+        )}
       </Container>
     </section>
   );
@@ -67,7 +88,7 @@ function Hero() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-card px-5 py-4">
-      <dd className="figure-primary text-2xl">{value}</dd>
+      <dd className="figure-primary text-2xl tabular-nums">{value}</dd>
       <dt className="metric-secondary mt-1">{label}</dt>
     </div>
   );
