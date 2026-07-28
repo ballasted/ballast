@@ -20,7 +20,7 @@ import {
   MetadataHistory,
   CreatorTrackRecord,
   HoldersPanel,
-  PendingDataPanel,
+  TradesPanel,
 } from "@/components/app/token/TokenSections";
 import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
@@ -190,10 +190,7 @@ export default function TokenDetailPage() {
 
       <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
 
-      <PendingDataPanel
-        title="Recent trades"
-        what="No trades yet. The trade feed and the price chart fill in once the pool has traded — price and backing above are already live, read straight from the chain. 24h volume is the sum of this feed over that window."
-      />
+      <TradesPanel token={token!} symbol={symbol} now={now} />
 
       <AllocationSlot />
 

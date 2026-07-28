@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
+import { useTrending } from "@/hooks/useTrending";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
+import { formatEt } from "@/lib/marketHours";
 import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
@@ -30,6 +32,7 @@ export default function DiscoverPage() {
   const [sort, setSort] = useState<SortTab>("ballasted");
   const [category, setCategory] = useState<Category>("all");
   const { projects, isLoading, isConfigured, hasLaunches } = useProjects();
+  const trending = useTrending();
 
   // Sliding tab underline — one element that translates between tabs, rather than
   // a border flicking on/off (Phase 3). Position is measured from the active
@@ -48,6 +51,16 @@ export default function DiscoverPage() {
     () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort),
     [projects, sort],
   );
+
+  // Trending order comes from the /api/trending aggregation (unique buyers + 24h
+  // volume). Map the ranked token list back onto our live projects, excluding the
+  // pinned protocol token. Falls back to a notice when thin/unavailable below.
+  const trendingRanked = useMemo(() => {
+    const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
+    return (trending.data?.items ?? [])
+      .map((it) => byToken.get(it.token.toLowerCase()))
+      .filter((p): p is Project => Boolean(p) && !isProtocolToken(p!.token));
+  }, [trending.data, projects]);
 
   // A wallet is "known" once it has launched before. First-time creators get an
   // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
@@ -143,10 +156,31 @@ export default function DiscoverPage() {
             }
           />
         ) : sort === "trending" ? (
-          // Trending needs trade data we don't have yet — so say that, rather than
-          // showing an unsorted list dressed up as a ranking (which reads identical
-          // to Ballasted and is quietly misleading).
-          <TrendingNotice />
+          // Trending is ranked by unique buyers + 24h volume (see /api/trending), so
+          // wash-trading can't buy the top slot. When the data is thin or the source
+          // is unreachable we SAY so, rather than show an unsorted list dressed as a
+          // ranking (which reads identical to Ballasted and is quietly misleading).
+          trending.isLoading ? (
+            <SkeletonGrid />
+          ) : !trending.available ? (
+            <TrendingNotice reason="unreachable" />
+          ) : trending.data?.thin || trendingRanked.length === 0 ? (
+            <TrendingNotice reason="thin" />
+          ) : (
+            <div>
+              <p className="mb-3 text-xs text-text-faint">
+                Ranked by unique buyers, then 24h volume · GeckoTerminal
+                {trending.data?.fetchedAt ? ` · updated ${formatEt(trending.data.fetchedAt)}` : ""}
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {trendingRanked.map((p, i) => (
+                  <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+                    <ProjectCard project={p} firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
         ) : ranked.length === 0 ? (
           <EmptyState
             title="Only the protocol token so far"
@@ -205,20 +239,20 @@ function sortProjects(projects: Project[], sort: SortTab): Project[] {
   });
 }
 
-// Trending is intentionally not faked. It requires trade data — volume AND unique
-// buyers — that neither the chain (at read speed) nor a wired indexer gives us yet.
-// Ranking on volume alone would let two wallets wash-trade into the top slot, so
-// when we build it, it ranks on unique buyers + volume. Until then we say so.
-function TrendingNotice() {
+// Trending is ranked honestly (unique buyers + 24h volume) from GeckoTerminal
+// trades. When there isn't enough activity to rank, or the source is unreachable,
+// we say so rather than re-sorting the same list into a fake ranking.
+function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
   return (
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif text-lg font-semibold text-bone">Trending isn&apos;t live yet</h2>
+      <h2 className="font-serif text-lg font-semibold text-bone">
+        {reason === "unreachable" ? "Trending is unavailable right now" : "Not enough trading to rank yet"}
+      </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        Trending needs trade data — volume and the number of distinct buyers — which comes from the indexer, not wired
-        yet. We won&apos;t fake it by re-sorting the same list, because that reads as a ranking it hasn&apos;t earned.
-        When it&apos;s live it ranks on unique buyers plus volume, so two wallets trading with each other can&apos;t buy
-        the top spot.
+        {reason === "unreachable"
+          ? "GeckoTerminal, the trade-data source, didn't respond. Rather than show a stale or made-up order, trending is paused until it's reachable again."
+          : "Trending ranks by unique buyers plus 24h volume, so two wallets trading with each other can't buy the top spot. There aren't enough real trades across launches yet to rank without it being noise — so we won't pretend."}
       </p>
       <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
         Meanwhile, Ballasted ranks by verified locked backing, and New by launch time — both live from the chain.

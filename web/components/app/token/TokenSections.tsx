@@ -5,9 +5,10 @@ import { formatUnits, type Address } from "viem";
 import { useProjects } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useHolders } from "@/hooks/useHolders";
-import { useIndexerStatus } from "@/hooks/useIndexerStatus";
+import { useTrades } from "@/hooks/useTrades";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { formatCompactUsd } from "@/lib/market";
+import { formatCompactUsd, formatSmallUsd, type Trade } from "@/lib/market";
+import { activeChain } from "@/lib/chain";
 import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
 import { formatEt } from "@/lib/marketHours";
 import { ipfsToGateway } from "@/lib/ipfs";
@@ -332,33 +333,81 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
   );
 }
 
-// ── Holders + trades — honest, indexer-status-aware states ───────────────────
-// Never shows a stale or zero value: if the indexer is unreachable or behind, it
-// says so plainly instead of rendering an old figure (spec Phase 3 degradation).
-export function PendingDataPanel({ title, what }: { title: string; what: string }) {
-  const status = useIndexerStatus();
-
-  const message =
-    status.state === "down"
-      ? "The indexer is unreachable right now, so this is shown as unavailable rather than a stale figure."
-      : status.state === "delayed"
-        ? `The indexer is catching up${
-            status.lastIndexedAt
-              ? ` (last update ${Math.max(1, Math.round((Date.now() / 1000 - status.lastIndexedAt) / 60))} min ago)`
-              : ""
-          } — figures appear once it's current.`
-        : what;
+// ── Recent trades (GeckoTerminal) ─────────────────────────────────────────────
+// The pool's trade feed: direction, size, price, wallet, age. Degrades to an honest
+// state — never a stale row or a fabricated trade. Backing and price above are
+// chain-read and independent of this.
+export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: string; now: number }) {
+  const { data, isLoading } = useTrades(token);
 
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">{title}</h2>
-      <div className="mt-4 flex flex-col items-center py-6 text-center">
-        <Meander className="mb-4 max-w-[100px] opacity-60" />
-        <p className="max-w-sm text-sm text-text-muted">{message}</p>
-        {(status.state === "down" || status.state === "delayed") && (
-          <p className="mt-2 text-xs text-warning">Backing and price above are read from the chain and stay live.</p>
-        )}
-      </div>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Recent trades</h2>
+
+      {isLoading ? (
+        <div className="mt-4 space-y-2" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-9 animate-pulse rounded bg-surface-raised" />
+          ))}
+        </div>
+      ) : !data?.available || data.trades.length === 0 ? (
+        <div className="mt-4 flex flex-col items-center py-6 text-center">
+          <Meander className="mb-4 max-w-[100px] opacity-60" />
+          <p className="max-w-sm text-sm text-text-muted">
+            {data?.reason === "not-indexed"
+              ? "No trades yet. The feed fills in once the pool trades — price and backing above are already live from the chain."
+              : "GeckoTerminal is unreachable right now, so the trade feed is shown as unavailable rather than a stale list."}
+          </p>
+        </div>
+      ) : (
+        <>
+          <ul className="mt-4 space-y-1.5">
+            {data.trades.slice(0, 12).map((t, i) => (
+              <TradeRow key={`${t.txHash}-${i}`} t={t} symbol={symbol} now={now} />
+            ))}
+          </ul>
+          <p className="mt-4 text-[11px] text-text-faint">
+            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. 24h volume above is the
+            sum of this feed over that window.
+          </p>
+        </>
+      )}
     </section>
   );
+}
+
+function TradeRow({ t, symbol, now }: { t: Trade; symbol?: string; now: number }) {
+  const buy = t.kind === "buy";
+  const amount = t.tokenAmount.toLocaleString("en", { maximumFractionDigits: 2, notation: "compact" });
+  return (
+    <li className="flex items-center justify-between gap-3 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", buy ? "bg-green-bg text-green" : "bg-negative/10 text-negative")}>
+          {buy ? "Buy" : "Sell"}
+        </span>
+        <span className="truncate text-text-primary">
+          {amount} <span className="text-text-faint">${symbol ?? "TOKEN"}</span>
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-3 text-right">
+        <span className="text-text-secondary">{formatSmallUsd(t.priceUsd)}</span>
+        <a
+          href={`${activeChain.blockExplorers.default.url}/address/${t.wallet}`}
+          target="_blank"
+          rel="noreferrer"
+          className="hidden font-mono text-xs text-text-faint hover:text-green sm:inline"
+        >
+          {shortAddress(t.wallet as Address)}
+        </a>
+        <span className="metric-secondary w-10 text-right">{fmtAgo(Math.max(0, now - t.ts))}</span>
+      </div>
+    </li>
+  );
+}
+
+function fmtAgo(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h`;
+  return `${Math.floor(sec / 86400)}d`;
 }
