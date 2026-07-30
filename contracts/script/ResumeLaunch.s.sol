@@ -19,7 +19,10 @@ import {BallastFactory} from "../src/BallastFactory.sol";
 ///   TOKEN=0x… forge script script/ResumeLaunch.s.sol:ResumeLaunch \
 ///     --rpc-url $RH_MAINNET_RPC_URL --broadcast
 contract ResumeLaunch is Script {
-    address constant DEFAULT_FACTORY = 0x069974136c78Cf0F2162463B95321E59F56523D8;
+    // Current factory (redeploy 2026-07-30). The old factory
+    // 0x069974136c78Cf0F2162463B95321E59F56523D8 is where $BALLAST launched — pass
+    // FACTORY=<old> to resume a token that graduated under it.
+    address constant DEFAULT_FACTORY = 0x05AaA5c50e8C3067C3321dF07686AC52bE8F2ED1;
     address constant DEFAULT_TOKEN = 0x069a260370C61d91bd3e9842d81D378F9750F7F3;
 
     function run() external {

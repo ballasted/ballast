@@ -57,11 +57,13 @@ Legend: **file** = where it belongs · **read by** = the process that reads it �
 ### Frontend — read by the Next.js app (`web/`)
 | Variable | File | Read by | P/S | Value |
 |---|---|---|---|---|
-| `NEXT_PUBLIC_FACTORY_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x069974136c78Cf0F2162463B95321E59F56523D8` |
-| `NEXT_PUBLIC_LENS_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770` |
-| `NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x427764d0d19aB765c35A41A5aa4771580307dA81` |
-| `NEXT_PUBLIC_V4_HOOK_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x9C15c992E4De3711715C8B7D717EF46e474680CC` |
-| `NEXT_PUBLIC_FEE_CONFIG_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | **unset** (deploy FeeConfig, then fill) |
+| `NEXT_PUBLIC_FACTORY_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1` (redeploy 2026-07-30) |
+| `NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x069974136c78Cf0F2162463B95321E59F56523D8` (old factory; keeps $BALLAST listed) |
+| `NEXT_PUBLIC_LENS_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x73ac3574c8743553f41c6e25f92a145b5c0e7240` (redeploy 2026-07-30) |
+| `NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x427764d0d19aB765c35A41A5aa4771580307dA81` (REUSED across redeploys) |
+| `NEXT_PUBLIC_V4_HOOK_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x743102aa1De955b5F0Fada1377B6E545Fdb080cc` (redeploy 2026-07-30) |
+| `NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x9C15c992E4De3711715C8B7D717EF46e474680CC` (old hook; keeps prior pools claimable/tradeable) |
+| `NEXT_PUBLIC_FEE_CONFIG_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0xc0b895bc683bf4aca30c7277d42d068e0973a594` (redeploy 2026-07-30; split 50/35/15 @1%) |
 | `NEXT_PUBLIC_WETH_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
 | `NEXT_PUBLIC_POOL_MANAGER_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0x8366a39CC670B4001A1121B8F6A443A643e40951` |
 | `NEXT_PUBLIC_STATE_VIEW_ADDRESS` | web/.env.local + Vercel | `lib/contracts.ts` | P | `0xF3334192D15450CdD385c8B70e03f9A6bD9E673b` |
