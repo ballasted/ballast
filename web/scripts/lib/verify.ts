@@ -26,7 +26,14 @@ export function buildStandardJson(name: string): { input: unknown; compiler: str
   if (!m?.settings || !m?.sources) throw new Error(`${name}: artifact has no embedded metadata (run forge build once and commit contracts/out)`);
   const sources: Record<string, { content: string }> = {};
   for (const path of Object.keys(m.sources)) {
-    sources[path] = { content: readFileSync(resolve(CONTRACTS_DIR, path), "utf8") };
+    // Normalize CRLF → LF. The original artifacts (and the deployed, verified
+    // contracts) were built from LF sources; a Windows working tree with autocrlf
+    // has CRLF, which changes each source's keccak and therefore the appended
+    // metadata-hash tail of the bytecode — the compile would reproduce identical
+    // CODE but a different metadata hash (proven: LF matches on-chain byte-for-byte,
+    // CRLF does not). Normalizing keeps both compile output and Blockscout
+    // verification a FULL match regardless of checkout line-endings.
+    sources[path] = { content: readFileSync(resolve(CONTRACTS_DIR, path), "utf8").replace(/\r\n/g, "\n") };
   }
   const s = m.settings;
   const input = {

@@ -121,6 +121,27 @@ export const HOOK_ADDRESSES: Address[] = [
   ...PRIOR_HOOK_ADDRESSES,
 ];
 
+// Factory↔hook pairing. A token's pool uses the hook of the factory that launched it
+// (1:1, fixed at graduation). Once a token's factory is known — from enumeration
+// (useProjects) or launchIdOf (useBacking) — we probe EXACTLY ONE pool instead of
+// every hook, removing the per-token × N_hooks blow-up on the Discover board. This
+// pairs NEXT_PUBLIC_FACTORY_ADDRESS↔V4_HOOK_ADDRESS and the PRIOR_* lists BY INDEX,
+// so those two prior lists MUST be kept in the same order. Reads fall back to probing
+// all hooks if a factory has no paired hook, so a config slip degrades, never breaks.
+export const FACTORY_HOOK_PAIRS: { factory: Address; hook: Address }[] = [
+  ...(FACTORY_ADDRESS && HOOK_ADDRESS ? [{ factory: FACTORY_ADDRESS, hook: HOOK_ADDRESS }] : []),
+  ...PRIOR_FACTORY_ADDRESSES.flatMap((factory, i) => {
+    const hook = PRIOR_HOOK_ADDRESSES[i];
+    return hook ? [{ factory, hook }] : [];
+  }),
+];
+
+/** The hook a token's pool lives under, from the factory that launched it. */
+export function hookForFactory(factory: Address | undefined): Address | undefined {
+  if (!factory) return undefined;
+  return FACTORY_HOOK_PAIRS.find((p) => p.factory.toLowerCase() === factory.toLowerCase())?.hook;
+}
+
 // Core addresses the app cannot function without. `asAddress` already maps a
 // missing OR zero/malformed value to `undefined`, so this list catches both the
 // unset and the `0x0` case the spec calls out — a startup guard surfaces it as a

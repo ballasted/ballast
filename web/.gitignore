@@ -25,3 +25,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Downloaded, checksum-verified solc binary cache (see scripts/lib/compile.ts)
+scripts/.solc-cache/

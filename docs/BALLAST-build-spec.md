@@ -20,6 +20,8 @@ This is only possible because Robinhood Chain has tokenized equities and Chainli
 
 **Projects without a treasury are still allowed.** They display "No treasury · unbacked". This is a factual state, not a punishment. Do not gate, hide, rank down, or visually shame unbacked projects.
 
+**Unbacked launches open at ~1 ETH fully diluted, WETH-pegged.** The factory seeds every unbacked pool at a constant tick (`UNBACKED_TICK`), so the opening fully-diluted valuation is ≈ 1 ETH (≈ its dollar value at the current ETH price). This is deliberately priced in **WETH, not dollars**: an unbacked launch carries no oracle dependency, so — unlike a backed launch, which can only price its pool while the treasury asset's feed is trading — it can launch at any hour, weekend or holiday included. The dollar figure shown in the create flow is therefore an *equivalent at the current ETH price* and moves with ETH; the create flow reads the opening tick live and shows the figure in both ETH and USD before the creator signs. A 1 ETH opening is thin (≈0.41 ETH of net buying doubles the price), so the token page and Discover cards carry a plain, static thin-liquidity note wherever the pool's live depth is below threshold — never a warning, just the fact.
+
 ---
 
 ## 2. Critical constraint: this is disclosure, not a financial product

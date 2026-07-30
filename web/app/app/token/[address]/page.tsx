@@ -24,6 +24,7 @@ import {
 } from "@/components/app/token/TokenSections";
 import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
+import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
@@ -55,6 +56,7 @@ export default function TokenDetailPage() {
     marketPriceUsd,
     marketPriceWeth,
     hasPool,
+    depthToDoubleUsd,
     graduated,
     ownerFactory,
     isConfigured,
@@ -156,6 +158,10 @@ export default function TokenDetailPage() {
             <span className="text-text-faint">24h change: no market source yet</span>
           )}
         </div>
+        {/* Thin-liquidity disclosure — the pool depth is read live; when a few hundred
+            dollars can move the published price, we state it, the same discipline as
+            the backing panel. Renders nothing once the pool is deep enough. */}
+        <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
       </header>
 
       {/* $BALLAST-only: it shares the platform name and routes creator fees to the

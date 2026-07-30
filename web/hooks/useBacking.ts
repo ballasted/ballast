@@ -16,12 +16,14 @@ import {
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
+  hookForFactory,
   isLensConfigured,
   isFactoryConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { candidatePoolKeys, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { usdToDoublePrice } from "@/lib/liquidity";
 import type { ProjectBacking } from "./useProjects";
 
 const CHAIN_ID = activeChain.id;
@@ -143,7 +145,19 @@ export function useBacking(token?: Address) {
   // graduation), so probe every candidate and use the one with live liquidity. This
   // is why a prior-hook token ($BALLAST/CHRS) keeps an on-chain price after a hook
   // redeploy instead of silently reading the wrong (empty) poolId.
-  const candidates = token ? candidatePoolKeys(token) : [];
+  // Pairing: once the owning factory is resolved, probe only ITS hook's pool (one
+  // read pair), not every deployed hook. Until ownerFactory resolves (or if it has no
+  // paired hook), fall back to probing all candidates so a prior-hook token still
+  // prices correctly.
+  const pairedHook = hookForFactory(ownerFactory);
+  const candidates = !token
+    ? []
+    : pairedHook
+      ? (() => {
+          const key = poolKeyForToken(token, pairedHook);
+          return key ? [{ hook: pairedHook, key, id: poolId(key) }] : [];
+        })()
+      : candidatePoolKeys(token);
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts:
@@ -169,14 +183,20 @@ export function useBacking(token?: Address) {
   // Pick the first candidate hook whose pool has live liquidity (newest-first).
   let hasPool = false;
   let marketPriceWeth: bigint | undefined;
+  let poolLiquidity: bigint | undefined;
+  let poolSqrtPriceX96: bigint | undefined;
   for (let i = 0; i < candidates.length; i++) {
     const slot0 = poolRes.data?.[i * 2];
     const liq = poolRes.data?.[i * 2 + 1];
     if (liq?.status === "success" && (liq.result as bigint) > 0n) {
       hasPool = true;
+      poolLiquidity = liq.result as bigint;
       if (slot0?.status === "success") {
         const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-        if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+        if (sqrtPriceX96 > 0n) {
+          marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+          poolSqrtPriceX96 = sqrtPriceX96;
+        }
       }
       break;
     }
@@ -191,6 +211,7 @@ export function useBacking(token?: Address) {
     marketPriceWeth !== undefined && ethUsd1e18 !== undefined
       ? (marketPriceWeth * ethUsd1e18) / 10n ** 18n
       : undefined;
+  const depthToDoubleUsd = usdToDoublePrice(poolLiquidity, poolSqrtPriceX96, ethUsd1e18);
 
   return {
     treasury,
@@ -210,6 +231,7 @@ export function useBacking(token?: Address) {
     hasPool,
     marketPriceWeth,
     marketPriceUsd,
+    depthToDoubleUsd,
     isConfigured: isLensConfigured,
     isLoading: treasuryRes.isLoading || backingRes.isLoading,
     found: Boolean(treasury),

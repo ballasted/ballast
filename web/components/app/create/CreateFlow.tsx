@@ -8,6 +8,7 @@ import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
+import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
@@ -66,6 +67,17 @@ function fmtPublishedAge(sec: number): string {
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   if (sec < 86400) return `${(sec / 3600).toFixed(1)}h`;
   return `${(sec / 86400).toFixed(1)}d`;
+}
+
+// Opening-valuation display. The WETH figure is the real one (read live); the USD is
+// its equivalent at the current ETH price and is explicitly approximate, because it
+// moves with ETH (the pool is priced in WETH, not dollars).
+function fmtEthFdv(n: number | undefined): string {
+  return n !== undefined ? `≈ ${n.toFixed(2)} ETH` : "≈ 1 ETH";
+}
+function fmtUsdApprox(n: number | undefined): string | undefined {
+  if (n === undefined) return undefined;
+  return `~${Intl.NumberFormat("en", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n)}`;
 }
 
 // Strip any leading @ or platform prefix so we store a bare handle.
@@ -128,6 +140,7 @@ export function CreateFlow() {
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { assets, isConfigured: registryReady, isLoading: assetsLoading, isError: assetsError, hasAssets } = useAssets();
   const { split: feeSplit, isLoading: feeLoading, configured: feeConfigured } = useFeeSplit();
+  const openFdv = useOpeningFdv();
   const runner = useLaunchRunner();
 
   const selected = assets.find((a) => a.address === assetAddr);
@@ -354,11 +367,7 @@ export function CreateFlow() {
             </div>
 
             {mode === "none" ? (
-              <p className="text-sm text-text-secondary">
-                An unbacked launch. No treasury assets, no backing figure — the token opens at a fixed nominal price and
-                trades on its own. You can add a treasury later by depositing, but this launch carries no verified
-                backing.
-              </p>
+              <UnbackedOpening openFdv={openFdv} />
             ) : !registryReady ? (
               <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</InlineNotice>
             ) : assetsLoading ? (
@@ -562,6 +571,7 @@ export function CreateFlow() {
               feeLoading={feeLoading}
               feeConfigured={feeConfigured}
               freshness={freshness}
+              openFdv={openFdv}
             />
           </div>
         </div>
@@ -579,12 +589,41 @@ export function CreateFlow() {
           feeSplit={feeSplit}
           feeLoading={feeLoading}
           feeConfigured={feeConfigured}
+          openFdv={openFdv}
           account={account}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={confirmAndLaunch}
         />
       )}
     </>
+  );
+}
+
+type OpenFdv = ReturnType<typeof useOpeningFdv>;
+
+// The unbacked-launch explainer + its LIVE opening valuation, so a creator sees a
+// number before they sign, not a description. The figure is read from the factory's
+// UNBACKED_TICK (opening ≈ 1 ETH) and the ETH/USD feed.
+function UnbackedOpening({ openFdv }: { openFdv: OpenFdv }) {
+  const eth = openFdv.fdvWeth;
+  const usd = fmtUsdApprox(openFdv.fdvUsd);
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-text-secondary">
+        An unbacked launch — no treasury assets and no backing figure. It opens at approximately{" "}
+        <span className="text-text-primary">{eth !== undefined ? eth.toFixed(2) : "1"} ETH</span> fully diluted
+        {usd ? <> ({usd} at the current ETH price)</> : null}. The pool is priced in WETH, so the dollar figure moves
+        with ETH. Because it carries no oracle, an unbacked launch can go live at any hour — a backed one can only price
+        while its feed&apos;s market is open. You can add a treasury later by depositing.
+      </p>
+      <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
+        <span className="text-xs uppercase tracking-wide text-text-faint">Opening valuation</span>
+        <span className="text-right">
+          <span className="figure-primary block tabular-nums">{fmtEthFdv(eth)}</span>
+          {usd && <span className="metric-secondary tabular-nums">{usd}</span>}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -597,6 +636,7 @@ function PreviewCard(p: {
   feeLoading?: boolean;
   feeConfigured?: boolean;
   freshness?: { tier: string; label: string };
+  openFdv?: OpenFdv;
 }) {
   return (
     <section className="card-raised overflow-hidden">
@@ -609,16 +649,23 @@ function PreviewCard(p: {
       </div>
 
       <div className="space-y-4 p-4">
-        {/* Backing per token — the reason the preview lives on the same screen.
-            Reflects the input; it never counts up (Phase 4 motion rule 2). */}
-        <div className="rounded-input border border-accent bg-bg p-4">
-          <div className="text-xs uppercase tracking-wide text-text-faint">Backing per token</div>
-          <div className="mt-1 figure-primary text-3xl">
+        {/* Backing per token (backed) or the live opening valuation (unbacked) — the
+            reason the preview lives on the same screen. Reflects the input; it never
+            counts up (Phase 4 motion rule 2). */}
+        <div className={cn("rounded-input border bg-bg p-4", p.backed ? "border-accent" : "border-border")}>
+          <div className="text-xs uppercase tracking-wide text-text-faint">
+            {p.backed ? "Backing per token" : "Opening valuation"}
+          </div>
+          <div className="mt-1 figure-primary text-3xl tabular-nums">
             {/* Keyed by the formatted value so a change crossfades the new figure
                 in (Phase 3) — it appears settled, never counts up toward a value
                 (hard rule 2). Reduced-motion makes this an instant swap. */}
             {(() => {
-              const v = p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "None";
+              const v = p.backed
+                ? p.preview
+                  ? formatBackingPerToken(p.preview.perToken)
+                  : "$0.00"
+                : fmtEthFdv(p.openFdv?.fdvWeth);
               return (
                 <span key={v} className="anim-fade inline-block">
                   {v}
@@ -626,9 +673,13 @@ function PreviewCard(p: {
               );
             })()}
           </div>
-          {p.backed && (
+          {p.backed ? (
             <div className="metric-secondary mt-0.5">
               {p.preview ? `${formatUsd(p.preview.usd, { compact: true })} treasury across 1B tokens` : "enter a treasury amount"}
+            </div>
+          ) : (
+            <div className="metric-secondary mt-0.5 tabular-nums">
+              {fmtUsdApprox(p.openFdv?.fdvUsd) ? `${fmtUsdApprox(p.openFdv?.fdvUsd)} · moves with ETH` : "priced in WETH · moves with ETH"}
             </div>
           )}
         </div>
@@ -682,7 +733,7 @@ function ConfirmModal(p: {
   name: string; symbol: string; backed: boolean; selected?: AllowedAsset; amount: string;
   preview: { usd: bigint; perToken: bigint } | null; noticeDays: number;
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number };
-  feeLoading?: boolean; feeConfigured?: boolean;
+  feeLoading?: boolean; feeConfigured?: boolean; openFdv?: OpenFdv;
   account?: Address; onCancel: () => void; onConfirm: () => void;
 }) {
   return (
@@ -698,8 +749,14 @@ function ConfirmModal(p: {
             value={p.backed && p.selected ? `${p.amount} ${p.selected.symbol ?? "asset"}` : "None — unbacked"}
           />
           <ConfirmRow
-            label="Backing per token"
-            value={p.backed ? (p.preview ? formatBackingPerToken(p.preview.perToken) : "$0.00") : "n/a — unbacked"}
+            label={p.backed ? "Backing per token" : "Opening valuation"}
+            value={
+              p.backed
+                ? p.preview
+                  ? formatBackingPerToken(p.preview.perToken)
+                  : "$0.00"
+                : `${fmtEthFdv(p.openFdv?.fdvWeth)}${fmtUsdApprox(p.openFdv?.fdvUsd) ? ` (${fmtUsdApprox(p.openFdv?.fdvUsd)})` : ""}`
+            }
           />
           <ConfirmRow label="Withdrawal notice" value={p.backed ? `${p.noticeDays} days (permanent)` : "n/a — unbacked"} />
           <ConfirmRow label="Fee split" value={feeSplitText(p.feeSplit, p.feeLoading, p.feeConfigured)} />

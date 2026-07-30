@@ -202,6 +202,16 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "uint256" }],
   },
   {
+    // Constant opening tick for UNBACKED launches — a public constant on the deployed
+    // factory. price = 1.0001^tick WETH/token, so FDV = price × TOTAL_SUPPLY. Read
+    // live so the create flow states a number, not a description (opening ≈ 1 ETH).
+    type: "function",
+    name: "UNBACKED_TICK",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "int24" }],
+  },
+  {
     type: "function",
     name: "launches",
     stateMutability: "view",

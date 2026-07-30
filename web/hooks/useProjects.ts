@@ -15,12 +15,14 @@ import {
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
+  hookForFactory,
   isLensConfigured,
   isFactoryConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { candidatePoolKeys, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { usdToDoublePrice } from "@/lib/liquidity";
 
 const CHAIN_ID = activeChain.id;
 
@@ -49,6 +51,7 @@ export type Project = {
   hasPool: boolean; // a seeded v4 pool exists (liquidity > 0)
   marketPriceWeth?: bigint; // WETH per token, 1e18 — pool mid
   marketPriceUsd?: bigint; // USD per token, 1e18 — pool mid × ETH/USD
+  depthToDoubleUsd?: number; // USD of net buying to 2× the pool price (thin-liquidity note)
 };
 
 /**
@@ -105,7 +108,7 @@ export function useProjects() {
   // CREATE2 mining makes it all but impossible) case of one token in two
   // registries, the NEWEST factory wins — it's the live registry and its
   // treasury/creator record is the authoritative one.
-  const byToken = new Map<string, { row: readonly [Address, Address, Address]; seq: number }>();
+  const byToken = new Map<string, { row: readonly [Address, Address, Address]; seq: number; factoryIndex: number }>();
   refs.forEach((ref, idx) => {
     const r = rowsRes.data?.[idx];
     if (r?.status !== "success") return;
@@ -114,9 +117,12 @@ export function useProjects() {
     const seq = rank * 10_000_000 + ref.i;
     const key = row[0].toLowerCase();
     const existing = byToken.get(key);
-    if (!existing || seq > existing.seq) byToken.set(key, { row, seq });
+    if (!existing || seq > existing.seq) byToken.set(key, { row, seq, factoryIndex: ref.factoryIndex });
   });
-  const rows = [...byToken.values()].sort((a, b) => a.seq - b.seq).map((e) => e.row);
+  // Keep each row's owning-factory index through the sort — it selects the ONE hook
+  // that token's pool uses (pairing), so we don't probe every hook per token.
+  const sorted = [...byToken.values()].sort((a, b) => a.seq - b.seq);
+  const rows = sorted.map((e) => e.row);
 
   // backingOf(treasury) + token name/symbol for each launch.
   const dataRes = useReadContracts({
@@ -160,11 +166,20 @@ export function useProjects() {
   // page never disagree. An on-chain price is always available once a pool exists;
   // Discover previously showed "—" only because it never asked (it read no pool
   // state at all). Gated on isSwapConfigured (needs StateView + hook + WETH).
-  // Hook-aware: each token's pool sits under exactly one deployed hook, so probe all
-  // candidates (newest-first) and later pick the live one. cands[i] has the same
-  // length for every token (= number of deployed hooks), keeping the flat cursor
-  // below aligned. A prior-hook token stays priced after a hook redeploy.
-  const cands = rows.map((row) => (isSwapConfigured ? candidatePoolKeys(row[0]) : []));
+  // Hook-aware via PAIRING: a token's pool sits under the hook of the factory that
+  // launched it, so resolve that ONE hook (cands length 1) instead of probing every
+  // deployed hook per token — this is what keeps the Discover read O(tokens), not
+  // O(tokens × hooks). Fallback to probing all hooks only if a factory has no paired
+  // hook (config slip), so it degrades rather than breaks. cands[i] aligns with rows.
+  const cands = sorted.map((e) => {
+    if (!isSwapConfigured) return [];
+    const hook = hookForFactory(factories[e.factoryIndex]);
+    if (hook) {
+      const key = poolKeyForToken(e.row[0], hook);
+      return key ? [{ hook, key, id: poolId(key) }] : [];
+    }
+    return candidatePoolKeys(e.row[0]);
+  });
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts: cands.flatMap((cs) =>
@@ -214,15 +229,20 @@ export function useProjects() {
     let hasPool = false;
     let marketPriceWeth: bigint | undefined;
     let marketPriceUsd: bigint | undefined;
+    let depthToDoubleUsd: number | undefined;
     if (isSwapConfigured && STATE_VIEW_ADDRESS) {
       for (let k = 0; k < cs.length; k++) {
         const slot0 = poolRes.data?.[poolCursor + k * 2];
         const liq = poolRes.data?.[poolCursor + k * 2 + 1];
         if (liq?.status === "success" && (liq.result as bigint) > 0n) {
           hasPool = true;
+          const liquidity = liq.result as bigint;
           if (slot0?.status === "success") {
             const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-            if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+            if (sqrtPriceX96 > 0n) {
+              marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+              depthToDoubleUsd = usdToDoublePrice(liquidity, sqrtPriceX96, ethUsd1e18);
+            }
           }
           break;
         }
@@ -247,6 +267,7 @@ export function useProjects() {
       hasPool,
       marketPriceWeth,
       marketPriceUsd,
+      depthToDoubleUsd,
     });
   }
 

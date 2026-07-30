@@ -5,6 +5,7 @@ import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Logo } from "@/components/app/Logo";
+import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
 
@@ -25,7 +26,7 @@ export function ProjectCard({
   // larger mark — rather than stranding a small card in a wide row (density §1).
   featured?: boolean;
 }) {
-  const { symbol, name, backing, ballasted, token, metadataURI, hasPool, marketPriceUsd } = project;
+  const { symbol, name, backing, ballasted, token, metadataURI, hasPool, marketPriceUsd, depthToDoubleUsd } = project;
   const priceStr = marketPriceUsd !== undefined ? formatSmallUsd(Number(marketPriceUsd) / 1e18) : "—";
   // Resolve the pinned logo from the token's on-chain metadataURI — same source
   // the token page uses. Without this the card only ever showed ticker initials
@@ -83,6 +84,10 @@ export function ProjectCard({
           </span>
         )}
       </div>
+
+      {/* Thin-liquidity disclosure — a low-FDV pool is easy to move, and we publish
+          a price on every card, so we say so plainly. Static, factual, no warning. */}
+      <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
 
       {/* A new wallet is UNKNOWN, not safe. Amber, visually distinct from the
           green verified check (spec §9). */}
