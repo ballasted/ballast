@@ -1,5 +1,5 @@
 import { encodeAbiParameters, keccak256, type Address, type Hex } from "viem";
-import { HOOK_ADDRESS, WETH_ADDRESS, TICK_SPACING } from "./contracts";
+import { HOOK_ADDRESS, HOOK_ADDRESSES, WETH_ADDRESS, TICK_SPACING } from "./contracts";
 
 // A BALLAST pool is always token/WETH with the token mined to sort BELOW WETH
 // (currency0), fee 0 (the hook takes the 1% WETH-leg fee), tickSpacing 60, and
@@ -13,8 +13,12 @@ export type PoolKey = {
   hooks: Address;
 };
 
-export function poolKeyForToken(token: Address): PoolKey | undefined {
-  if (!HOOK_ADDRESS || !WETH_ADDRESS) return undefined;
+// The pool key for a token under a SPECIFIC hook (defaults to the current one). The
+// hook is part of the PoolKey and is fixed per pool at graduation, so a token
+// launched under a prior hook must be keyed with THAT hook — pass it explicitly
+// (see candidatePoolKeys / the hook resolver) rather than assuming the current one.
+export function poolKeyForToken(token: Address, hook: Address | undefined = HOOK_ADDRESS): PoolKey | undefined {
+  if (!hook || !WETH_ADDRESS) return undefined;
   // Defensive: the factory mines token < weth, but never assume — sort anyway.
   const [c0, c1] =
     token.toLowerCase() < WETH_ADDRESS.toLowerCase()
@@ -25,8 +29,21 @@ export function poolKeyForToken(token: Address): PoolKey | undefined {
     currency1: c1,
     fee: 0,
     tickSpacing: TICK_SPACING,
-    hooks: HOOK_ADDRESS,
+    hooks: hook,
   };
+}
+
+// Every candidate (hook, key, poolId) for a token, newest hook first. A token's pool
+// lives under exactly ONE of these — the resolver probes pool state and picks the
+// live one, so prior-hook tokens keep resolving after a hook redeploy.
+export function candidatePoolKeys(token: Address): { hook: Address; key: PoolKey; id: Hex }[] {
+  if (!WETH_ADDRESS) return [];
+  const out: { hook: Address; key: PoolKey; id: Hex }[] = [];
+  for (const hook of HOOK_ADDRESSES) {
+    const key = poolKeyForToken(token, hook);
+    if (key) out.push({ hook, key, id: poolId(key) });
+  }
+  return out;
 }
 
 const POOL_KEY_ABI = [

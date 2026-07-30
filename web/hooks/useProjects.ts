@@ -20,7 +20,7 @@ import {
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, priceFromSqrtX96 } from "@/lib/pool";
 
 const CHAIN_ID = activeChain.id;
 
@@ -160,18 +160,22 @@ export function useProjects() {
   // page never disagree. An on-chain price is always available once a pool exists;
   // Discover previously showed "—" only because it never asked (it read no pool
   // state at all). Gated on isSwapConfigured (needs StateView + hook + WETH).
-  const pids = rows.map((row) => (isSwapConfigured ? poolId(poolKeyForToken(row[0])!) : undefined));
+  // Hook-aware: each token's pool sits under exactly one deployed hook, so probe all
+  // candidates (newest-first) and later pick the live one. cands[i] has the same
+  // length for every token (= number of deployed hooks), keeping the flat cursor
+  // below aligned. A prior-hook token stays priced after a hook redeploy.
+  const cands = rows.map((row) => (isSwapConfigured ? candidatePoolKeys(row[0]) : []));
   const poolRes = useReadContracts({
     allowFailure: true,
-    contracts: pids.flatMap((pid) =>
-      pid && STATE_VIEW_ADDRESS
-        ? [
-            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [pid], chainId: CHAIN_ID } as const,
-            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [pid], chainId: CHAIN_ID } as const,
-          ]
+    contracts: cands.flatMap((cs) =>
+      STATE_VIEW_ADDRESS
+        ? cs.flatMap((c) => [
+            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [c.id], chainId: CHAIN_ID } as const,
+            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [c.id], chainId: CHAIN_ID } as const,
+          ])
         : [],
     ),
-    query: { enabled: isSwapConfigured && pids.some(Boolean) },
+    query: { enabled: isSwapConfigured && cands.some((cs) => cs.length > 0) },
   });
   const ethRes = useReadContracts({
     allowFailure: true,
@@ -192,6 +196,7 @@ export function useProjects() {
   const projects: Project[] = [];
   let cursor = 0;
   let poolCursor = 0;
+  let rowIndex = 0;
   for (const row of rows) {
     const [token, treasury, creator] = row;
     const b = dataRes.data?.[cursor];
@@ -200,20 +205,29 @@ export function useProjects() {
     const uri = dataRes.data?.[cursor + 3];
     cursor += 4;
 
-    // Pool state is present only when isSwapConfigured (pids were built the same
-    // way), so the cursor advances in lockstep with the contracts array.
+    // Pool state is present only when isSwapConfigured (cands were built the same
+    // way), so the cursor advances in lockstep with the contracts array. Each token
+    // contributed getSlot0+getLiquidity for EVERY candidate hook — scan them
+    // newest-first and take the one with live liquidity (its real pool).
+    const cs = cands[rowIndex] ?? [];
+    rowIndex += 1;
     let hasPool = false;
     let marketPriceWeth: bigint | undefined;
     let marketPriceUsd: bigint | undefined;
     if (isSwapConfigured && STATE_VIEW_ADDRESS) {
-      const slot0 = poolRes.data?.[poolCursor];
-      const liq = poolRes.data?.[poolCursor + 1];
-      poolCursor += 2;
-      hasPool = liq?.status === "success" && (liq.result as bigint) > 0n;
-      if (hasPool && slot0?.status === "success") {
-        const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-        if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+      for (let k = 0; k < cs.length; k++) {
+        const slot0 = poolRes.data?.[poolCursor + k * 2];
+        const liq = poolRes.data?.[poolCursor + k * 2 + 1];
+        if (liq?.status === "success" && (liq.result as bigint) > 0n) {
+          hasPool = true;
+          if (slot0?.status === "success") {
+            const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
+            if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+          }
+          break;
+        }
       }
+      poolCursor += cs.length * 2;
       if (marketPriceWeth !== undefined && ethUsd1e18 !== undefined) {
         marketPriceUsd = (marketPriceWeth * ethUsd1e18) / 10n ** 18n;
       }

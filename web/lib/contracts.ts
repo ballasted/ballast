@@ -101,6 +101,26 @@ export const FACTORIES: FactoryRef[] = [
 // Just the addresses, newest-first — what the read hooks/servers enumerate.
 export const FACTORY_ADDRESSES: Address[] = FACTORIES.map((f) => f.address);
 
+// ── Hook registry: multi-hook union (same shape/reason as the factory union) ──
+// The BallastHook is baked into every pool's PoolKey at graduation and is IMMUTABLE
+// there. Redeploying the hook (a new singleton) does NOT move existing pools — their
+// fees keep accruing to the OLD hook's `owed` mapping, and their poolId is still
+// computed with the OLD hook. So, exactly like factories:
+//   • WRITES / new pools use the CURRENT hook (HOOK_ADDRESS).
+//   • Fee claims read `owed(me)` across EVERY hook and claim from each with a balance.
+//   • Pool price / swap routing resolve WHICH hook a given token's pool lives under
+//     (newest-first), so prior-hook tokens ($BALLAST, CHRS) stay priced and tradeable.
+//
+// Env: NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES — comma-separated OLDER hooks, newest-first.
+const PRIOR_HOOK_ADDRESSES = parseAddressList(process.env.NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES);
+
+// Ordered newest-first: current hook, then priors. Every hook-aware read enumerates
+// this; the pool resolver picks whichever hook actually holds the token's live pool.
+export const HOOK_ADDRESSES: Address[] = [
+  ...(HOOK_ADDRESS ? [HOOK_ADDRESS] : []),
+  ...PRIOR_HOOK_ADDRESSES,
+];
+
 // Core addresses the app cannot function without. `asAddress` already maps a
 // missing OR zero/malformed value to `undefined`, so this list catches both the
 // unset and the `0x0` case the spec calls out — a startup guard surfaces it as a

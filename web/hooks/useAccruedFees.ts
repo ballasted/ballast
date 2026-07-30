@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useReadContract, useReadContracts, usePublicClient, useWriteContract } from "wagmi";
+import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import type { Address } from "viem";
 import { ballastHookAbi, aggregatorV3Abi } from "@/lib/abis";
-import { HOOK_ADDRESS, ETH_USD_FEED_ADDRESS } from "@/lib/contracts";
+import { HOOK_ADDRESSES, ETH_USD_FEED_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt } from "@/lib/waitForReceipt";
@@ -14,13 +14,17 @@ const CHAIN_ID = activeChain.id;
 export type ClaimPhase = "idle" | "claiming" | "success" | "error";
 
 /**
- * The WETH swap fees accrued to `account` in BallastHook, and the claim action.
+ * The WETH swap fees accrued to `account` across EVERY BallastHook we've deployed,
+ * and the claim action.
  *
- * `owed` is per-RECIPIENT, not per-token: a creator's balance is the sum across all
- * their launches, and `claim()` sweeps the whole thing to the caller. The same path
- * serves the platform vault and any referrer — claim() has no access control beyond
- * "you can only take your own balance". Fees are paid out as WETH (an ERC-20 on this
- * chain), not unwrapped to native ETH.
+ * `owed` is per-RECIPIENT, not per-token, and it lives on the hook contract that took
+ * the fee. Because the hook is baked into each pool's immutable PoolKey, a hook
+ * redeploy leaves prior pools' fees on the OLD hook forever — so a single-hook read
+ * would hide (and a single-hook claim would strand) everything earned before the
+ * redeploy. We therefore read `owed(account)` on all HOOK_ADDRESSES, SUM them for the
+ * displayed balance, and `claim()` from each hook that has a balance (one tx per hook
+ * with funds). Same path serves creators, the platform vault, and referrers. Fees pay
+ * out as WETH (an ERC-20 here), not unwrapped to native ETH.
  */
 export function useAccruedFees(account?: Address) {
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
@@ -29,15 +33,25 @@ export function useAccruedFees(account?: Address) {
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
   const [error, setError] = useState<string | undefined>();
 
-  const owedRes = useReadContract({
-    address: HOOK_ADDRESS,
-    abi: ballastHookAbi,
-    functionName: "owed",
-    args: account ? [account] : undefined,
-    chainId: CHAIN_ID,
-    query: { enabled: Boolean(HOOK_ADDRESS && account), refetchInterval: 30_000 },
+  const owedRes = useReadContracts({
+    allowFailure: true,
+    contracts: HOOK_ADDRESSES.map((hook) => ({
+      address: hook,
+      abi: ballastHookAbi,
+      functionName: "owed",
+      args: account ? [account] : undefined,
+      chainId: CHAIN_ID,
+    })),
+    query: { enabled: Boolean(account) && HOOK_ADDRESSES.length > 0, refetchInterval: 30_000 },
   });
-  const accruedWeth = owedRes.data as bigint | undefined;
+  // Per-hook owed, aligned to HOOK_ADDRESSES. Undefined until the first read resolves
+  // (so the UI shows "…" not a premature 0).
+  const perHook = HOOK_ADDRESSES.map((hook, i) => ({
+    hook,
+    owed: owedRes.data?.[i]?.status === "success" ? (owedRes.data[i].result as bigint) : 0n,
+  }));
+  const accruedWeth = owedRes.data !== undefined ? perHook.reduce((s, x) => s + x.owed, 0n) : undefined;
+  const hooksWithBalance = perHook.filter((x) => x.owed > 0n);
 
   // WETH ≈ ETH 1:1, so the ETH/USD feed gives the USD equivalent. Decimals read
   // live from the feed, never assumed (CLAUDE.md rule 9).
@@ -59,25 +73,33 @@ export function useAccruedFees(account?: Address) {
   const accruedUsd1e18 =
     accruedWeth !== undefined && ethUsd1e18 !== undefined ? (accruedWeth * ethUsd1e18) / 10n ** 18n : undefined;
 
+  // Claim from EACH hook that owes this account — one tx per hook with a balance
+  // (typically one; two only right after a hook redeploy while old fees remain). A
+  // reverted/lost claim stops the loop and surfaces the hash; already-swept hooks
+  // stay swept, so a retry only re-hits the ones still owing.
   const claim = useCallback(async () => {
-    if (!HOOK_ADDRESS || !publicClient || !account) return;
+    if (!publicClient || !account) return;
+    const targets = hooksWithBalance;
+    if (targets.length === 0) return;
     setError(undefined);
     setTxHash(undefined);
     setPhase("claiming");
     try {
-      const hash = await writeContractAsync({
-        address: HOOK_ADDRESS,
-        abi: ballastHookAbi,
-        functionName: "claim",
-        chainId: CHAIN_ID,
-      });
-      setTxHash(hash);
-      const outcome = await pollReceipt(publicClient, hash);
-      if (outcome.status === "lost") {
-        throw new Error(`We lost track of the claim — check Blockscout before retrying: ${hash}`);
-      }
-      if (outcome.status === "reverted") {
-        throw new Error(`Claim reverted — check Blockscout: ${hash}`);
+      for (const { hook } of targets) {
+        const hash = await writeContractAsync({
+          address: hook,
+          abi: ballastHookAbi,
+          functionName: "claim",
+          chainId: CHAIN_ID,
+        });
+        setTxHash(hash);
+        const outcome = await pollReceipt(publicClient, hash);
+        if (outcome.status === "lost") {
+          throw new Error(`We lost track of a claim — check Blockscout before retrying: ${hash}`);
+        }
+        if (outcome.status === "reverted") {
+          throw new Error(`A claim reverted — check Blockscout: ${hash}`);
+        }
       }
       setPhase("success");
       void owedRes.refetch();
@@ -85,7 +107,7 @@ export function useAccruedFees(account?: Address) {
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [account, publicClient, writeContractAsync, owedRes]);
+  }, [account, publicClient, writeContractAsync, hooksWithBalance, owedRes]);
 
   return {
     accruedWeth,
@@ -93,8 +115,10 @@ export function useAccruedFees(account?: Address) {
     phase,
     txHash,
     error,
-    isConfigured: Boolean(HOOK_ADDRESS),
+    isConfigured: HOOK_ADDRESSES.length > 0,
     isLoading: owedRes.isLoading,
+    // >1 hook owing means the claim will prompt more than once (see FeePanel note).
+    claimSpansHooks: hooksWithBalance.length > 1,
     claim,
     reset: () => {
       setPhase("idle");

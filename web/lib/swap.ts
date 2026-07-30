@@ -52,8 +52,11 @@ export function buildV4SwapInput(args: {
   side: SwapSide;
   amountIn: bigint;
   amountOutMinimum: bigint;
+  /** The hook the token's pool lives under. Defaults to the current hook; pass the
+   *  RESOLVED hook for prior-hook tokens so the PoolKey matches the real pool. */
+  hook?: Address;
 }): { commands: Hex; inputs: Hex[]; value: bigint } | null {
-  const key = poolKeyForToken(args.token);
+  const key = poolKeyForToken(args.token, args.hook);
   if (!key || !WETH_ADDRESS) return null;
 
   const isBuy = args.side === "buy";

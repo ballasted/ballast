@@ -1,18 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { parseUnits, maxUint160, type Address } from "viem";
-import { erc20Abi, permit2Abi, quoterAbi } from "@/lib/abis";
+import { erc20Abi, permit2Abi, quoterAbi, stateViewAbi } from "@/lib/abis";
 import {
   WETH_ADDRESS,
   QUOTER_ADDRESS,
   UNIVERSAL_ROUTER_ADDRESS,
   PERMIT2_ADDRESS,
+  STATE_VIEW_ADDRESS,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { poolKeyForToken, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE } from "@/lib/pool";
+import { poolKeyForToken, candidatePoolKeys, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE } from "@/lib/pool";
 import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
@@ -58,15 +59,51 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
     amountIn = 0n;
   }
 
+  // Which hook does THIS token's pool live under? The hook is fixed in the pool's
+  // immutable PoolKey at graduation, so after a hook redeploy a prior token's pool
+  // still sits under the OLD hook — quoting/swapping with the current hook would
+  // build a PoolKey for a pool that doesn't exist and revert. With a single deployed
+  // hook (no priors) there's nothing to resolve and we skip the probe entirely.
+  const candidates = useMemo(() => (token ? candidatePoolKeys(token) : []), [token]);
+  const [resolvedHook, setResolvedHook] = useState<Address | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setResolvedHook(undefined);
+    const sv = STATE_VIEW_ADDRESS;
+    const first = candidates[0];
+    if (!token || !publicClient || !sv || !first || candidates.length <= 1) return;
+    (async () => {
+      try {
+        const liqs = await Promise.all(
+          candidates.map((c) =>
+            publicClient
+              .readContract({ address: sv, abi: stateViewAbi, functionName: "getLiquidity", args: [c.id] })
+              .catch(() => 0n),
+          ),
+        );
+        if (cancelled) return;
+        const live = candidates.find((_, i) => (liqs[i] as bigint) > 0n);
+        setResolvedHook((live ?? first).hook);
+      } catch {
+        if (!cancelled) setResolvedHook(first.hook);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, publicClient, candidates]);
+
+  // The hook to key the pool with: the sole hook when there are no priors (immediate,
+  // zero extra reads), else the resolved live one (undefined until the probe lands).
+  const hookForKey = candidates.length <= 1 ? candidates[0]?.hook : resolvedHook;
+
   // Quote via V4Quoter (revert-based; simulate to read the return value).
   useEffect(() => {
     let cancelled = false;
-    if (!token || !publicClient || !QUOTER_ADDRESS || amountIn === 0n) {
+    if (!token || !publicClient || !QUOTER_ADDRESS || amountIn === 0n || !hookForKey) {
       setQuote(undefined);
       setQuoteError(undefined);
       return;
     }
-    const key = poolKeyForToken(token);
+    const key = poolKeyForToken(token, hookForKey);
     if (!key) return;
     setPhase("quoting");
     publicClient
@@ -98,7 +135,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
     return () => {
       cancelled = true;
     };
-  }, [token, publicClient, amountIn, side]);
+  }, [token, publicClient, amountIn, side, hookForKey]);
 
   const minOut = quote !== undefined ? (quote * BigInt(10000 - slippageBps)) / 10000n : 0n;
 
@@ -193,7 +230,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
       // 3. Swap — the ETH wrap (buy) / unwrap (sell) happen INSIDE this one call
       //    (see buildV4SwapInput). `value` is the native ETH to wrap on a buy, 0 on
       //    a sell.
-      const built = buildV4SwapInput({ token, side, amountIn, amountOutMinimum: minOut });
+      const built = buildV4SwapInput({ token, side, amountIn, amountOutMinimum: minOut, hook: hookForKey });
       if (!built) throw new Error("Could not build swap");
       setPhase("swapping");
       const hash = await send(() =>
@@ -212,7 +249,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync]);
+  }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync, hookForKey]);
 
   return {
     phase,

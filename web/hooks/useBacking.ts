@@ -20,7 +20,7 @@ import {
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, priceFromSqrtX96 } from "@/lib/pool";
 import type { ProjectBacking } from "./useProjects";
 
 const CHAIN_ID = activeChain.id;
@@ -114,19 +114,22 @@ export function useBacking(token?: Address) {
   const noticePeriod =
     treasuryStateRes.data?.[1]?.status === "success" ? (treasuryStateRes.data[1].result as bigint) : undefined;
 
-  // Market price via StateView(getSlot0/getLiquidity) + ETH/USD feed.
-  const key = token ? poolKeyForToken(token) : undefined;
-  const pid = key ? poolId(key) : undefined;
+  // Market price via StateView(getSlot0/getLiquidity) + ETH/USD feed. Hook-aware: a
+  // token's pool lives under exactly one of the deployed hooks (its own, fixed at
+  // graduation), so probe every candidate and use the one with live liquidity. This
+  // is why a prior-hook token ($BALLAST/CHRS) keeps an on-chain price after a hook
+  // redeploy instead of silently reading the wrong (empty) poolId.
+  const candidates = token ? candidatePoolKeys(token) : [];
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts:
-      pid && STATE_VIEW_ADDRESS
-        ? [
-            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [pid], chainId: CHAIN_ID },
-            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [pid], chainId: CHAIN_ID },
-          ]
+      STATE_VIEW_ADDRESS && candidates.length > 0
+        ? candidates.flatMap((c) => [
+            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [c.id], chainId: CHAIN_ID } as const,
+            { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [c.id], chainId: CHAIN_ID } as const,
+          ])
         : [],
-    query: { enabled: isSwapConfigured && Boolean(pid) },
+    query: { enabled: isSwapConfigured && candidates.length > 0 },
   });
   const ethRes = useReadContracts({
     allowFailure: true,
@@ -139,13 +142,20 @@ export function useBacking(token?: Address) {
     query: { enabled: Boolean(ETH_USD_FEED_ADDRESS) },
   });
 
-  const liq = poolRes.data?.[1];
-  const hasPool = liq?.status === "success" && (liq.result as bigint) > 0n;
+  // Pick the first candidate hook whose pool has live liquidity (newest-first).
+  let hasPool = false;
   let marketPriceWeth: bigint | undefined;
-  const slot0 = poolRes.data?.[0];
-  if (hasPool && slot0?.status === "success") {
-    const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-    if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+  for (let i = 0; i < candidates.length; i++) {
+    const slot0 = poolRes.data?.[i * 2];
+    const liq = poolRes.data?.[i * 2 + 1];
+    if (liq?.status === "success" && (liq.result as bigint) > 0n) {
+      hasPool = true;
+      if (slot0?.status === "success") {
+        const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
+        if (sqrtPriceX96 > 0n) marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+      }
+      break;
+    }
   }
 
   let ethUsd1e18: bigint | undefined;

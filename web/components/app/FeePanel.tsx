@@ -60,6 +60,12 @@ export function FeePanel({
         {note ??
           "Your share of the 1% WETH swap fee, accrued across all your BALLAST launches. One claim sweeps the full balance to your wallet as WETH."}
       </p>
+      {f.claimSpansHooks && f.phase !== "success" && (
+        <p className="mt-1 text-xs text-text-faint">
+          Some of this accrued on an earlier pool version, so claiming will ask for two confirmations —
+          one per version. Both land in your wallet.
+        </p>
+      )}
 
       {f.phase === "success" ? (
         <div className="mt-4 space-y-2 text-center">
