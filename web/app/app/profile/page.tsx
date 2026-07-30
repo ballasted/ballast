@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { SocialIcon } from "@/components/SocialIcon";
+import { COMMUNITY_LINKS } from "@/lib/links";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { activeChain } from "@/lib/chain";
 
@@ -72,7 +74,44 @@ export default function ProfilePage() {
           </a>
         </>
       )}
+
+      <CommunityLinks />
     </div>
+  );
+}
+
+// Community/social links in the app, kept OUT of the five-slot bottom nav. Same
+// central config the marketing footer uses; distinct labels for the two Telegrams.
+function CommunityLinks() {
+  return (
+    <section className="border-t border-border pt-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-text-faint">Community</h2>
+      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
+        {COMMUNITY_LINKS.map((l) =>
+          l.external ? (
+            <a
+              key={l.href}
+              href={l.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+            >
+              <SocialIcon name={l.icon} />
+              {l.label}
+            </a>
+          ) : (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+            >
+              <SocialIcon name={l.icon} />
+              {l.label}
+            </Link>
+          ),
+        )}
+      </div>
+    </section>
   );
 }
 

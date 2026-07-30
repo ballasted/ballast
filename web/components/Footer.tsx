@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Container } from "@/components/Container";
 import { Wordmark } from "@/components/Wordmark";
+import { SocialIcon } from "@/components/SocialIcon";
+import { COMMUNITY_LINKS } from "@/lib/links";
 
 const COLS = [
   {
@@ -60,6 +62,34 @@ export function Footer() {
               </ul>
             </div>
           ))}
+        </div>
+
+        {/* Community / social — X, both Telegram links (labelled distinctly), Docs,
+            and GitHub once the repo is public. Anchor tags only, no web3. */}
+        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-6">
+          {COMMUNITY_LINKS.map((l) =>
+            l.external ? (
+              <a
+                key={l.href}
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+              >
+                <SocialIcon name={l.icon} />
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+              >
+                <SocialIcon name={l.icon} />
+                {l.label}
+              </Link>
+            ),
+          )}
         </div>
 
         {/* Legal footer copy — verbatim from landing-copy doc §Footer. */}

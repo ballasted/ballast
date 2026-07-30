@@ -77,6 +77,26 @@ function cleanHandle(v: string): string {
     .replace(/\/+$/, "");
 }
 
+// Validate an OPTIONAL social handle. Empty = valid (the fields are optional and
+// never block on emptiness). Non-empty must resolve to a real handle so we never
+// store a broken "t.me/<garbage>" that renders as a dead link on the token page.
+// Telegram: a username (5–32 chars, letter-led, [A-Za-z0-9_]) OR an invite link
+// (+hash / joinchat/hash). Accepts a pasted full URL too — cleanHandle strips it.
+function isValidTelegram(v: string): boolean {
+  if (!v.trim()) return true;
+  const h = cleanHandle(v);
+  return (
+    /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(h) ||
+    /^\+[A-Za-z0-9_-]{10,}$/.test(h) ||
+    /^joinchat\/[A-Za-z0-9_-]+$/.test(h)
+  );
+}
+// X handle: 1–15 of [A-Za-z0-9_].
+function isValidX(v: string): boolean {
+  if (!v.trim()) return true;
+  return /^[A-Za-z0-9_]{1,15}$/.test(cleanHandle(v));
+}
+
 // The single-page create flow (spec Phase 2). The three-step wizard is gone: the
 // live backing-per-token figure must move as the user types a treasury amount, and
 // that only works with the form and its preview on one screen at once.
@@ -155,8 +175,11 @@ export function CreateFlow() {
   const belowMin = Boolean(selected && amountRaw > 0n && amountRaw < selected.minDeposit);
   const overBalance = Boolean(balance !== undefined && amountRaw > balance);
   const hasLink = /(https?:\/\/|www\.)/i.test(description);
+  const tgValid = isValidTelegram(tgHandle);
+  const xValid = isValidX(xHandle);
 
-  const projectValid = Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink;
+  const projectValid =
+    Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink && tgValid && xValid;
   const treasuryValid = backed
     ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedBlocked
     : true;
@@ -299,9 +322,15 @@ export function CreateFlow() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="X" optional>
                 <PrefixInput prefix="x.com/" value={xHandle} onChange={setXHandle} placeholder="handle" />
+                {!xValid && (
+                  <p className="mt-1 text-xs text-negative">Enter a valid X handle (letters, numbers, underscore).</p>
+                )}
               </Field>
               <Field label="Telegram" optional>
                 <PrefixInput prefix="t.me/" value={tgHandle} onChange={setTgHandle} placeholder="handle" />
+                {!tgValid && (
+                  <p className="mt-1 text-xs text-negative">Enter a valid t.me handle or invite link.</p>
+                )}
               </Field>
             </div>
           </section>

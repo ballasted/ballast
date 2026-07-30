@@ -255,7 +255,7 @@ function Badge({ children }: { children: React.ReactNode }) {
 
 function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a href={href} target="_blank" rel="noreferrer" className="rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint">
       {children}
     </a>
   );
