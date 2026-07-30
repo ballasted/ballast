@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { colorFor } from "@/lib/metadata";
 import { cn } from "@/lib/cn";
 
 // Project mark. Renders the pinned image (via `src`, an already-resolved gateway
@@ -36,10 +35,16 @@ export function Logo({
     );
   }
 
+  // No uploaded image → ticker initials on a NEUTRAL surface circle. Never a
+  // coloured placeholder (Discover/create Phase 1): a per-ticker hue read as a bug
+  // and belonged to no part of the palette.
   return (
     <div
-      className={cn("flex shrink-0 items-center justify-center rounded-full font-semibold text-white", className)}
-      style={{ width: size, height: size, background: colorFor(symbol || "•"), fontSize: size * 0.3 }}
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-surface-raised font-semibold uppercase text-bone-muted",
+        className,
+      )}
+      style={{ width: size, height: size, fontSize: size * 0.32 }}
     >
       {initials}
     </div>

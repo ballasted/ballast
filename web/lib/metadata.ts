@@ -6,11 +6,3 @@
 
 export const CATEGORIES = ["Index", "Treasury", "Meme", "Other"] as const;
 export type Category = (typeof CATEGORIES)[number];
-
-// Deterministic accent colour from the ticker, so every project has a stable
-// identity even without an uploaded logo (used by the initials fallback mark).
-export function colorFor(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 360;
-  return `hsl(${h} 55% 42%)`;
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { parseUnits, formatUnits, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
@@ -882,7 +882,10 @@ function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: strin
   );
 }
 
-// ── Logo uploader with the artwork-moderation gate (spec 2.1) ───────────────────
+// ── Logo uploader — a proper dropzone with the public/permanent IPFS gate ───────
+// Replaces the old coloured-circle + separate button (Discover/create Phase 1). The
+// whole square is the click/drop target; it is disabled and dimmed until the consent
+// box is ticked, because the upload is permanent and public.
 function LogoUploader({
   symbol,
   logoUri,
@@ -895,16 +898,18 @@ function LogoUploader({
   const [ack, setAck] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [dragOver, setDragOver] = useState(false);
   const [manual, setManual] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function onFile(file: File) {
     setError(undefined);
     if (!isAcceptedImage(file)) {
-      setError("Use a PNG, JPG, SVG, or WebP image.");
+      setError("That file type isn’t supported — use a PNG, JPG, SVG, or WebP image.");
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setError("Image is over 1 MB. Pick a smaller file.");
+      setError("That image is over 1 MB. Pick a smaller file.");
       return;
     }
     setUploading(true);
@@ -913,51 +918,131 @@ function LogoUploader({
       const uri = await pinFile(resized, "logo.png");
       setLogoUri(uri);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed.");
+      setError(e instanceof Error ? `Pinning failed — ${e.message}` : "Pinning to IPFS failed. Try again.");
     } finally {
       setUploading(false);
     }
   }
 
   const preview = ipfsToGateway(logoUri);
+  const hasImage = Boolean(logoUri);
   const locked = !ack;
 
+  function open() {
+    if (!locked && !uploading) inputRef.current?.click();
+  }
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-4">
-        <Logo src={preview} symbol={symbol} size={56} />
-        <div className="min-w-0 flex-1">
-          <label
-            className={cn(
-              "btn-secondary inline-flex items-center gap-2 px-3 py-2 text-sm",
-              locked ? "cursor-not-allowed opacity-40" : "cursor-pointer",
-            )}
-          >
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/svg+xml,image/webp"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onFile(f);
-              }}
-              disabled={uploading || locked}
+    <div className="space-y-2">
+      <div
+        role="button"
+        tabIndex={locked ? -1 : 0}
+        aria-label={hasImage ? "Replace logo" : "Upload logo"}
+        aria-disabled={locked}
+        onClick={open}
+        onKeyDown={(e) => {
+          if (!locked && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            open();
+          }
+        }}
+        onDragOver={(e) => {
+          if (locked) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (locked) return;
+          const f = e.dataTransfer.files?.[0];
+          if (f) void onFile(f);
+        }}
+        className={cn(
+          "relative flex h-[132px] w-[132px] flex-col items-center justify-center gap-2 rounded-card border border-dashed px-3 text-center transition-colors",
+          locked
+            ? "cursor-not-allowed border-[#2E352F] opacity-40"
+            : dragOver
+              ? "cursor-pointer border-green bg-surface-raised"
+              : "cursor-pointer border-[#2E352F] hover:bg-surface-raised",
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onFile(f);
+            e.target.value = ""; // allow re-selecting the same file after a remove
+          }}
+          disabled={uploading || locked}
+        />
+
+        {uploading ? (
+          <>
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-green" aria-hidden />
+            <span className="text-xs text-text-muted">Pinning to IPFS…</span>
+          </>
+        ) : hasImage ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={preview}
+              alt={symbol ? `${symbol} logo` : "project logo"}
+              className="absolute inset-0 h-full w-full rounded-card object-cover"
+              onError={() => setError("That image URL couldn’t be loaded.")}
             />
-            {uploading ? "Uploading…" : logoUri ? "Replace logo" : "Upload logo"}
-          </label>
-          <p className="mt-1 text-xs text-text-faint">PNG/JPG/SVG/WebP, up to 1 MB. Resized to 512×512 and pinned to IPFS.</p>
-        </div>
+            <span className="absolute inset-x-0 bottom-0 rounded-b-card bg-bg/70 py-1 text-xs text-text-secondary">
+              Replace
+            </span>
+            <button
+              type="button"
+              aria-label="Remove logo"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLogoUri("");
+                setError(undefined);
+              }}
+              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-bg/80 text-text-secondary transition-colors hover:text-text-primary"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </>
+        ) : error ? (
+          <>
+            <GalleryGlyph tone="negative" />
+            <span className="text-xs text-negative">{error}</span>
+          </>
+        ) : (
+          <>
+            <GalleryGlyph />
+            <span className="text-xs text-text-muted">Upload logo</span>
+          </>
+        )}
       </div>
 
-      {/* The moderation acknowledgement gates the picker — it sets the expectation
-          that the upload is permanent and public before a file can be chosen. */}
+      <p className="max-w-[13rem] text-xs text-text-faint">
+        PNG, JPG, SVG or WebP · up to 1 MB · resized to 512×512 and pinned to IPFS
+      </p>
+
+      {/* The consent gate — dropzone stays disabled/dimmed until this is ticked. */}
       <label className="flex cursor-pointer items-start gap-2 text-xs text-text-secondary">
         <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 accent-green" />
-        I understand that selected artwork will be moderated and uploaded to public IPFS.
+        I understand the logo is uploaded to public IPFS and is permanent.
       </label>
+      {locked && (
+        <p className="text-xs text-text-faint">
+          Tick this to enable uploading — pinned files are public and can&apos;t be unpinned.
+        </p>
+      )}
 
-      {error && <p className="text-xs text-negative">{error}</p>}
-
+      {/* Errors show INSIDE the dropzone above; this keeps the manual-URL escape hatch
+          for creators already hosting an image, without a separate upload button. */}
       {!locked && (
         <>
           <button
@@ -971,13 +1056,36 @@ function LogoUploader({
             <input
               className="input"
               value={logoUri.startsWith("ipfs://") ? "" : logoUri}
-              onChange={(e) => setLogoUri(e.target.value)}
+              onChange={(e) => {
+                setError(undefined);
+                setLogoUri(e.target.value);
+              }}
               placeholder="https://… or ipfs://…"
             />
           )}
         </>
       )}
     </div>
+  );
+}
+
+// The empty-dropzone glyph — a gallery/image mark (rounded frame, a circle top-left,
+// a diagonal "mountain" line). Inline SVG, no icon library (Phase 1 / "What not to
+// do"). Faint by default; negative-toned when it marks an upload error.
+function GalleryGlyph({ tone }: { tone?: "negative" }) {
+  return (
+    <svg
+      width="32"
+      height="32"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={tone === "negative" ? "text-negative" : "text-text-faint"}
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="8.5" cy="8.5" r="1.6" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M21 15.5l-4.5-4.5L6 21.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
