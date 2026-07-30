@@ -46,7 +46,7 @@ const ALL: { name: string; address?: Address; ctorTypes: string[]; ctorArgs: () 
   { name: "FeeConfig", address: A(process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS), ctorTypes: ["address", "address"], ctorArgs: () => [reqEnv("PROTOCOL_OWNER_ADDRESS"), reqEnv("PROTOCOL_VAULT_ADDRESS")] },
   { name: "BallastHook", address: A(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS), ctorTypes: ["address", "address", "address"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_POOL_MANAGER_ADDRESS"), reqEnv("NEXT_PUBLIC_FEE_CONFIG_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS")] },
   { name: "BallastSeeder", address: A(process.env.NEXT_PUBLIC_SEEDER_ADDRESS), ctorTypes: ["address", "address", "address"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_POOL_MANAGER_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_V4_HOOK_ADDRESS")] },
-  { name: "BallastFactory", address: A(process.env.NEXT_PUBLIC_FACTORY_ADDRESS), ctorTypes: ["address", "address", "address", "address", "uint256", "uint256"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_SEEDER_ADDRESS"), reqEnv("NEXT_PUBLIC_ETH_USD_FEED_ADDRESS"), BigInt(process.env.ETH_USD_STALE_WINDOW ?? String(24 * 60 * 60)), BigInt(process.env.UNBACKED_OPEN_FDV_WETH ?? String(5n * 10n ** 18n))] },
+  { name: "BallastFactory", address: A(process.env.NEXT_PUBLIC_FACTORY_ADDRESS), ctorTypes: ["address", "address", "address", "address", "uint256"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_SEEDER_ADDRESS"), reqEnv("NEXT_PUBLIC_ETH_USD_FEED_ADDRESS"), BigInt(process.env.ETH_USD_STALE_WINDOW ?? String(24 * 60 * 60))] },
 ];
 
 function reqEnv(k: string): string {

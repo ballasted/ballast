@@ -77,48 +77,4 @@ contract BackingMathTest is Test {
         vm.expectRevert(BackingMath.P0OutOfRange.selector);
         this.extP0(1e18, type(uint256).max / 1e19);
     }
-
-    // ── unbackedTick: WETH-denominated opening FDV (no oracle) ──────────────────
-
-    /// The concrete values the factory ships with: 5 ETH -> -191160 (the number that
-    /// must never be hand-entered again), and the retired 1 ETH -> -207300. Both are
-    /// floor-aligned to TS, same convention as backed P0.
-    function test_unbackedTick_concreteValues() public pure {
-        assertEq(BackingMath.unbackedTick(5 ether, S, TS), -191160, "5 ETH FDV tick");
-        assertEq(BackingMath.unbackedTick(1 ether, S, TS), -207300, "1 ETH FDV tick");
-        // Each must be a multiple of the spacing.
-        assertEq(BackingMath.unbackedTick(5 ether, S, TS) % TS, 0, "not spacing-aligned");
-    }
-
-    /// The pool opens at NO MORE than the target FDV (flooring is one-sided) and
-    /// within one-spacing's band below — the WETH FDV back-checks the tick.
-    /// forge-config: default.fuzz.runs = 5000
-    function testFuzz_unbackedOpensWithinToleranceOfFdv(uint256 fdvWeth) public pure {
-        fdvWeth = bound(fdvWeth, 1e16, 100_000 ether); // 0.01 .. 100k ETH FDV
-        int24 tick = BackingMath.unbackedTick(fdvWeth, S, TS); // must not revert in-range
-        uint256 poolP0 = _poolP0(tick); // WETH per token, 1e18
-        uint256 expected = FullMath.mulDiv(fdvWeth, 1e18, S); // target WETH/token, 1e18
-        assertLe(poolP0, expected + 1, "opened above target FDV");
-        assertGe(poolP0, FullMath.mulDiv(expected, LOWER_BOUND_BPS, BPS), "opened >0.70% below target FDV");
-        assertGt(poolP0, 0, "P0 rounded to zero");
-    }
-
-    /// Doubling the FDV moves the opening price ~2x (monotone, no cliff).
-    /// forge-config: default.fuzz.runs = 2000
-    function testFuzz_unbackedFdvScalesLinearly(uint256 fdvWeth) public pure {
-        fdvWeth = bound(fdvWeth, 1e16, 10_000 ether);
-        int24 t1 = BackingMath.unbackedTick(fdvWeth, S, TS);
-        int24 t2 = BackingMath.unbackedTick(fdvWeth * 2, S, TS);
-        assertGe(t2, t1, "higher FDV must not lower opening price");
-        assertApproxEqAbs(int256(t2) - int256(t1), int256(6931), 120, "2x FDV != ~2x price");
-    }
-
-    function extUnbacked(uint256 fdvWeth) external pure returns (int24) {
-        return BackingMath.unbackedTick(fdvWeth, S, TS);
-    }
-
-    function test_unbackedTick_zeroFdvReverts() public {
-        vm.expectRevert(BackingMath.P0OutOfRange.selector);
-        this.extUnbacked(0);
-    }
 }

@@ -66,7 +66,7 @@ contract BallastGraduateForkTest is Test {
         require(address(hook) == ha, "hook");
         seeder = new BallastSeeder(MANAGER, WETH, address(hook));
         ethFeed = new MockAggregator(8, 3000e8, block.timestamp); // ETH = $3000, fresh
-        factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours, 5 ether);
+        factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours);
         swap = new PoolSwapTest(MANAGER);
         vm.deal(address(this), 2000 ether);
         IWETH9c(WETH).deposit{value: 1000 ether}();

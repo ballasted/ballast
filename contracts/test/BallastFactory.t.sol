@@ -29,24 +29,12 @@ contract BallastFactoryTest is Test {
         // Seeder + ethUsdFeed are only exercised by graduate() (fork-tested
         // separately); dummies here keep the launch/wiring unit tests pure.
         BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), WETH, address(2));
-        factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours, 5 ether);
+        factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours);
     }
 
     function test_tokenMinedBelowWeth_currency0() public {
         (BallastToken t,) = _launch();
         assertLt(uint160(address(t)), uint160(WETH), "token must sort below WETH (currency0)");
-    }
-
-    function test_unbackedTick_derivedFromFdv_notHardcoded() public view {
-        // The factory stores the FDV and derives the tick — no magic -191160.
-        assertEq(factory.unbackedOpenFdvWeth(), 5 ether, "FDV stored");
-        assertEq(factory.UNBACKED_TICK(), -191160, "tick derived from 5 ETH FDV");
-    }
-
-    function test_constructor_rejectsZeroFdv() public {
-        BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), WETH, address(2));
-        vm.expectRevert(BallastFactory.ZeroAddress.selector);
-        new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours, 0);
     }
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
