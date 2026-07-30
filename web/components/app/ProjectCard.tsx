@@ -6,6 +6,7 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Logo } from "@/components/app/Logo";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
+import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
 
@@ -102,6 +103,10 @@ export function ProjectCard({
         // time needs event logs; the registry preserves launch order regardless.
         <div className="mt-1 metric-secondary">New · ordered by launch</div>
       )}
+
+      {/* Self-declared links — icons only, unverified, rendered only if any exist.
+          These open in a new tab and don't trigger the card's navigation. */}
+      <ProjectLinks meta={meta} variant="icons" className="mt-3" />
     </Link>
   );
 }

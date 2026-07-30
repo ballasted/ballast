@@ -25,6 +25,7 @@ import {
 import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
+import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
@@ -137,13 +138,14 @@ export default function TokenDetailPage() {
           </div>
         </div>
 
+        {/* Self-declared project links beneath the name — icons + handles, unverified
+            (see ProjectLinks: never a "verified" label, never a check mark). */}
+        <ProjectLinks meta={meta} variant="row" className="mt-3" />
+
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
           {meta?.category && <Badge>{meta.category}</Badge>}
           <Badge>{activeChain.name}</Badge>
           <CopyAddress address={token!} label="Token contract" />
-          {meta?.x && <ExtLink href={toUrl(meta.x)}>X ↗</ExtLink>}
-          {meta?.telegram && <ExtLink href={toUrl(meta.telegram)}>Telegram ↗</ExtLink>}
-          {meta?.website && <ExtLink href={toUrl(meta.website)}>Website ↗</ExtLink>}
         </div>
         {/* 24h change from GeckoTerminal when available, labelled with source;
             otherwise say plainly it needs a market source — never a fabricated %. */}
@@ -265,20 +267,6 @@ function CopyAddress({ address, label }: { address: Address; label?: string }) {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return <span className="rounded-full bg-border px-2.5 py-1 text-text-secondary">{children}</span>;
-}
-
-function ExtLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint">
-      {children}
-    </a>
-  );
-}
-
-// Metadata stores handles like "x.com/name" / "t.me/name" — normalise to a URL.
-function toUrl(v: string): string {
-  if (v.startsWith("http://") || v.startsWith("https://")) return v;
-  return `https://${v.replace(/^\/+/, "")}`;
 }
 
 function Notice({ title, body }: { title: string; body: string }) {

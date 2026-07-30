@@ -29,7 +29,7 @@ export const SAME_AS: string[] = [
   ...(GITHUB_URL ? [GITHUB_URL] : []),
 ];
 
-export type IconName = "x" | "telegram" | "docs" | "github";
+export type IconName = "x" | "telegram" | "docs" | "github" | "website";
 export type SiteLink = { label: string; href: string; icon: IconName; external: boolean };
 
 /**

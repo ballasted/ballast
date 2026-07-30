@@ -109,6 +109,23 @@ function isValidX(v: string): boolean {
   return /^[A-Za-z0-9_]{1,15}$/.test(cleanHandle(v));
 }
 
+// Website is stored with an explicit https:// scheme (the field prefix), so a
+// pasted scheme is stripped before validating/storing. Empty = valid (optional);
+// non-empty must parse as an https URL with a real host, so we never pin a dead
+// "https://" or an http link.
+function normalizeWebsite(v: string): string {
+  return v.trim().replace(/^https?:\/\//i, "").replace(/^\/+/, "");
+}
+function isValidWebsite(v: string): boolean {
+  if (!v.trim()) return true;
+  try {
+    const u = new URL(`https://${normalizeWebsite(v)}`);
+    return u.protocol === "https:" && u.hostname.length >= 3 && u.hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
+
 // The single-page create flow (spec Phase 2). The three-step wizard is gone: the
 // live backing-per-token figure must move as the user types a treasury amount, and
 // that only works with the form and its preview on one screen at once.
@@ -119,6 +136,7 @@ export function CreateFlow() {
   const [category, setCategory] = useState<Category>("Index");
   const [description, setDescription] = useState("");
   const [logoUri, setLogoUri] = useState(""); // ipfs://CID (uploaded) or manual URL
+  const [website, setWebsite] = useState("");
   const [xHandle, setXHandle] = useState("");
   const [tgHandle, setTgHandle] = useState("");
 
@@ -190,9 +208,10 @@ export function CreateFlow() {
   const hasLink = /(https?:\/\/|www\.)/i.test(description);
   const tgValid = isValidTelegram(tgHandle);
   const xValid = isValidX(xHandle);
+  const websiteValid = isValidWebsite(website);
 
   const projectValid =
-    Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink && tgValid && xValid;
+    Boolean(name.trim()) && Boolean(symbolClean) && Boolean(description.trim()) && !hasLink && tgValid && xValid && websiteValid;
   const treasuryValid = backed
     ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedBlocked
     : true;
@@ -214,8 +233,11 @@ export function CreateFlow() {
         description: description.trim(),
         category,
         logo: logoUri.trim() || undefined,
-        x: xHandle.trim() ? `x.com/${cleanHandle(xHandle)}` : undefined,
-        telegram: tgHandle.trim() ? `t.me/${cleanHandle(tgHandle)}` : undefined,
+        // Store nothing (not "") for an empty OR malformed field — JSON.stringify
+        // drops undefined keys, so a dead link can never be pinned or rendered.
+        website: website.trim() && websiteValid ? `https://${normalizeWebsite(website)}` : undefined,
+        x: xHandle.trim() && xValid ? `x.com/${cleanHandle(xHandle)}` : undefined,
+        telegram: tgHandle.trim() && tgValid ? `t.me/${cleanHandle(tgHandle)}` : undefined,
       });
       setPinning(false);
       const params: LaunchParams = {
@@ -332,19 +354,36 @@ export function CreateFlow() {
               )}
             </Field>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="X" optional>
-                <PrefixInput prefix="x.com/" value={xHandle} onChange={setXHandle} placeholder="handle" />
-                {!xValid && (
-                  <p className="mt-1 text-xs text-negative">Enter a valid X handle (letters, numbers, underscore).</p>
+            {/* Links — all optional, all self-declared and unverified. Stored in the
+                pinned metadata JSON so they live on IPFS with the rest and anyone can
+                read them without our interface. */}
+            <div className="space-y-3">
+              <div className="field-label mb-0">
+                Links <span className="text-text-faint">(optional)</span>
+              </div>
+              <Field label="Website">
+                <PrefixInput prefix="https://" value={website} onChange={setWebsite} placeholder="yourproject.xyz" />
+                {!websiteValid && (
+                  <p className="mt-1 text-xs text-negative">Enter a valid website (https only, e.g. yourproject.xyz).</p>
                 )}
               </Field>
-              <Field label="Telegram" optional>
-                <PrefixInput prefix="t.me/" value={tgHandle} onChange={setTgHandle} placeholder="handle" />
-                {!tgValid && (
-                  <p className="mt-1 text-xs text-negative">Enter a valid t.me handle or invite link.</p>
-                )}
-              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="X">
+                  <PrefixInput prefix="x.com/" value={xHandle} onChange={setXHandle} placeholder="handle" />
+                  {!xValid && (
+                    <p className="mt-1 text-xs text-negative">Enter a valid X handle (letters, numbers, underscore).</p>
+                  )}
+                </Field>
+                <Field label="Telegram">
+                  <PrefixInput prefix="t.me/" value={tgHandle} onChange={setTgHandle} placeholder="handle" />
+                  {!tgValid && (
+                    <p className="mt-1 text-xs text-negative">Enter a valid t.me handle or invite link.</p>
+                  )}
+                </Field>
+              </div>
+              <p className="text-xs text-text-faint">
+                Shown on your token page as-is. BALLAST doesn&apos;t verify project links.
+              </p>
             </div>
           </section>
 
