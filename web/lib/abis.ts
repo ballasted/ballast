@@ -220,6 +220,15 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "bool" }],
   },
   {
+    // token => id+1 (0 = this factory never launched it). The O(1) ownership test:
+    // a token belongs to whichever factory returns non-zero here (see useProjectFactory).
+    type: "function",
+    name: "launchIdOf",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
     type: "function",
     name: "launch",
     stateMutability: "nonpayable",

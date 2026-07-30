@@ -13,10 +13,11 @@ import {
 } from "@/lib/abis";
 import {
   LENS_ADDRESS,
-  FACTORY_ADDRESS,
+  FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
   isLensConfigured,
+  isFactoryConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
@@ -75,13 +76,36 @@ export function useBacking(token?: Address) {
   const creator = pick(5) as Address | undefined;
   const totalSupply = pick(6) as bigint | undefined;
 
+  // Resolve which factory OWNS this token (multi-factory union) via launchIdOf > 0,
+  // newest-first. A token launched by a PRIOR factory ($BALLAST) must have its
+  // graduation status — and its graduate() call — routed to THAT factory. Checking
+  // the current factory, which never created it, always reports not-graduated and
+  // makes graduate() revert (the "Launch incomplete" + reverting-Resume bug).
+  const ownerRes = useReadContracts({
+    allowFailure: true,
+    contracts: token
+      ? FACTORY_ADDRESSES.map(
+          (f) => ({ address: f, abi: ballastFactoryAbi, functionName: "launchIdOf", args: [token], chainId: CHAIN_ID }) as const,
+        )
+      : [],
+    query: { enabled: isFactoryConfigured && Boolean(token) && FACTORY_ADDRESSES.length > 0 },
+  });
+  let ownerFactory: Address | undefined;
+  for (let i = 0; i < FACTORY_ADDRESSES.length; i++) {
+    const r = ownerRes.data?.[i];
+    if (r?.status === "success" && (r.result as bigint) > 0n) {
+      ownerFactory = FACTORY_ADDRESSES[i];
+      break;
+    }
+  }
+
   const graduatedRes = useReadContract({
-    address: FACTORY_ADDRESS,
+    address: ownerFactory,
     abi: ballastFactoryAbi,
     functionName: "graduated",
     args: token ? [token] : undefined,
     chainId: CHAIN_ID,
-    query: { enabled: Boolean(token && FACTORY_ADDRESS) },
+    query: { enabled: Boolean(token && ownerFactory) },
   });
   const graduated = Boolean(graduatedRes.data);
 
@@ -182,6 +206,7 @@ export function useBacking(token?: Address) {
     pending,
     noticePeriod,
     graduated,
+    ownerFactory,
     hasPool,
     marketPriceWeth,
     marketPriceUsd,

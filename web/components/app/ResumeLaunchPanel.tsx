@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { ballastFactoryAbi } from "@/lib/abis";
-import { FACTORY_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { pollReceipt } from "@/lib/waitForReceipt";
 import { decodeTxError } from "@/lib/txError";
@@ -16,10 +15,17 @@ import { ConnectButton } from "@/components/app/ConnectButton";
 // so any connected wallet can finish it. Idempotent + timeout-safe: it prechecks
 // graduated() and, on a lost receipt, tells the user to check Blockscout rather
 // than blindly retrying (Part B).
+//
+// `factory` is the token's OWNING factory (resolved by useBacking via the
+// multi-factory union), NOT necessarily the current one — a prior-factory token
+// must graduate against the factory that created it, or the call reverts. Before
+// showing the action we SIMULATE graduate() against that factory and render nothing
+// if it would revert (already graduated, unknown token, wrong factory) — never a
+// button that reverts.
 type Phase = "idle" | "pending" | "confirming" | "lost" | "error" | "done";
 
-export function ResumeLaunchPanel({ token, symbol }: { token: Address; symbol?: string }) {
-  const { isConnected } = useAccount();
+export function ResumeLaunchPanel({ token, symbol, factory }: { token: Address; symbol?: string; factory?: Address }) {
+  const { address: account, isConnected } = useAccount();
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient({ chainId: activeChain.id });
@@ -27,16 +33,40 @@ export function ResumeLaunchPanel({ token, symbol }: { token: Address; symbol?: 
   const [phase, setPhase] = useState<Phase>("idle");
   const [hash, setHash] = useState<`0x${string}`>();
   const [err, setErr] = useState<string>();
+  // undefined = still simulating; true = graduate() would succeed; false = it would
+  // revert (or we have no owning factory) → don't offer Resume at all.
+  const [canResume, setCanResume] = useState<boolean | undefined>(undefined);
 
   const explorer = activeChain.blockExplorers.default.url;
 
+  // Simulate graduate() against the owning factory. eth_call only — writes nothing.
+  useEffect(() => {
+    let cancelled = false;
+    setCanResume(undefined);
+    if (!factory || !publicClient || !token) {
+      setCanResume(false);
+      return;
+    }
+    publicClient
+      .simulateContract({
+        address: factory,
+        abi: ballastFactoryAbi,
+        functionName: "graduate",
+        args: [token],
+        ...(account ? { account } : {}),
+      })
+      .then(() => { if (!cancelled) setCanResume(true); })
+      .catch(() => { if (!cancelled) setCanResume(false); });
+    return () => { cancelled = true; };
+  }, [factory, publicClient, token, account]);
+
   async function resume() {
-    if (!FACTORY_ADDRESS || !publicClient) return;
+    if (!factory || !publicClient) return;
     setErr(undefined);
     // Precheck — maybe a prior (lost) tx already seeded it.
     try {
       const g = (await publicClient.readContract({
-        address: FACTORY_ADDRESS,
+        address: factory,
         abi: ballastFactoryAbi,
         functionName: "graduated",
         args: [token],
@@ -52,7 +82,7 @@ export function ResumeLaunchPanel({ token, symbol }: { token: Address; symbol?: 
     let h: `0x${string}`;
     try {
       h = await writeContractAsync({
-        address: FACTORY_ADDRESS,
+        address: factory,
         abi: ballastFactoryAbi,
         functionName: "graduate",
         args: [token],
@@ -77,6 +107,12 @@ export function ResumeLaunchPanel({ token, symbol }: { token: Address; symbol?: 
     }
     setPhase("done");
   }
+
+  // Before the user acts, only render if graduate() actually simulates cleanly. While
+  // simulating (undefined) or if it would revert (false), show nothing — no reverting
+  // button, and no "incomplete" claim about a token whose pool is fine. Once the user
+  // has acted (any non-idle phase), keep showing so the status/result stays visible.
+  if (phase === "idle" && canResume !== true) return null;
 
   return (
     <section className="card border-accent p-5">

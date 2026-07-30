@@ -56,6 +56,7 @@ export default function TokenDetailPage() {
     marketPriceWeth,
     hasPool,
     graduated,
+    ownerFactory,
     isConfigured,
     isLoading,
     found,
@@ -84,8 +85,15 @@ export default function TokenDetailPage() {
       {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
 
       {/* Half-launched: token exists but pool never seeded. Offer to finish it
-          (permissionless graduate) rather than leaving a dead token (Part B). */}
-      {!graduated && <ResumeLaunchPanel token={token!} symbol={symbol} />}
+          (permissionless graduate) rather than leaving a dead token (Part B).
+          Consistency guard: if ANY source shows a live pool (on-chain sqrtPriceX96
+          → marketPriceUsd, or a GeckoTerminal price), the pool exists — never render
+          the "incomplete" panel, whatever the registry says. The panel itself also
+          simulates graduate() and hides if it would revert (belt-and-suspenders,
+          and it routes to ownerFactory, not the current one). */}
+      {!graduated && !hasPool && marketPriceUsd === undefined && market?.priceUsd === undefined && (
+        <ResumeLaunchPanel token={token!} symbol={symbol} factory={ownerFactory} />
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <header className="card p-5">
