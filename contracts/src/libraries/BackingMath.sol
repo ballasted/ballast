@@ -35,8 +35,30 @@ library BackingMath {
         uint256 backingPerToken = FullMath.mulDiv(backingUsd1e18, 1e18, totalSupply);
         // P0 = WETH per token, 1e18 (both WETH and token are 18-decimals)
         uint256 p0 = FullMath.mulDiv(backingPerToken, 1e18, ethUsd1e18);
-        if (p0 == 0) revert P0OutOfRange();
+        return _alignedTick(p0, tickSpacing);
+    }
 
+    /// @notice Opening tick for an UNBACKED launch priced at a fixed fully-diluted
+    ///         valuation in WETH — NO oracle. The pool opens at `fdvWeth / totalSupply`
+    ///         WETH per token. Same floor-alignment as `p0Tick`, so unbacked and backed
+    ///         launches round identically. Pure, so it's covered by the same fuzz surface.
+    /// @param fdvWeth      target opening fully-diluted valuation, in wei (WETH)
+    /// @param totalSupply  project token total supply (wei)
+    /// @param tickSpacing  pool tick spacing
+    function unbackedTick(uint256 fdvWeth, uint256 totalSupply, int24 tickSpacing)
+        internal
+        pure
+        returns (int24 tickLower)
+    {
+        // P0 = WETH per token, 1e18-scaled = (fdvWeth / totalSupply) * 1e18
+        uint256 p0 = FullMath.mulDiv(fdvWeth, 1e18, totalSupply);
+        return _alignedTick(p0, tickSpacing);
+    }
+
+    /// @dev Shared tail: P0 (WETH/token, 1e18) -> floor-aligned opening tick. Reverts
+    ///      (never a garbage tick) if P0 falls outside v4's usable sqrt-price range.
+    function _alignedTick(uint256 p0, int24 tickSpacing) private pure returns (int24 tickLower) {
+        if (p0 == 0) revert P0OutOfRange();
         // sqrtPriceX96 = sqrt(P0_ratio) * 2^96 = sqrt(P0_1e18 * 2^192 / 1e18)
         uint256 sqrtP = FixedPointMathLib.sqrt(FullMath.mulDiv(p0, 1 << 192, 1e18));
         if (sqrtP < TickMath.MIN_SQRT_PRICE || sqrtP >= TickMath.MAX_SQRT_PRICE) revert P0OutOfRange();

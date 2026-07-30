@@ -55,9 +55,26 @@ contract BallastFactory {
     uint256 public immutable ethUsdStaleWindow;
 
     int24 public constant TICK_SPACING = 60;
-    /// @notice Constant opening tick for UNBACKED launches (no oracle dependency).
-    ///         ~1e-9 WETH/token; tunable product parameter. Multiple of TICK_SPACING.
-    int24 public constant UNBACKED_TICK = -207240;
+
+    /// @notice Target fully-diluted valuation, in WETH, at which an UNBACKED launch's
+    ///         pool opens. NO oracle: it is a WETH-denominated ratio, so the USD figure
+    ///         moves with ETH — deliberately, because the token/WETH pool's
+    ///         ETH-denominated depth is what governs slippage, so a WETH peg keeps
+    ///         manipulation-cost consistent across launches regardless of where ETH
+    ///         trades. Set once at deploy (immutable); retuning is a redeploy.
+    ///
+    ///         Chosen = 5 ETH. By the one-sided depth relation (√k−1)·FDV, ~2 ETH of
+    ///         net buying doubles an unbacked token and ~11 ETH takes it 10×. The
+    ///         earlier value (1 ETH) let ~0.4 ETH (a few hundred dollars) double a
+    ///         price the Discover board publishes with confidence — cheap enough to
+    ///         make the whole board's numbers manipulable, not just one token's. 5 ETH
+    ///         puts manipulation in the thousands, which is the point.
+    uint256 public immutable unbackedOpenFdvWeth;
+
+    /// @notice Opening tick for UNBACKED launches, DERIVED from `unbackedOpenFdvWeth`
+    ///         at deploy via the same floor-aligned math as backed P0 (BackingMath) —
+    ///         no magic number. Immutable; a multiple of TICK_SPACING.
+    int24 public immutable UNBACKED_TICK;
 
     mapping(address token => bool) public graduated;
 
@@ -101,17 +118,23 @@ contract BallastFactory {
         address weth_,
         BallastSeeder seeder_,
         address ethUsdFeed_,
-        uint256 ethUsdStaleWindow_
+        uint256 ethUsdStaleWindow_,
+        uint256 unbackedOpenFdvWeth_
     ) {
         if (registry_ == address(0) || weth_ == address(0) || address(seeder_) == address(0) || ethUsdFeed_ == address(0)) {
             revert ZeroAddress();
         }
         if (ethUsdStaleWindow_ == 0) revert ZeroAddress();
+        if (unbackedOpenFdvWeth_ == 0) revert ZeroAddress();
         registry = registry_;
         weth = weth_;
         seeder = seeder_;
         ethUsdFeed = ethUsdFeed_;
         ethUsdStaleWindow = ethUsdStaleWindow_;
+        unbackedOpenFdvWeth = unbackedOpenFdvWeth_;
+        // Derive the opening tick once, from the FDV, using the same floor-aligned
+        // math as backed P0 — so -191160 (at 5 ETH) is never a hand-entered constant.
+        UNBACKED_TICK = BackingMath.unbackedTick(unbackedOpenFdvWeth_, TOTAL_SUPPLY, TICK_SPACING);
     }
 
     /// @notice Seed the token/WETH pool at P0 and lock LP. Backed launches derive P0

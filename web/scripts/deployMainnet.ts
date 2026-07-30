@@ -13,7 +13,7 @@
  *   4. BallastHook(poolManager, feeConfig, weth) // CREATE2 via the Arachnid proxy,
  *                                                //   salt mined for flags 0xCC
  *   5. BallastSeeder(poolManager, weth, hook)
- *   6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow)
+ *   6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow, unbackedOpenFdvWeth)
  *
  * It reads the COMPILED creation bytecode + ABI straight from Foundry's build output
  * (contracts/out/<C>.sol/<C>.json). If those artifacts are missing you must first
@@ -122,6 +122,10 @@ const FLAG_MASK = (1n << 14n) - 1n; // Hooks.ALL_HOOK_MASK = 0x3FFF
 const MAX_MINE_ITERS = 2_000_000; // ~16k expected; generous cap (Solidity uses 160_444)
 
 const DEFAULT_ETH_USD_STALE_WINDOW = 24n * 60n * 60n; // 24h, matching the Solidity default
+// Unbacked opening FDV (WETH), matching the Solidity default (5 ether). WETH-pegged;
+// the factory derives UNBACKED_TICK from it. 5 ETH ⇒ ~2 ETH of net buying to 2× an
+// unbacked token, so a Discover price isn't movable for a few hundred dollars.
+const DEFAULT_UNBACKED_OPEN_FDV_WETH = 5n * 10n ** 18n;
 
 const CONTRACTS_OUT = resolve(__dirname, "../../contracts/out");
 
@@ -194,6 +198,13 @@ async function main() {
     console.error("ERROR: ETH_USD_STALE_WINDOW must be > 0 (the factory constructor reverts on 0).");
     process.exit(1);
   }
+  const unbackedOpenFdvWeth = process.env.UNBACKED_OPEN_FDV_WETH
+    ? BigInt(process.env.UNBACKED_OPEN_FDV_WETH)
+    : DEFAULT_UNBACKED_OPEN_FDV_WETH;
+  if (unbackedOpenFdvWeth === 0n) {
+    console.error("ERROR: UNBACKED_OPEN_FDV_WETH must be > 0 (the factory constructor reverts on 0).");
+    process.exit(1);
+  }
 
   // Optional reuse (freshness-gate redeploy keeps the SAME registry).
   const reuseRegistry = reqAddr(process.env.REUSE_ASSET_REGISTRY);
@@ -228,6 +239,7 @@ async function main() {
   console.log("weth         :", weth);
   console.log("ethUsdFeed   :", ethUsdFeed);
   console.log("staleWindow  :", `${ethUsdStaleWindow}s`, ethUsdStaleWindow === DEFAULT_ETH_USD_STALE_WINDOW ? "(default 24h)" : "");
+  console.log("unbackedFDV  :", `${Number(unbackedOpenFdvWeth) / 1e18} WETH`, unbackedOpenFdvWeth === DEFAULT_UNBACKED_OPEN_FDV_WETH ? "(default 5 ETH; factory derives the tick)" : "");
   console.log("sequencer    :", sequencer, sequencer === "0x0000000000000000000000000000000000000000" ? "(0x0 → BackingLens reports Unknown; none on 4663)" : "");
   console.log("reuse        :", [
     reuseRegistry ? `registry=${reuseRegistry}` : null,
@@ -317,7 +329,7 @@ async function main() {
     {
       step: "BallastFactory",
       action: "deploy",
-      args: [addr.AssetRegistry, weth, addr.BallastSeeder, ethUsdFeed, ethUsdStaleWindow.toString()],
+      args: [addr.AssetRegistry, weth, addr.BallastSeeder, ethUsdFeed, ethUsdStaleWindow.toString(), `${unbackedOpenFdvWeth.toString()} (unbackedOpenFdvWeth)`],
       predicted: addr.BallastFactory,
     },
   ];
@@ -400,7 +412,32 @@ async function main() {
     deployed.BallastSeeder,
     ethUsdFeed,
     ethUsdStaleWindow,
+    unbackedOpenFdvWeth,
   ]);
+
+  // ── post-deploy sanity (no forge to run tests here, so read the derived values
+  // back and assert the known-good tick for the default 5 ETH FDV). This is the
+  // acceptance gate for the on-chain tick derivation. ──
+  try {
+    const [tick, fdv] = await Promise.all([
+      publicClient.readContract({
+        address: deployed.BallastFactory,
+        abi: [{ type: "function", name: "UNBACKED_TICK", stateMutability: "view", inputs: [], outputs: [{ type: "int24" }] }] as const,
+        functionName: "UNBACKED_TICK",
+      }),
+      publicClient.readContract({
+        address: deployed.BallastFactory,
+        abi: [{ type: "function", name: "unbackedOpenFdvWeth", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] }] as const,
+        functionName: "unbackedOpenFdvWeth",
+      }),
+    ]);
+    console.log(`\nunbacked open: FDV=${Number(fdv) / 1e18} ETH → UNBACKED_TICK=${tick}`);
+    if (fdv === 5n * 10n ** 18n && tick !== -191160) {
+      console.error(`WARNING: expected UNBACKED_TICK -191160 for 5 ETH FDV, got ${tick}. Do NOT trust this deploy until reconciled.`);
+    }
+  } catch (e) {
+    console.error("post-deploy tick read-back failed:", e instanceof Error ? e.message : e);
+  }
 
   // ── report ── (ready to paste into web/.env.local)
   console.log("\n=== DEPLOYED — copy into web/.env.local ===");
@@ -410,10 +447,12 @@ async function main() {
   console.log(`NEXT_PUBLIC_V4_HOOK_ADDRESS=${deployed.BallastHook}`);
   console.log(`# FeeConfig: ${deployed.FeeConfig}   Seeder: ${deployed.BallastSeeder}`);
   console.log("");
-  console.log("If this is the freshness-gate redeploy: keep the OLD factory address in");
-  console.log("NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES so existing launches ($BALLAST) still list.");
-  console.log("If the HOOK changed, also set NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES to the OLD hook so");
-  console.log("fees on prior pools stay claimable and those tokens stay tradeable/priced.");
+  console.log("PRIOR lists (newest-first). Only include factories/hooks that actually");
+  console.log("launched or hold a pool — DROP any empty deploy so the read union stays small:");
+  console.log("  NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES = <old factory(ies) that launched tokens>");
+  console.log("  NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES     = <old hook(s) with live pools>");
+  console.log("  (e.g. keep 0x0699…523d8 / 0x9C15…680CC for $BALLAST+CHRS; drop the empty");
+  console.log("   0x05aaa5… factory + 0x7431…080cc hook — they launched/held nothing.)");
   console.log(`sequencer feed (0x0 = Unknown, none on 4663): ${sequencer}`);
 
   // ── verify on Blockscout (the forge --verify equivalent, via the standard-input

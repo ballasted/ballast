@@ -69,10 +69,15 @@ contract DeployMainnet is Script {
         // ETH/USD leg outer staleness bound (coarse backstop). 24h given observed
         // gaps up to ~2.8h; owner can't retune an immutable, so it's set once here.
         uint256 ethUsdStaleWindow = vm.envOr("ETH_USD_STALE_WINDOW", uint256(24 hours));
-        console2.log(
-            "BallastFactory: ",
-            address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed, ethUsdStaleWindow))
-        );
+        // Unbacked opening FDV (WETH). 5 ETH: ~2 ETH of net buying to double an
+        // unbacked token, so the Discover board's published prices aren't movable for
+        // a few hundred dollars. WETH-pegged (no oracle); USD figure floats with ETH.
+        uint256 unbackedFdv = vm.envOr("UNBACKED_OPEN_FDV_WETH", uint256(5 ether));
+        BallastFactory factory =
+            new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed, ethUsdStaleWindow, unbackedFdv);
+        console2.log("BallastFactory: ", address(factory));
+        console2.log("  unbackedOpenFdvWeth (wei):", factory.unbackedOpenFdvWeth());
+        console2.log("  UNBACKED_TICK (derived):  ", factory.UNBACKED_TICK());
         vm.stopBroadcast();
         console2.log("sequencer feed (0x0 = Unknown, none on 4663):", e.sequencer);
     }
