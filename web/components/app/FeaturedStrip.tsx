@@ -32,14 +32,9 @@ export function FeaturedStrip({ projects }: { projects: Project[] }) {
   if (featured.length === 0) return null;
 
   const n = featured.length;
-  const cols =
-    n === 1
-      ? "grid-cols-1 max-w-md"
-      : n === 2
-        ? "grid-cols-1 sm:grid-cols-2"
-        : n === 3
-          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-          : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4";
+  // Desktop: a grid of up to four columns (never stretch one card across four).
+  const lgCols =
+    n >= 4 ? "lg:grid-cols-4" : n === 3 ? "lg:grid-cols-3" : n === 2 ? "lg:grid-cols-2" : "lg:grid-cols-1";
 
   return (
     <section aria-label="Featured launches">
@@ -47,13 +42,33 @@ export function FeaturedStrip({ projects }: { projects: Project[] }) {
         <h2 className="font-serif text-lg font-semibold text-bone">Featured</h2>
         <span className="text-xs text-text-faint">Ranked by locked backing, descending</span>
       </div>
-      <div className={cn("grid gap-4", cols)}>
-        {featured.map((p, i) => (
-          <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 4) * 40}ms` }}>
-            <FeaturedCard project={p} />
-          </div>
-        ))}
-      </div>
+
+      {n === 1 ? (
+        // A single card doesn't scroll — centre it rather than strand it.
+        <div className="mx-auto max-w-md anim-enter">
+          <FeaturedCard project={featured[0]!} />
+        </div>
+      ) : (
+        // Mobile: a horizontal snap-scroll strip (cards peek to signal more).
+        // Desktop: a grid. Cards stagger in ~40ms apart as data resolves, capped.
+        <div
+          className={cn(
+            "flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory",
+            "lg:grid lg:overflow-visible lg:pb-0 lg:snap-none",
+            lgCols,
+          )}
+        >
+          {featured.map((p, i) => (
+            <div
+              key={p.token}
+              className="anim-enter w-[82%] shrink-0 snap-start sm:w-[46%] lg:w-auto"
+              style={{ animationDelay: `${Math.min(i, 4) * 40}ms` }}
+            >
+              <FeaturedCard project={p} />
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
