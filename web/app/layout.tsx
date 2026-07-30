@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SAME_AS, X_HANDLE } from "@/lib/links";
 import "./globals.css";
 
 // ROOT LAYOUT — html/body only. Deliberately contains NO web3 providers.
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    site: "@ballasted",
+    site: X_HANDLE,
     title: "BALLAST — Launch with something underneath",
     description:
       "See a project's on-chain treasury priced live as backing per token.",
@@ -48,9 +49,24 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Organization schema so search engines associate our X + Telegram profiles with
+  // the project (sameAs). Static JSON — no web3, keeps the marketing bundle clean.
+  const orgJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "BALLAST",
+    url: SITE_URL,
+    sameAs: SAME_AS,
+  };
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

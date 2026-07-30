@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Container } from "@/components/Container";
+import { SocialIcon } from "@/components/SocialIcon";
+import { COMMUNITY_LINKS } from "@/lib/links";
 import { DOC_PAGES } from "./docs-nav";
 
 // Docs ship on day one — for a product whose whole pitch is legibility, docs are
@@ -28,6 +30,25 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               >
                 {p.label}
               </Link>
+            ))}
+          </nav>
+
+          {/* Community — external channels, distinct labels for the two Telegrams. */}
+          <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-text-faint">
+            Community
+          </p>
+          <nav className="mt-3 flex flex-col gap-1">
+            {COMMUNITY_LINKS.filter((l) => l.external).map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded px-2 py-1.5 text-sm text-text-secondary hover:bg-card hover:text-text-primary"
+              >
+                <SocialIcon name={l.icon} />
+                {l.label}
+              </a>
             ))}
           </nav>
         </aside>
