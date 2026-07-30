@@ -1,27 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
+import { useProtocolHolders } from "@/hooks/useProtocolHolders";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { FeaturedStrip } from "@/components/app/FeaturedStrip";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
+import { SortRail, type SortId } from "@/components/app/SortRail";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
+import { TOTAL_SUPPLY } from "@/lib/contracts";
 import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
 
-type SortTab = "ballasted" | "trending" | "new";
 type Category = "all" | "index" | "treasury" | "meme";
-
-const SORT_TABS: { id: SortTab; label: string }[] = [
-  { id: "ballasted", label: "Ballasted" },
-  { id: "trending", label: "Trending" },
-  { id: "new", label: "New" },
-];
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: "all", label: "All" },
@@ -30,28 +26,36 @@ const CATEGORIES: { id: Category; label: string }[] = [
   { id: "meme", label: "Meme" },
 ];
 
+const WAD = 10n ** 18n;
+
 export default function DiscoverPage() {
-  const [sort, setSort] = useState<SortTab>("ballasted");
+  const [sort, setSort] = useState<SortId>("ballasted");
+  const [trendingView, setTrendingView] = useState(false);
   const [category, setCategory] = useState<Category>("all");
   const { projects, count, isLoading, isConfigured, hasLaunches } = useProjects();
   const trending = useTrending();
 
-  // Sliding tab underline — one element that translates between tabs, rather than
-  // a border flicking on/off (Phase 3). Position is measured from the active
-  // button; the CSS transition does the slide, and motion-reduce disables it.
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
-  useEffect(() => {
-    const el = tabRefs.current[sort];
-    if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
-  }, [sort]);
+  const tokens = useMemo(() => projects.map((p) => p.token), [projects]);
+  const holdersAgg = useProtocolHolders(tokens);
+
+  // Per-token external metrics for the volume / holders sorts, from the SAME sources
+  // the stats row and trending use — so an order and a headline never disagree.
+  const volumeByToken = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of trending.data?.items ?? []) m.set(it.token.toLowerCase(), it.volume24hUsd);
+    return m;
+  }, [trending.data]);
+  const holdersByToken = useMemo(() => {
+    const c = holdersAgg.data.counts ?? {};
+    return new Map(Object.entries(c).map(([k, v]) => [k.toLowerCase(), v]));
+  }, [holdersAgg.data]);
 
   // The protocol token is PINNED, not ranked — pull it out and rank everything else
   // separately, so it never appears to have earned a spot in the sorted list.
   const protocolProject = useMemo(() => projects.find((p) => isProtocolToken(p.token)), [projects]);
   const ranked = useMemo(
-    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort),
-    [projects, sort],
+    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort, { volumeByToken, holdersByToken }),
+    [projects, sort, volumeByToken, holdersByToken],
   );
 
   // Trending order comes from the /api/trending aggregation (unique buyers + 24h
@@ -75,6 +79,9 @@ export default function DiscoverPage() {
     return m;
   }, [projects]);
 
+  // A chain-time sort shows launch-order, not a chart, on each card.
+  const chainTimeSort = sort === "newest" || sort === "oldest";
+
   return (
     <div className="relative overflow-hidden">
       <MeanderWatermark />
@@ -97,7 +104,7 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      {/* Featured strip — beneath the stats/pinned, above the tabs. Ranked by locked
+      {/* Featured strip — beneath the stats/pinned, above the rail. Ranked by locked
           backing; renders nothing until at least one ballasted project qualifies. */}
       {isConfigured && !isLoading && (
         <div className="mt-6">
@@ -105,34 +112,18 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      {/* Sort tabs — underline style. Ballasted is the default: the positioning
-          is structural, not cosmetic. The green underline slides between tabs. */}
-      <div className="relative mt-4 flex gap-6 border-b border-border">
-        {SORT_TABS.map((t) => (
-          <button
-            key={t.id}
-            ref={(el) => {
-              tabRefs.current[t.id] = el;
-            }}
-            onClick={() => setSort(t.id)}
-            className={cn(
-              "pb-2.5 text-sm transition-colors duration-150",
-              sort === t.id ? "text-text-primary" : "text-text-muted hover:text-text-secondary",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -bottom-px h-0.5 bg-green transition-all duration-200 ease-out motion-reduce:transition-none"
-          style={{ left: indicator.left, width: indicator.width }}
-        />
+      {/* Sort rail — chips for every order we can actually compute, plus the
+          separate Trending state. The rule beneath the rail states how the current
+          order is computed and from which source. */}
+      <div className="mt-6">
+        <SortRail sort={sort} onSort={setSort} trending={trendingView} onTrending={setTrendingView} />
       </div>
 
-      {/* Category chips — pill style. Distinct shape from tabs so sort and filter
-          are never confused. Non-All filters need the indexer's category metadata. */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* Category chips — a distinct SECOND row (leading label + pills) so a filter is
+          never confused with a sort. Non-All filters need the indexer's category
+          metadata. */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs uppercase tracking-wide text-text-faint">Category</span>
         {CATEGORIES.map((c) => {
           const disabled = c.id !== "all"; // metadata pending indexer
           return (
@@ -143,9 +134,7 @@ export default function DiscoverPage() {
               title={disabled ? "Category filter pending indexer" : undefined}
               className={cn(
                 "rounded-full border px-3 py-1 text-sm",
-                category === c.id
-                  ? "border-green bg-green-bg text-green"
-                  : "border-border text-text-muted",
+                category === c.id ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
                 disabled && "cursor-not-allowed opacity-40",
               )}
             >
@@ -166,14 +155,14 @@ export default function DiscoverPage() {
         ) : !hasLaunches ? (
           <EmptyState
             title="Nothing has launched yet"
-            body="The first projects appear here the moment a launch confirms on-chain. The Ballasted tab ranks them by verified treasury value locked forever — a project's backing is the default order, not an afterthought."
+            body="The first projects appear here the moment a launch confirms on-chain. Ballasted — the default order — ranks them by verified treasury value locked forever, so a project's backing is the default, not an afterthought."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
               </Link>
             }
           />
-        ) : sort === "trending" ? (
+        ) : trendingView ? (
           // Trending is ranked by unique buyers + 24h volume (see /api/trending), so
           // wash-trading can't buy the top slot. When the data is thin or the source
           // is unreachable we SAY so, rather than show an unsorted list dressed as a
@@ -190,19 +179,24 @@ export default function DiscoverPage() {
                 Ranked by unique buyers, then 24h volume · GeckoTerminal
                 {trending.data?.fetchedAt ? ` · updated ${formatEt(trending.data.fetchedAt)}` : ""}
               </p>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {trendingRanked.map((p, i) => (
-                  <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-                    <ProjectCard project={p} firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1} />
-                  </div>
-                ))}
-              </div>
+              <CardGrid
+                projects={trendingRanked}
+                priorLaunches={priorLaunches}
+              />
             </div>
           )
+        ) : sort === "volume" && trending.isLoading ? (
+          <SkeletonGrid />
+        ) : sort === "volume" && !trending.available ? (
+          <SourceUnavailableNotice metric="24h volume" source="GeckoTerminal" />
+        ) : sort === "holders" && holdersAgg.isLoading ? (
+          <SkeletonGrid />
+        ) : sort === "holders" && !holdersAgg.data.available ? (
+          <SourceUnavailableNotice metric="holders" source="Blockscout" />
         ) : ranked.length === 0 ? (
           <EmptyState
             title="Only the protocol token so far"
-            body="No other projects have launched yet. The next launch appears here, ranked by backing on Ballasted and by launch time on New."
+            body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
@@ -210,51 +204,100 @@ export default function DiscoverPage() {
             }
           />
         ) : (
-          // Responsive grid: 1 / 2 / 3 columns. At very low counts (1) the card is
-          // featured and centred rather than stranded small in a wide row (§1).
-          <div
-            key={sort}
-            className={cn(
-              "grid gap-4",
-              ranked.length <= 1
-                ? "mx-auto max-w-xl grid-cols-1"
-                : ranked.length === 2
-                  ? "sm:grid-cols-2"
-                  : "sm:grid-cols-2 lg:grid-cols-3",
-            )}
-          >
-            {ranked.map((p, i) => (
-              <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-                <ProjectCard
-                  project={p}
-                  hideSparkline={sort === "new"}
-                  firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
-                  featured={ranked.length <= 1}
-                />
-              </div>
-            ))}
-          </div>
+          <CardGrid projects={ranked} priorLaunches={priorLaunches} hideSparkline={chainTimeSort} />
         )}
       </div>
     </div>
   );
 }
 
-function sortProjects(projects: Project[], sort: SortTab): Project[] {
+// Responsive card grid: 1 / 2 / 3 columns. At very low counts (1) the card is
+// featured and centred rather than stranded small in a wide row (density §1).
+function CardGrid({
+  projects,
+  priorLaunches,
+  hideSparkline,
+}: {
+  projects: Project[];
+  priorLaunches: Map<string, number>;
+  hideSparkline?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid gap-4",
+        projects.length <= 1
+          ? "mx-auto max-w-xl grid-cols-1"
+          : projects.length === 2
+            ? "sm:grid-cols-2"
+            : "sm:grid-cols-2 lg:grid-cols-3",
+      )}
+    >
+      {projects.map((p, i) => (
+        <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
+          <ProjectCard
+            project={p}
+            hideSparkline={hideSparkline}
+            firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
+            featured={projects.length <= 1}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type SortCtx = { volumeByToken: Map<string, number>; holdersByToken: Map<string, number> };
+
+function cmpBigDesc(a: bigint, b: bigint): number {
+  return a > b ? -1 : a < b ? 1 : 0;
+}
+
+// Market cap = live pool price × supply, 1e18-scaled; 0 when there's no pool price.
+function marketCap1e18(p: Project): bigint {
+  if (p.marketPriceUsd === undefined) return 0n;
+  const supply = p.backing?.totalSupply && p.backing.totalSupply > 0n ? p.backing.totalSupply : TOTAL_SUPPLY;
+  return (p.marketPriceUsd * supply) / WAD;
+}
+// Backing ratio = market cap ÷ treasury value; -1 (sorts last) when unbacked.
+function backingRatioOf(p: Project): number {
+  const tv = p.backing?.totalValueUsd ?? 0n;
+  if (tv === 0n) return -1;
+  return Number((marketCap1e18(p) * WAD) / tv) / 1e18;
+}
+
+// Only orders computable from a real source (Phase 5). The registry is append-only,
+// so its index order IS launch order (Oldest as-is, Newest reversed) — chain only,
+// no indexer.
+function sortProjects(projects: Project[], sort: SortId, ctx: SortCtx): Project[] {
   const copy = [...projects];
-  if (sort === "new") {
-    // The factory registry is append-only, so its index order IS launch order.
-    // Newest-first = reverse. Computable from chain alone — no indexer needed.
-    return copy.reverse();
+  switch (sort) {
+    case "oldest":
+      return copy;
+    case "newest":
+      return copy.reverse();
+    case "mcap":
+      return copy.sort((a, b) => cmpBigDesc(marketCap1e18(a), marketCap1e18(b)));
+    case "ratio":
+      return copy.sort((a, b) => backingRatioOf(b) - backingRatioOf(a));
+    case "volume":
+      return copy.sort(
+        (a, b) =>
+          (ctx.volumeByToken.get(b.token.toLowerCase()) ?? 0) - (ctx.volumeByToken.get(a.token.toLowerCase()) ?? 0),
+      );
+    case "holders":
+      return copy.sort(
+        (a, b) =>
+          (ctx.holdersByToken.get(b.token.toLowerCase()) ?? 0) - (ctx.holdersByToken.get(a.token.toLowerCase()) ?? 0),
+      );
+    case "ballasted":
+    default:
+      // Ballasted first, then locked backing (the figure that cannot leave) descending.
+      return copy.sort((a, b) => {
+        if (a.ballasted !== b.ballasted) return a.ballasted ? -1 : 1;
+        return cmpBigDesc(a.backing?.lockedValueUsd ?? 0n, b.backing?.lockedValueUsd ?? 0n);
+      });
   }
-  // "ballasted" (default): ballasted first, then locked backing (the figure that
-  // cannot leave) descending. "trending" never reaches here — it renders a notice.
-  return copy.sort((a, b) => {
-    if (a.ballasted !== b.ballasted) return a.ballasted ? -1 : 1;
-    const al = a.backing?.lockedValueUsd ?? 0n;
-    const bl = b.backing?.lockedValueUsd ?? 0n;
-    return bl > al ? 1 : bl < al ? -1 : 0;
-  });
 }
 
 // Trending is ranked honestly (unique buyers + 24h volume) from GeckoTerminal
@@ -273,7 +316,26 @@ function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
           : "Trending ranks by unique buyers plus 24h volume, so two wallets trading with each other can't buy the top spot. There aren't enough real trades across launches yet to rank without it being noise — so we won't pretend."}
       </p>
       <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        Meanwhile, Ballasted ranks by verified locked backing, and New by launch time — both live from the chain.
+        Meanwhile, Ballasted ranks by verified locked backing, and Newest by launch time — both live from the chain.
+      </p>
+    </div>
+  );
+}
+
+// A sort backed by an external source we can't reach right now. We pause the order
+// rather than silently fall back to another one (which would read as a measurement
+// it isn't).
+function SourceUnavailableNotice({ metric, source }: { metric: string; source: string }) {
+  return (
+    <div className="card p-10 text-center">
+      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
+      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric} right now</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
+        {source} didn’t respond, so this order can’t be computed. Rather than quietly fall back to another sort, it’s
+        paused until {source} is reachable again.
+      </p>
+      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
+        The on-chain orders — Ballasted, Newest, Oldest, Market cap, Backing ratio — work regardless.
       </p>
     </div>
   );
@@ -291,7 +353,7 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 }
 
 // Skeleton mirrors ProjectCard's layout exactly, so nothing shifts when the real
-// cards resolve (Phase 3 — the biggest perceived-quality win for slow chain reads).
+// cards resolve (the biggest perceived-quality win for slow chain reads).
 function SkeletonGrid() {
   return (
     <div className="grid gap-3 sm:grid-cols-2" aria-hidden>

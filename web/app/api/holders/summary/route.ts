@@ -21,9 +21,15 @@ export type ProtocolHoldersData = {
   fetchedAt?: number;
   uniqueHolders?: number;
   exact?: boolean;
+  // Per-token holders_count (Blockscout's authoritative per-token count), keyed by
+  // lowercased token address — used by the Discover "Holders" sort. This double-
+  // counts a wallet holding several launches, which is fine for ORDERING; the
+  // deduped `uniqueHolders` above is the headline figure.
+  counts?: Record<string, number>;
 };
 
 type BsHolderItem = { address?: { hash?: string; is_contract?: boolean } };
+type BsToken = { holders_count?: string; holders?: string };
 
 export async function GET(req: NextRequest) {
   const tokens = (req.nextUrl.searchParams.get("tokens") ?? "")
@@ -44,10 +50,23 @@ export async function GET(req: NextRequest) {
 
   try {
     const unique = new Set<string>();
+    const counts: Record<string, number> = {};
     let exact = true;
     let anyOk = false;
 
     for (const token of tokens) {
+      // Per-token authoritative count for the sort (cheap; independent of the union).
+      try {
+        const tr = await fetch(`${BLOCKSCOUT_URL}/api/v2/tokens/${token}`, opts);
+        if (tr.ok) {
+          const t = (await tr.json()) as BsToken;
+          const c = t.holders_count ?? t.holders;
+          if (c !== undefined) counts[token] = Number(c);
+        }
+      } catch {
+        /* per-token count is best-effort; the union below is the headline figure */
+      }
+
       const base = `${BLOCKSCOUT_URL}/api/v2/tokens/${token}/holders`;
       let url = base;
       let pages = 0;
@@ -97,6 +116,7 @@ export async function GET(req: NextRequest) {
         fetchedAt: Math.floor(Date.now() / 1000),
         uniqueHolders: unique.size,
         exact,
+        counts,
       } satisfies ProtocolHoldersData,
       { headers: { "cache-control": "s-maxage=45, stale-while-revalidate=90" } },
     );
