@@ -6,6 +6,7 @@ import { useProjects, type Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
+import { FeaturedStrip } from "@/components/app/FeaturedStrip";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
@@ -88,6 +89,22 @@ export default function DiscoverPage() {
         </div>
       )}
 
+      {/* Protocol token — pinned ABOVE the featured strip, labelled as a placement,
+          never inside the ranked strip below. */}
+      {isConfigured && !isLoading && protocolProject && (
+        <div className="mt-5">
+          <PinnedProtocolCard project={protocolProject} />
+        </div>
+      )}
+
+      {/* Featured strip — beneath the stats/pinned, above the tabs. Ranked by locked
+          backing; renders nothing until at least one ballasted project qualifies. */}
+      {isConfigured && !isLoading && (
+        <div className="mt-6">
+          <FeaturedStrip projects={ranked} />
+        </div>
+      )}
+
       {/* Sort tabs — underline style. Ballasted is the default: the positioning
           is structural, not cosmetic. The green underline slides between tabs. */}
       <div className="relative mt-4 flex gap-6 border-b border-border">
@@ -137,15 +154,6 @@ export default function DiscoverPage() {
           );
         })}
       </div>
-
-      {/* Pinned protocol token — top of Discover, on every tab and filter, visually
-          distinct from and excluded from the ranked list below (a placement, not a
-          ranking result). */}
-      {isConfigured && !isLoading && protocolProject && (
-        <div className="mt-5">
-          <PinnedProtocolCard project={protocolProject} />
-        </div>
-      )}
 
       <div className="mt-5">
         {!isConfigured ? (
