@@ -49,9 +49,15 @@
  *   REUSE_ASSET_REGISTRY / REUSE_BACKING_LENS / REUSE_FEE_CONFIG   optional, see above
  *   RPC_UPSTREAM_URL / RH_RPC_URL_PAID / RH_MAINNET_RPC_URL        an RPC endpoint
  *
+ * After a successful --broadcast it VERIFIES all six on Blockscout (standard-input
+ * API — the forge --verify equivalent, no forge needed); pass --no-verify to skip,
+ * or run scripts/verifyMainnet.ts later. If the HOOK address changes, also set
+ * NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES (see lib/contracts.ts) so prior pools' fees stay
+ * claimable and those tokens stay tradeable/priced.
+ *
  * Run (from web/):
  *   npx tsx scripts/deployMainnet.ts              # dry-run: print the plan, write nothing
- *   npx tsx scripts/deployMainnet.ts --broadcast  # deploy, as the funded deployer
+ *   npx tsx scripts/deployMainnet.ts --broadcast  # deploy + verify, as the funded deployer
  */
 
 import { readFileSync } from "node:fs";
@@ -406,7 +412,35 @@ async function main() {
   console.log("");
   console.log("If this is the freshness-gate redeploy: keep the OLD factory address in");
   console.log("NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES so existing launches ($BALLAST) still list.");
+  console.log("If the HOOK changed, also set NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES to the OLD hook so");
+  console.log("fees on prior pools stay claimable and those tokens stay tradeable/priced.");
   console.log(`sequencer feed (0x0 = Unknown, none on 4663): ${sequencer}`);
+
+  // ── verify on Blockscout (the forge --verify equivalent, via the standard-input
+  // API) unless opted out. A "verify it yourself" product must not ship bytecode-only
+  // contracts. Constructor args are auto-detected by Blockscout from the creation tx.
+  if (process.argv.includes("--no-verify")) {
+    console.log("\n--no-verify: skipping Blockscout verification. Run `npx tsx scripts/verifyMainnet.ts` later.");
+    return;
+  }
+  console.log("\n=== Verifying on Blockscout (standard-input) ===");
+  try {
+    const { verifyContracts } = await import("./lib/verify");
+    await verifyContracts(
+      [
+        { name: "AssetRegistry", address: deployed.AssetRegistry },
+        { name: "BackingLens", address: deployed.BackingLens },
+        { name: "FeeConfig", address: deployed.FeeConfig },
+        { name: "BallastHook", address: deployed.BallastHook },
+        { name: "BallastSeeder", address: deployed.BallastSeeder },
+        { name: "BallastFactory", address: deployed.BallastFactory },
+      ],
+      { blockscout: process.env.NEXT_PUBLIC_BLOCKSCOUT_URL },
+    );
+  } catch (e) {
+    console.error("Verification step failed:", e instanceof Error ? e.message : e);
+    console.error("Deploy succeeded — re-run `npx tsx scripts/verifyMainnet.ts --print` to retry / get forge fallbacks.");
+  }
 }
 
 main().catch((e) => {
