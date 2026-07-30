@@ -229,16 +229,6 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "uint256" }],
   },
   {
-    // Opening fully-diluted valuation for UNBACKED launches, in WETH (immutable).
-    // WETH-pegged, so the USD figure floats with ETH. Present on factories deployed
-    // 2026-07-31+; older factories only expose UNBACKED_TICK.
-    type: "function",
-    name: "unbackedOpenFdvWeth",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "uint256" }],
-  },
-  {
     type: "function",
     name: "launch",
     stateMutability: "nonpayable",

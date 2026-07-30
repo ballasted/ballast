@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { parseUnits, formatUnits, type Address } from "viem";
-import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
@@ -13,8 +13,8 @@ import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
 import { ActingAs } from "@/components/app/ActingAs";
 import { Logo } from "@/components/app/Logo";
-import { erc20Abi, ballastFactoryAbi, aggregatorV3Abi } from "@/lib/abis";
-import { isFactoryConfigured, FACTORY_ADDRESS, ETH_USD_FEED_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
+import { erc20Abi } from "@/lib/abis";
+import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -133,39 +133,6 @@ export function CreateFlow() {
   const selected = assets.find((a) => a.address === assetAddr);
   const backed = mode === "ballast";
   const symbolClean = symbol.trim().toUpperCase().slice(0, SYMBOL_MAX);
-
-  // Unbacked opening valuation, shown live BEFORE signing (not just described). The
-  // factory prices an unbacked launch at a fixed WETH FDV (unbackedOpenFdvWeth) —
-  // WETH-pegged, so the USD equivalent floats with ETH. Read from the CURRENT factory
-  // (allowFailure: factories before 2026-07-31 don't expose the getter, so the figure
-  // simply hides rather than erroring). Only fetched on the unbacked path.
-  const unbackedFdvRes = useReadContracts({
-    allowFailure: true,
-    contracts:
-      FACTORY_ADDRESS && ETH_USD_FEED_ADDRESS
-        ? [
-            { address: FACTORY_ADDRESS, abi: ballastFactoryAbi, functionName: "unbackedOpenFdvWeth", chainId: CHAIN_ID },
-            { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "latestRoundData", chainId: CHAIN_ID },
-            { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals", chainId: CHAIN_ID },
-          ]
-        : [],
-    query: { enabled: mode === "none" && Boolean(FACTORY_ADDRESS) },
-  });
-  const openFdvWeth =
-    unbackedFdvRes.data?.[0]?.status === "success" ? (unbackedFdvRes.data[0].result as bigint) : undefined;
-  const openFdvEth = openFdvWeth !== undefined ? Number(formatUnits(openFdvWeth, 18)) : undefined;
-  let openFdvUsd1e18: bigint | undefined;
-  {
-    const rd = unbackedFdvRes.data?.[1];
-    const dc = unbackedFdvRes.data?.[2];
-    if (openFdvWeth !== undefined && rd?.status === "success" && dc?.status === "success") {
-      const answer = (rd.result as unknown as [bigint, bigint, bigint, bigint, bigint])[1];
-      if (answer > 0n) {
-        const ethUsd1e18 = (answer * 10n ** 18n) / 10n ** BigInt(dc.result as number);
-        openFdvUsd1e18 = (openFdvWeth * ethUsd1e18) / 10n ** 18n;
-      }
-    }
-  }
 
   // Creator's balance of the selected asset — powers the Max button.
   const balRes = useReadContract({
@@ -387,22 +354,11 @@ export function CreateFlow() {
             </div>
 
             {mode === "none" ? (
-              <div className="space-y-2 text-sm text-text-secondary">
-                <p>
-                  An unbacked launch. No treasury assets, no backing figure. The token opens at approximately{" "}
-                  {openFdvEth !== undefined
-                    ? `${openFdvEth.toLocaleString("en", { maximumFractionDigits: 2 })} ETH`
-                    : "a fixed ETH amount"}{" "}
-                  fully diluted, priced in WETH — so the dollar valuation moves with ETH. You can add a treasury later
-                  by depositing, but this launch carries no verified backing.
-                </p>
-                {openFdvEth !== undefined && (
-                  <p className="text-xs text-text-faint">
-                    Opens at ≈ {openFdvEth.toLocaleString("en", { maximumFractionDigits: 2 })} ETH fully diluted
-                    {openFdvUsd1e18 !== undefined ? ` · ~${formatUsd(openFdvUsd1e18)} at the current ETH price` : ""}.
-                  </p>
-                )}
-              </div>
+              <p className="text-sm text-text-secondary">
+                An unbacked launch. No treasury assets, no backing figure — the token opens at a fixed nominal price and
+                trades on its own. You can add a treasury later by depositing, but this launch carries no verified
+                backing.
+              </p>
             ) : !registryReady ? (
               <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</InlineNotice>
             ) : assetsLoading ? (
