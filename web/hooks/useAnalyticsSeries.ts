@@ -18,6 +18,7 @@ export type AnalyticsSeries = {
   volumePrev24hUsd?: number; // prior day, for a real day-over-day delta
   trades24h?: number;
   daily: DayBar[];
+  isLoading?: boolean; // first-load flag, so a stats card can skeleton vs. degrade
 };
 
 const EMPTY: DayBar[] = [];
@@ -39,5 +40,5 @@ export function useAnalyticsSeries(): AnalyticsSeries {
     retry: 1,
   });
 
-  return q.data ?? { available: false, reason: "unreachable", daily: EMPTY };
+  return { ...(q.data ?? { available: false, reason: "unreachable", daily: EMPTY }), isLoading: q.isLoading };
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
 import { ProjectCard } from "@/components/app/ProjectCard";
+import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
@@ -31,7 +32,7 @@ const CATEGORIES: { id: Category; label: string }[] = [
 export default function DiscoverPage() {
   const [sort, setSort] = useState<SortTab>("ballasted");
   const [category, setCategory] = useState<Category>("all");
-  const { projects, isLoading, isConfigured, hasLaunches } = useProjects();
+  const { projects, count, isLoading, isConfigured, hasLaunches } = useProjects();
   const trending = useTrending();
 
   // Sliding tab underline — one element that translates between tabs, rather than
@@ -77,6 +78,15 @@ export default function DiscoverPage() {
     <div className="relative overflow-hidden">
       <MeanderWatermark />
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
+
+      {/* Stats row — four headline figures, Total ballast first. Derived from the
+          SAME projects listed below, so the totals reconcile by construction. Hidden
+          only when the app isn't configured (nothing to read). */}
+      {isConfigured && (
+        <div className="mt-5">
+          <DiscoverStats projects={projects} count={count} isLoading={isLoading} />
+        </div>
+      )}
 
       {/* Sort tabs — underline style. Ballasted is the default: the positioning
           is structural, not cosmetic. The green underline slides between tabs. */}
