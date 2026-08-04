@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 const ITEMS = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
   { href: "/app/analytics", label: "Analytics", icon: IconAnalytics },
+  { href: "/app/buyback", label: "Buyback", icon: IconBurn },
   { href: "/app/create", label: "Create", icon: IconCreate },
   { href: "/app/portfolio", label: "Portfolio", icon: IconPortfolio },
   { href: "/app/profile", label: "Profile", icon: IconProfile },
@@ -53,6 +54,20 @@ function IconCreate() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <rect x="4" y="4" width="16" height="16" rx="5" stroke="currentColor" strokeWidth="2" />
       <path d="M12 8v8M8 12h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconBurn({ active }: { active: boolean }) {
+  // A flame outline — buyback-and-burn. Inline SVG, no icon library or emoji.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3c1 3-2 4-2 7a2 2 0 004 0c0-1 0-2-.5-3 2 1.5 3.5 4 3.5 6.5a5 5 0 11-10 0C7 10 10 7 12 3z"
+        fill={active ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

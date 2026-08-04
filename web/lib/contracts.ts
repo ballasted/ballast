@@ -22,6 +22,10 @@ export const HOOK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS);
 export const FEE_CONFIG_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS,
 );
+// BuybackBurner — the /app/buyback page reads its live state + BuybackBurned events.
+// Unset = the page renders an honest "not live yet" state (nothing to read).
+export const BUYBACK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_ADDRESS);
+export const isBuybackConfigured = Boolean(BUYBACK_ADDRESS);
 
 // ── Pre-existing chain infrastructure (verified, docs/robinhood-chain-research) ─
 export const WETH_ADDRESS = asAddress(process.env.NEXT_PUBLIC_WETH_ADDRESS);
