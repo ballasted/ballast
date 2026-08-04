@@ -7,7 +7,7 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useHolders } from "@/hooks/useHolders";
 import { useTrades } from "@/hooks/useTrades";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { formatCompactUsd, formatSmallUsd, type Trade } from "@/lib/market";
+import { formatCompactUsd, formatSmallUsd, marketCapUsd, type Trade } from "@/lib/market";
 import { activeChain } from "@/lib/chain";
 import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
 import { formatEt } from "@/lib/marketHours";
@@ -15,7 +15,6 @@ import { ipfsToGateway } from "@/lib/ipfs";
 import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
-const WAD = 10n ** 18n;
 
 // ── Market overview ─────────────────────────────────────────────────────────
 // FDV is derived live on-chain (market price × supply). Liquidity + 24h volume come
@@ -36,10 +35,9 @@ export function MarketOverview({
   volume24hUsd?: number; // GeckoTerminal
   holdersCount?: number; // Blockscout
 }) {
-  const fdv =
-    marketPriceUsd !== undefined && totalSupply !== undefined
-      ? (marketPriceUsd * totalSupply) / WAD
-      : undefined;
+  // Same helper as Discover + the featured strip, so a token's market cap (FDV) is
+  // identical wherever it appears (spec 1.4). The caller passes the canonical supply.
+  const fdv = totalSupply !== undefined ? marketCapUsd(marketPriceUsd, totalSupply) : undefined;
 
   return (
     <section className="card p-5">
@@ -250,7 +248,9 @@ export function MetadataHistory({
         {changed
           ? "Metadata has been updated since launch. The launch version above is permanent and always readable on-chain."
           : "Unchanged since launch — the current metadata is the original."}{" "}
-        The dated timeline of every change comes from the indexer, which isn&apos;t wired yet.
+        We show the permanent launch version and the current one. A full change-by-change dated timeline would mean
+        indexing every on-chain MetadataUpdated event; until then, each change is emitted as that event and is readable
+        on the block explorer.
       </p>
     </section>
   );
@@ -284,9 +284,13 @@ function HistoryRow({
 }
 
 // ── Creator track record (spec 5) ───────────────────────────────────────────
-// Launches by this creator and how many are still ballasted — both derived live
-// from the factory registry + BackingLens. "Active since" needs launch timestamps
-// (indexer), so it's labelled rather than invented.
+// Launches by this creator, how many are still ballasted, and their total ballast
+// across launches — all derived live from the factory registry + BackingLens. The
+// old "Active since" stat needed per-launch timestamps, which the registry doesn't
+// carry and Blockscout doesn't expose directly (it would take a per-tx creation-time
+// lookup across every launch — indexer territory). Rather than a "needs indexer"
+// placeholder, we show a figure we CAN source: total ballast across this creator's
+// launches.
 export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; thisToken: Address }) {
   const { projects, isConfigured } = useProjects();
 
@@ -294,6 +298,7 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
 
   const mine = projects.filter((p) => p.creator.toLowerCase() === creator.toLowerCase());
   const stillBallasted = mine.filter((p) => p.ballasted).length;
+  const creatorBallastUsd = mine.reduce((s, p) => s + (p.backing?.totalValueUsd ?? 0n), 0n);
   const others = mine.filter((p) => p.token.toLowerCase() !== thisToken.toLowerCase());
 
   return (
@@ -306,7 +311,7 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
       <dl className="mt-3 grid grid-cols-3 gap-3">
         <Stat label="Launches" value={String(mine.length)} />
         <Stat label="Still ballasted" value={String(stillBallasted)} />
-        <Stat label="Active since" value="needs indexer" pending />
+        <Stat label="Ballast across launches" value={formatUsd(creatorBallastUsd, { compact: true })} />
       </dl>
 
       {others.length > 0 && (
@@ -367,8 +372,9 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
             ))}
           </ul>
           <p className="mt-4 text-[11px] text-text-faint">
-            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. 24h volume above is the
-            sum of this feed over that window.
+            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. These are the most
+            recent trades — a live sample, not the full 24h history. The 24h volume shown elsewhere is GeckoTerminal&apos;s
+            aggregate over the whole window, not the sum of the rows here.
           </p>
         </>
       )}

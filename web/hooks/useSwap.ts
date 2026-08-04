@@ -18,6 +18,7 @@ import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt, replayForRevert } from "@/lib/waitForReceipt";
+import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
 
 const CHAIN_ID = activeChain.id;
 const MAX_EXPIRATION = 2n ** 48n - 1n;
@@ -44,6 +45,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   const { address: account } = useAccount();
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
+  const invalidateChainReads = useInvalidateChainReads();
 
   const [phase, setPhase] = useState<SwapPhase>("idle");
   const [quote, setQuote] = useState<bigint | undefined>();
@@ -245,11 +247,14 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
       );
       setTxHash(hash);
       setPhase("success");
+      // The user's own trade just moved price / backing ratio / their balance / the
+      // trades feed — refresh everything now rather than waiting for the 12s poll.
+      invalidateChainReads();
     } catch (e: unknown) {
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync, hookForKey]);
+  }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync, hookForKey, invalidateChainReads]);
 
   return {
     phase,

@@ -25,13 +25,29 @@ export function useProtocolStats(): ProtocolStats {
   let totalBallastUsd = 0n;
   let lockedBallastUsd = 0n;
   let ballastedCount = 0;
+  // Per-project backing ratio = market price ÷ backing per token (both 1e18 USD),
+  // for every ballasted project that has a live on-chain pool price. Collected here
+  // to take the median below.
+  const ratios: number[] = [];
   for (const p of projects) {
     if (p.backing) {
       totalBallastUsd += p.backing.totalValueUsd;
       lockedBallastUsd += p.backing.lockedValueUsd;
     }
     if (p.ballasted) ballastedCount++;
+    if (p.marketPriceUsd !== undefined && p.backing && p.backing.backingPerToken > 0n) {
+      ratios.push(Number((p.marketPriceUsd * 10n ** 18n) / p.backing.backingPerToken) / 1e18);
+    }
   }
+
+  // Median backing ratio, now sourced live: the market price is read on-chain from
+  // the v4 StateView (same source Discover uses), so this no longer needs an indexer
+  // or a quoter. Null only when NO ballasted project has a live pool price yet — an
+  // honest "nothing to measure", not a fabricated 1.00×.
+  ratios.sort((a, b) => a - b);
+  const n = ratios.length;
+  const medianBackingRatio =
+    n === 0 ? null : n % 2 === 1 ? ratios[(n - 1) / 2]! : (ratios[n / 2 - 1]! + ratios[n / 2]!) / 2;
 
   return {
     isConfigured,
@@ -42,11 +58,6 @@ export function useProtocolStats(): ProtocolStats {
     ballastedSharePct: count > 0 ? (ballastedCount / count) * 100 : undefined,
     totalBallastUsd,
     lockedBallastUsd,
-    // Median backing ratio = median(market price ÷ backing per token) across
-    // projects. It needs a MARKET price per project, which this build has no
-    // on-chain quoter for (ProjectCard shows "price n/a"). Rather than fabricate
-    // a 1.00×, we return null and the UI says plainly it needs a market source —
-    // it lights up once pools/quoter or the indexer provide per-project price.
-    medianBackingRatio: null,
+    medianBackingRatio,
   };
 }

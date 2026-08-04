@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useReadContract, useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import {
@@ -24,6 +25,8 @@ import {
 import { activeChain } from "@/lib/chain";
 import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
+import { liveQuery } from "@/lib/refresh";
+import { devReconcileBig } from "@/lib/reconcile";
 import type { ProjectBacking } from "./useProjects";
 
 const CHAIN_ID = activeChain.id;
@@ -49,7 +52,7 @@ export function useBacking(token?: Address) {
     abi: ballastTokenAbi,
     functionName: "treasury",
     chainId: CHAIN_ID,
-    query: { enabled: Boolean(token) },
+    query: liveQuery(Boolean(token)),
   });
   const treasury = treasuryRes.data as Address | undefined;
 
@@ -66,7 +69,7 @@ export function useBacking(token?: Address) {
           { address: token, abi: erc20Abi, functionName: "totalSupply", chainId: CHAIN_ID },
         ]
       : [],
-    query: { enabled: Boolean(token) },
+    query: liveQuery(Boolean(token)),
   });
   const pick = (i: number) => (metaRes.data?.[i]?.status === "success" ? metaRes.data[i].result : undefined);
   const name = pick(0) as string | undefined;
@@ -90,7 +93,7 @@ export function useBacking(token?: Address) {
           (f) => ({ address: f, abi: ballastFactoryAbi, functionName: "launchIdOf", args: [token], chainId: CHAIN_ID }) as const,
         )
       : [],
-    query: { enabled: isFactoryConfigured && Boolean(token) && FACTORY_ADDRESSES.length > 0 },
+    query: liveQuery(isFactoryConfigured && Boolean(token) && FACTORY_ADDRESSES.length > 0),
   });
   let ownerFactory: Address | undefined;
   for (let i = 0; i < FACTORY_ADDRESSES.length; i++) {
@@ -107,7 +110,7 @@ export function useBacking(token?: Address) {
     functionName: "graduated",
     args: token ? [token] : undefined,
     chainId: CHAIN_ID,
-    query: { enabled: Boolean(token && ownerFactory) },
+    query: liveQuery(Boolean(token && ownerFactory)),
   });
   const graduated = Boolean(graduatedRes.data);
 
@@ -117,7 +120,7 @@ export function useBacking(token?: Address) {
     functionName: "backingOf",
     args: treasury ? [treasury] : undefined,
     chainId: CHAIN_ID,
-    query: { enabled: isLensConfigured && Boolean(treasury) },
+    query: liveQuery(isLensConfigured && Boolean(treasury)),
   });
   const backing = backingRes.data as unknown as ProjectBacking | undefined;
 
@@ -129,7 +132,7 @@ export function useBacking(token?: Address) {
           { address: treasury, abi: projectTreasuryAbi, functionName: "noticePeriod", chainId: CHAIN_ID },
         ]
       : [],
-    query: { enabled: Boolean(treasury) },
+    query: liveQuery(Boolean(treasury)),
   });
   let pending: PendingWithdrawal | undefined;
   const pw = treasuryStateRes.data?.[0];
@@ -167,7 +170,7 @@ export function useBacking(token?: Address) {
             { address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [c.id], chainId: CHAIN_ID } as const,
           ])
         : [],
-    query: { enabled: isSwapConfigured && candidates.length > 0 },
+    query: liveQuery(isSwapConfigured && candidates.length > 0),
   });
   const ethRes = useReadContracts({
     allowFailure: true,
@@ -177,7 +180,7 @@ export function useBacking(token?: Address) {
           { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals", chainId: CHAIN_ID },
         ]
       : [],
-    query: { enabled: Boolean(ETH_USD_FEED_ADDRESS) },
+    query: liveQuery(Boolean(ETH_USD_FEED_ADDRESS)),
   });
 
   // Pick the first candidate hook whose pool has live liquidity (newest-first).
@@ -212,6 +215,13 @@ export function useBacking(token?: Address) {
       ? (marketPriceWeth * ethUsd1e18) / 10n ** 18n
       : undefined;
   const depthToDoubleUsd = usdToDoublePrice(poolLiquidity, poolSqrtPriceX96, ethUsd1e18);
+
+  // Dev-only reconciliation (spec 1.4): the two supply reads that feed market cap
+  // (token.totalSupply() and BackingLens.totalSupply) must agree, or the same
+  // token's market cap could differ between this page and Discover. Flag drift loud.
+  useEffect(() => {
+    devReconcileBig("totalSupply: token vs BackingLens", totalSupply, backing?.totalSupply);
+  }, [totalSupply, backing?.totalSupply]);
 
   return {
     treasury,

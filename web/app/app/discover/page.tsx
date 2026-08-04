@@ -3,16 +3,18 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
+import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { useTrending } from "@/hooks/useTrending";
 import { useProtocolHolders } from "@/hooks/useProtocolHolders";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { FeaturedStrip } from "@/components/app/FeaturedStrip";
+import { MotionSection } from "@/components/app/MotionSection";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { SortRail, type SortId } from "@/components/app/SortRail";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
-import { TOTAL_SUPPLY } from "@/lib/contracts";
+import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
@@ -53,9 +55,24 @@ export default function DiscoverPage() {
   // The protocol token is PINNED, not ranked — pull it out and rank everything else
   // separately, so it never appears to have earned a spot in the sorted list.
   const protocolProject = useMemo(() => projects.find((p) => isProtocolToken(p.token)), [projects]);
+
+  // Category lives in each project's pinned metadata (off-chain, no indexer). Fetch
+  // it for the whole board so the category filter works; a project is simply not
+  // matched until its metadata lands.
+  const metaByToken = useProjectsMeta(projects);
   const ranked = useMemo(
-    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort, { volumeByToken, holdersByToken }),
-    [projects, sort, volumeByToken, holdersByToken],
+    () =>
+      sortProjects(
+        projects.filter(
+          (p) =>
+            !isProtocolToken(p.token) &&
+            (category === "all" ||
+              (metaByToken.get(p.token.toLowerCase())?.category ?? "").toLowerCase() === category),
+        ),
+        sort,
+        { volumeByToken, holdersByToken },
+      ),
+    [projects, sort, volumeByToken, holdersByToken, category, metaByToken],
   );
 
   // Trending order comes from the /api/trending aggregation (unique buyers + 24h
@@ -65,8 +82,14 @@ export default function DiscoverPage() {
     const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
     return (trending.data?.items ?? [])
       .map((it) => byToken.get(it.token.toLowerCase()))
-      .filter((p): p is Project => Boolean(p) && !isProtocolToken(p!.token));
-  }, [trending.data, projects]);
+      .filter(
+        (p): p is Project =>
+          Boolean(p) &&
+          !isProtocolToken(p!.token) &&
+          (category === "all" ||
+            (metaByToken.get(p!.token.toLowerCase())?.category ?? "").toLowerCase() === category),
+      );
+  }, [trending.data, projects, category, metaByToken]);
 
   // A wallet is "known" once it has launched before. First-time creators get an
   // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
@@ -91,9 +114,9 @@ export default function DiscoverPage() {
           SAME projects listed below, so the totals reconcile by construction. Hidden
           only when the app isn't configured (nothing to read). */}
       {isConfigured && (
-        <div className="mt-5">
+        <MotionSection className="mt-5">
           <DiscoverStats projects={projects} count={count} isLoading={isLoading} />
-        </div>
+        </MotionSection>
       )}
 
       {/* Protocol token — pinned ABOVE the featured strip, labelled as a placement,
@@ -107,9 +130,9 @@ export default function DiscoverPage() {
       {/* Featured strip — beneath the stats/pinned, above the rail. Ranked by locked
           backing; renders nothing until at least one ballasted project qualifies. */}
       {isConfigured && !isLoading && (
-        <div className="mt-6">
+        <MotionSection className="mt-6">
           <FeaturedStrip projects={ranked} />
-        </div>
+        </MotionSection>
       )}
 
       {/* Sort rail — chips for every order we can actually compute, plus the
@@ -120,28 +143,24 @@ export default function DiscoverPage() {
       </div>
 
       {/* Category chips — a distinct SECOND row (leading label + pills) so a filter is
-          never confused with a sort. Non-All filters need the indexer's category
-          metadata. */}
+          never confused with a sort. Category comes from each project's pinned
+          metadata JSON (off-chain, no indexer needed), fetched for the whole board. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-xs uppercase tracking-wide text-text-faint">Category</span>
-        {CATEGORIES.map((c) => {
-          const disabled = c.id !== "all"; // metadata pending indexer
-          return (
-            <button
-              key={c.id}
-              onClick={() => !disabled && setCategory(c.id)}
-              disabled={disabled}
-              title={disabled ? "Category filter pending indexer" : undefined}
-              className={cn(
-                "rounded-full border px-3 py-1 text-sm",
-                category === c.id ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
-                disabled && "cursor-not-allowed opacity-40",
-              )}
-            >
-              {c.label}
-            </button>
-          );
-        })}
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCategory(c.id)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-sm transition-colors",
+              category === c.id
+                ? "border-green bg-green-bg text-green"
+                : "border-border text-text-muted hover:text-text-secondary",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5">
@@ -194,15 +213,22 @@ export default function DiscoverPage() {
         ) : sort === "holders" && !holdersAgg.data.available ? (
           <SourceUnavailableNotice metric="holders" source="Blockscout" />
         ) : ranked.length === 0 ? (
-          <EmptyState
-            title="Only the protocol token so far"
-            body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
-            action={
-              <Link href="/app/create" className="btn-primary inline-block px-5">
-                Create a launch
-              </Link>
-            }
-          />
+          category !== "all" ? (
+            <EmptyState
+              title={`No ${category} projects yet`}
+              body="No launched project carries this category. Clear the filter to see everything."
+            />
+          ) : (
+            <EmptyState
+              title="Only the protocol token so far"
+              body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
+              action={
+                <Link href="/app/create" className="btn-primary inline-block px-5">
+                  Create a launch
+                </Link>
+              }
+            />
+          )
         ) : (
           <CardGrid projects={ranked} priorLaunches={priorLaunches} hideSparkline={chainTimeSort} />
         )}
@@ -254,10 +280,10 @@ function cmpBigDesc(a: bigint, b: bigint): number {
 }
 
 // Market cap = live pool price × supply, 1e18-scaled; 0 when there's no pool price.
+// Uses the shared helper so the ordering here matches the market cap shown on the
+// featured strip and on each token's page (spec 1.4 — one figure, one computation).
 function marketCap1e18(p: Project): bigint {
-  if (p.marketPriceUsd === undefined) return 0n;
-  const supply = p.backing?.totalSupply && p.backing.totalSupply > 0n ? p.backing.totalSupply : TOTAL_SUPPLY;
-  return (p.marketPriceUsd * supply) / WAD;
+  return marketCapUsd(p.marketPriceUsd, marketCapSupply(p.backing?.totalSupply)) ?? 0n;
 }
 // Backing ratio = market cap ÷ treasury value; -1 (sorts last) when unbacked.
 function backingRatioOf(p: Project): number {

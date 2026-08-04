@@ -94,7 +94,7 @@ export function AnalyticsView() {
           <ThesisFigure
             label="Median backing ratio"
             value={stats.medianBackingRatio !== null ? `${stats.medianBackingRatio.toFixed(2)}×` : undefined}
-            fallback="needs a market source"
+            fallback="no priced ballasted token yet"
             sub="market price ÷ backing"
             source={stats.medianBackingRatio !== null ? "Chain-live" : undefined}
           />

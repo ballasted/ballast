@@ -62,10 +62,13 @@ export function ProjectCard({
             </p>
           </div>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           {/* Live on-chain market price (pool mid × ETH/USD). Crossfades on change. */}
-          <div key={priceStr} className="figure-primary anim-fade">{priceStr}</div>
-          <div className="metric-secondary">{hasPool ? "market price" : "no pool yet"}</div>
+          <div key={priceStr} className="figure-primary anim-fade text-lg tabular-nums">{priceStr}</div>
+          <div className="metric-secondary inline-flex items-center justify-end gap-1">
+            {hasPool && <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden />}
+            {hasPool ? "market price" : "no pool yet"}
+          </div>
         </div>
       </div>
 

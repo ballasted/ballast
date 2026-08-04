@@ -7,6 +7,29 @@
 // wins (see MarketPanel).
 export const GT_NETWORK = "robinhood";
 
+// ── Market cap, computed ONE way everywhere (spec 1.4) ────────────────────────
+// A token's market cap must be identical on Discover, the featured strip, its token
+// page, and a portfolio row. The only thing that ever differed between those places
+// was the SUPPLY leg (BackingLens.totalSupply vs token.totalSupply() vs the launch
+// constant, in different precedence). These two helpers fix the supply policy and
+// the arithmetic in one place so the figure can't drift.
+import { TOTAL_SUPPLY } from "@/lib/contracts";
+
+/** Canonical supply for market-cap math. BackingLens.totalSupply and token
+ *  totalSupply() are the same ERC-20 total; prefer backing, then the token read,
+ *  then the fixed launch supply. `> 0n` guards a zero/partial read. */
+export function marketCapSupply(backingSupply?: bigint, tokenSupply?: bigint): bigint {
+  if (backingSupply !== undefined && backingSupply > 0n) return backingSupply;
+  if (tokenSupply !== undefined && tokenSupply > 0n) return tokenSupply;
+  return TOTAL_SUPPLY;
+}
+
+/** Market cap = price (USD, 1e18) × supply, 1e18-scaled. Undefined when no price. */
+export function marketCapUsd(priceUsd1e18: bigint | undefined, supply: bigint): bigint | undefined {
+  if (priceUsd1e18 === undefined) return undefined;
+  return (priceUsd1e18 * supply) / 10n ** 18n;
+}
+
 export type MarketPool = {
   address: string;
   name: string;

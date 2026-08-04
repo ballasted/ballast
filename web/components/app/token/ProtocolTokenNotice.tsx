@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Address } from "viem";
 
 // $BALLAST — the protocol's OWN token, launched by the BALLAST team on BALLAST
@@ -35,8 +36,21 @@ export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
           seeded the pool, no presale, no team allocation. We hold none of it.
         </p>
         <p>
-          It confers no ownership, no revenue share, no governance, and no claim on the protocol or its fees. Its
-          creator fees route to the protocol vault.
+          It confers no ownership, no governance, and no claim, redemption right, or entitlement to the protocol or its
+          fees.
+        </p>
+        <p>
+          The protocol&apos;s share of swap fees funds open-market{" "}
+          <Link href="/app/buyback" className="text-green underline underline-offset-2">
+            buybacks of $BALLAST that are then burned
+          </Link>
+          . So protocol fees do flow back — through market buying and burning, not a distribution. This grants holders no
+          claim and is not a dividend; burning reduces supply and predicts nothing about price.
+        </p>
+        <p className="text-text-faint">
+          Previously this page stated $BALLAST confers &ldquo;no revenue share.&rdquo; Corrected on 4 August 2026: the
+          protocol fee share now funds buyback-and-burn — value routed through the market, not distributed — so that
+          wording was no longer accurate. Holders still have no claim, redemption right, or governance.
         </p>
         <p className="text-text-faint">
           Previously this page stated $BALLAST was not a protocol token. That changed on 28 July 2026 — before any
