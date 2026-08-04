@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { useDenylist } from "@/hooks/useDenylist";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Logo } from "@/components/app/Logo";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
@@ -33,6 +34,13 @@ export function ProjectCard({
   // the token page uses. Without this the card only ever showed ticker initials
   // (Part C bug 10). Logo falls back to initials if the CID is missing/broken.
   const { meta } = useProjectMeta(metadataURI);
+  // Denylisted tokens still appear (ticker + address, and the card still links to
+  // the token page) but their project-supplied metadata is withheld: no logo, no
+  // display name, no links. The token page carries the reason and the raw
+  // metadataURI so anyone can read what we withheld. Default-allow: undenied.
+  const { isDenied } = useDenylist();
+  const denied = isDenied(token);
+  const shownMeta = denied ? undefined : meta;
 
   return (
     <Link
@@ -41,7 +49,7 @@ export function ProjectCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={featured ? 56 : 40} />
+          <Logo src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={featured ? 56 : 40} />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="truncate font-semibold text-text-primary">
@@ -49,7 +57,9 @@ export function ProjectCard({
               </span>
               {ballasted && <VerifiedCheck />}
             </div>
-            <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
+            <p className="truncate text-sm text-text-muted">
+              {denied ? <span className="italic text-text-faint">Metadata withheld</span> : (name ?? "Unnamed project")}
+            </p>
           </div>
         </div>
         <div className="text-right">
@@ -105,8 +115,9 @@ export function ProjectCard({
       )}
 
       {/* Self-declared links — icons only, unverified, rendered only if any exist.
-          These open in a new tab and don't trigger the card's navigation. */}
-      <ProjectLinks meta={meta} variant="icons" className="mt-3" />
+          These open in a new tab and don't trigger the card's navigation. Withheld
+          for a denylisted token (shownMeta is undefined). */}
+      <ProjectLinks meta={shownMeta} variant="icons" className="mt-3" />
     </Link>
   );
 }

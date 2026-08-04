@@ -191,6 +191,39 @@ export const wethAbi = [
   },
 ] as const;
 
+// MetadataDenylist — owner-managed, default-ALLOW display takedown. The UI reads
+// `deniedTokens()` once to know which tokens' project-supplied metadata (name,
+// logo, description, links) to withhold, and `entryOf()` for the public reason on a
+// suppressed token's page. It is a display control only — the token stays listed by
+// ticker + address, and its raw metadataURI stays readable on-chain.
+export const metadataDenylistAbi = [
+  {
+    type: "function",
+    name: "deniedTokens",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address[]" }],
+  },
+  {
+    type: "function",
+    name: "isDenied",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "entryOf",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [
+      { name: "denied", type: "bool" },
+      { name: "updatedAt", type: "uint64" },
+      { name: "reason", type: "string" },
+    ],
+  },
+] as const;
+
 // ── BallastFactory ──────────────────────────────────────────────────────────
 // The launch registry (the ONLY per-launch address source — never hardcode).
 export const ballastFactoryAbi = [
