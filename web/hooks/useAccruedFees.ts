@@ -8,6 +8,7 @@ import { HOOK_ADDRESSES, ETH_USD_FEED_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt } from "@/lib/waitForReceipt";
+import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
 
 const CHAIN_ID = activeChain.id;
 
@@ -29,6 +30,7 @@ export type ClaimPhase = "idle" | "claiming" | "success" | "error";
 export function useAccruedFees(account?: Address) {
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
+  const invalidateChainReads = useInvalidateChainReads();
   const [phase, setPhase] = useState<ClaimPhase>("idle");
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -103,11 +105,12 @@ export function useAccruedFees(account?: Address) {
       }
       setPhase("success");
       void owedRes.refetch();
+      invalidateChainReads(); // fees claimed → wallet balance + owed refresh now
     } catch (e) {
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [account, publicClient, writeContractAsync, hooksWithBalance, owedRes]);
+  }, [account, publicClient, writeContractAsync, hooksWithBalance, owedRes, invalidateChainReads]);
 
   return {
     accruedWeth,

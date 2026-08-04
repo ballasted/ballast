@@ -23,6 +23,7 @@ import {
 import { activeChain } from "@/lib/chain";
 import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
+import { liveQuery } from "@/lib/refresh";
 
 const CHAIN_ID = activeChain.id;
 
@@ -75,7 +76,7 @@ export function useProjects() {
       functionName: "launchCount",
       chainId: CHAIN_ID,
     })),
-    query: { enabled: isFactoryConfigured && factories.length > 0 },
+    query: liveQuery(isFactoryConfigured && factories.length > 0),
   });
   const counts = factories.map((_, k) => {
     const r = countsRes.data?.[k];
@@ -99,7 +100,7 @@ export function useProjects() {
       args: [BigInt(ref.i)],
       chainId: CHAIN_ID,
     })),
-    query: { enabled: isFactoryConfigured && refs.length > 0 },
+    query: liveQuery(isFactoryConfigured && refs.length > 0),
   });
 
   // Dedupe by token and order chronologically. Each row gets a sequence number:
@@ -158,7 +159,7 @@ export function useProjects() {
           ]
         : [],
     ),
-    query: { enabled: isLensConfigured && rows.some(Boolean) },
+    query: liveQuery(isLensConfigured && rows.some(Boolean)),
   });
 
   // Live market price per token, read on-chain from the v4 StateView (getSlot0 +
@@ -190,7 +191,7 @@ export function useProjects() {
           ])
         : [],
     ),
-    query: { enabled: isSwapConfigured && cands.some((cs) => cs.length > 0) },
+    query: liveQuery(isSwapConfigured && cands.some((cs) => cs.length > 0)),
   });
   const ethRes = useReadContracts({
     allowFailure: true,
@@ -200,7 +201,7 @@ export function useProjects() {
           { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals", chainId: CHAIN_ID },
         ]
       : [],
-    query: { enabled: Boolean(ETH_USD_FEED_ADDRESS) },
+    query: liveQuery(Boolean(ETH_USD_FEED_ADDRESS)),
   });
   let ethUsd1e18: bigint | undefined;
   if (ethRes.data?.[0]?.status === "success" && ethRes.data?.[1]?.status === "success") {
