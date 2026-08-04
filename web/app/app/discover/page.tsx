@@ -12,7 +12,7 @@ import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { SortRail, type SortId } from "@/components/app/SortRail";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
-import { TOTAL_SUPPLY } from "@/lib/contracts";
+import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
@@ -254,10 +254,10 @@ function cmpBigDesc(a: bigint, b: bigint): number {
 }
 
 // Market cap = live pool price × supply, 1e18-scaled; 0 when there's no pool price.
+// Uses the shared helper so the ordering here matches the market cap shown on the
+// featured strip and on each token's page (spec 1.4 — one figure, one computation).
 function marketCap1e18(p: Project): bigint {
-  if (p.marketPriceUsd === undefined) return 0n;
-  const supply = p.backing?.totalSupply && p.backing.totalSupply > 0n ? p.backing.totalSupply : TOTAL_SUPPLY;
-  return (p.marketPriceUsd * supply) / WAD;
+  return marketCapUsd(p.marketPriceUsd, marketCapSupply(p.backing?.totalSupply)) ?? 0n;
 }
 // Backing ratio = market cap ÷ treasury value; -1 (sorts last) when unbacked.
 function backingRatioOf(p: Project): number {

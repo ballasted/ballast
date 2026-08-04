@@ -6,7 +6,7 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { Logo } from "@/components/app/Logo";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { TOTAL_SUPPLY } from "@/lib/contracts";
+import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { cn } from "@/lib/cn";
 
 const WAD = 10n ** 18n;
@@ -77,8 +77,7 @@ function FeaturedCard({ project }: { project: Project }) {
   const { symbol, name, token, metadataURI, backing, marketPriceUsd } = project;
   const { meta } = useProjectMeta(metadataURI);
 
-  const supply = backing?.totalSupply && backing.totalSupply > 0n ? backing.totalSupply : TOTAL_SUPPLY;
-  const mcap1e18 = marketPriceUsd !== undefined ? (marketPriceUsd * supply) / WAD : undefined;
+  const mcap1e18 = marketCapUsd(marketPriceUsd, marketCapSupply(backing?.totalSupply));
   const ratio =
     mcap1e18 !== undefined && backing && backing.totalValueUsd > 0n
       ? Number((mcap1e18 * WAD) / backing.totalValueUsd) / 1e18

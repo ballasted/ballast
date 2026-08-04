@@ -30,7 +30,7 @@ import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress, formatBackingPerToken } from "@/lib/format";
-import { formatSmallUsd } from "@/lib/market";
+import { formatSmallUsd, marketCapSupply } from "@/lib/market";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. The treasury is
 // resolved on-chain from token.treasury(). Everything that can be sourced from
@@ -197,7 +197,7 @@ export default function TokenDetailPage() {
 
       <MarketOverview
         marketPriceUsd={marketPriceUsd}
-        totalSupply={totalSupply ?? backing?.totalSupply}
+        totalSupply={marketCapSupply(backing?.totalSupply, totalSupply)}
         hasPool={hasPool}
         liquidityUsd={market?.top?.reserveUsd}
         volume24hUsd={market?.volume24hUsd}

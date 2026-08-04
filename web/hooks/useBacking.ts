@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useReadContract, useReadContracts } from "wagmi";
 import type { Address } from "viem";
 import {
@@ -25,6 +26,7 @@ import { activeChain } from "@/lib/chain";
 import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
 import { liveQuery } from "@/lib/refresh";
+import { devReconcileBig } from "@/lib/reconcile";
 import type { ProjectBacking } from "./useProjects";
 
 const CHAIN_ID = activeChain.id;
@@ -213,6 +215,13 @@ export function useBacking(token?: Address) {
       ? (marketPriceWeth * ethUsd1e18) / 10n ** 18n
       : undefined;
   const depthToDoubleUsd = usdToDoublePrice(poolLiquidity, poolSqrtPriceX96, ethUsd1e18);
+
+  // Dev-only reconciliation (spec 1.4): the two supply reads that feed market cap
+  // (token.totalSupply() and BackingLens.totalSupply) must agree, or the same
+  // token's market cap could differ between this page and Discover. Flag drift loud.
+  useEffect(() => {
+    devReconcileBig("totalSupply: token vs BackingLens", totalSupply, backing?.totalSupply);
+  }, [totalSupply, backing?.totalSupply]);
 
   return {
     treasury,

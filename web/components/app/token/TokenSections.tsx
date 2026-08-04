@@ -7,7 +7,7 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useHolders } from "@/hooks/useHolders";
 import { useTrades } from "@/hooks/useTrades";
 import { formatUsd, shortAddress } from "@/lib/format";
-import { formatCompactUsd, formatSmallUsd, type Trade } from "@/lib/market";
+import { formatCompactUsd, formatSmallUsd, marketCapUsd, type Trade } from "@/lib/market";
 import { activeChain } from "@/lib/chain";
 import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
 import { formatEt } from "@/lib/marketHours";
@@ -15,7 +15,6 @@ import { ipfsToGateway } from "@/lib/ipfs";
 import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
-const WAD = 10n ** 18n;
 
 // ── Market overview ─────────────────────────────────────────────────────────
 // FDV is derived live on-chain (market price × supply). Liquidity + 24h volume come
@@ -36,10 +35,9 @@ export function MarketOverview({
   volume24hUsd?: number; // GeckoTerminal
   holdersCount?: number; // Blockscout
 }) {
-  const fdv =
-    marketPriceUsd !== undefined && totalSupply !== undefined
-      ? (marketPriceUsd * totalSupply) / WAD
-      : undefined;
+  // Same helper as Discover + the featured strip, so a token's market cap (FDV) is
+  // identical wherever it appears (spec 1.4). The caller passes the canonical supply.
+  const fdv = totalSupply !== undefined ? marketCapUsd(marketPriceUsd, totalSupply) : undefined;
 
   return (
     <section className="card p-5">
@@ -367,8 +365,9 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
             ))}
           </ul>
           <p className="mt-4 text-[11px] text-text-faint">
-            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. 24h volume above is the
-            sum of this feed over that window.
+            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. These are the most
+            recent trades — a live sample, not the full 24h history. The 24h volume shown elsewhere is GeckoTerminal&apos;s
+            aggregate over the whole window, not the sum of the rows here.
           </p>
         </>
       )}
