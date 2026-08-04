@@ -71,6 +71,7 @@ These are not style preferences. Violating any of them either breaks the legal p
 - **Write adversarial tests before happy-path tests.** The attack surface is the product.
 - TypeScript strict mode. No `any`.
 - Next.js App Router. Wallet providers wrap **only** the `/app` segment — never the root layout, or every marketing visitor downloads the web3 bundle.
+- **User-uploaded / project-supplied content is untrusted and must stay off our origin.** `NEXT_PUBLIC_IPFS_GATEWAY` must never be a `ballasted.xyz`/app origin (uploads stay cross-origin). Never accept SVG uploads (active document, can carry scripts) — raster only, validated by **magic bytes server-side** in `/api/pin`, never by the client-supplied content-type. Project-supplied URLs (`website`/`x`/`telegram`/`logo`) are set via a free on-chain `metadataURI`, so **re-validate them at render time** (http(s) only) — the create-form check is not a gate. Outbound project links get an interstitial. Rationale: anyone can `launch()` a token with impersonation branding + a phishing link, and we serve it — this is the exact Safe Browsing "deceptive content" trigger.
 - Never hardcode per-launch contract addresses. Resolve from creation events or the factory registry.
 - Read owner-settable globals (fees, thresholds) live from contracts. Never hardcode economic parameters.
 - Secrets come from env vars. Never commit a key, never inline an RPC URL with an API key.

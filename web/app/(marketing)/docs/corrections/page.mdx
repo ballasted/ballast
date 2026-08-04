@@ -1,0 +1,48 @@
+export const metadata = {
+  title: "Corrections",
+  description:
+    "BALLAST's pitch is accuracy. When we get something wrong, we record it here with a date rather than editing it away. This is the full list of self-reported corrections.",
+};
+
+# Corrections
+
+BALLAST's whole pitch is accuracy, so when we get something wrong we **record it
+here with a date** instead of quietly editing it away. A disclosure product should
+not be able to rewrite its own history. This is the complete list, newest first.
+
+## Upload consent said "moderated"; nothing was — visible 24–31 July 2026
+
+From **24 July 2026** (the first version of the create flow) until **31 July
+2026**, the logo-upload consent checkbox read, verbatim: _"I understand that
+selected artwork will be moderated and uploaded to public IPFS."_ **Nothing ever
+moderated uploads** — there was no review of any kind — so for roughly a week that
+claim was live and untrue. The word was removed on 31 July 2026 when the create
+flow was rebuilt, and has not been live since.
+
+We record the **window it was visible**, not merely when a commit changed it,
+because what matters to anyone reading this is how long something wrong was in
+front of people — not our version-control history.
+
+On **4 August 2026** we finished the job: the consent copy was made affirmatively
+honest — _"the logo is uploaded to public IPFS, is permanent, and isn't reviewed by
+BALLAST before it appears"_ — and in the same pass we stopped accepting SVG uploads
+(an SVG is an active document that can carry scripts), added server-side validation
+of the actual image bytes, and introduced the owner-managed
+[metadata denylist](/docs/content-policy) so we can withhold impersonation branding
+we would otherwise serve under our own domain.
+
+## 28 July 2026 — Launch factory redeployed (freshness gate)
+
+The launch factory was redeployed with a corrected freshness gate for backed
+launches. **$BALLAST was not relaunched**: it remains the original launch from the
+first factory and is still listed through the multi-factory read union. Only new
+launches use the new factory; nothing about $BALLAST changed on-chain.
+
+## 28 July 2026 — $BALLAST protocol-token disclosure
+
+This site previously stated that $BALLAST was **not** a protocol token. That was
+corrected — before any trading occurred — to state plainly that $BALLAST is the
+protocol's own token, launched by the BALLAST team under exactly the same rules as
+every other launch (100% of supply seeded the pool, no presale, no team
+allocation, the team holds none of it), and that it confers no ownership, revenue
+share, governance, or claim.

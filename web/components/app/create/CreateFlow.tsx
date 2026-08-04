@@ -944,7 +944,7 @@ function LogoUploader({
   async function onFile(file: File) {
     setError(undefined);
     if (!isAcceptedImage(file)) {
-      setError("That file type isn’t supported — use a PNG, JPG, SVG, or WebP image.");
+      setError("That file type isn’t supported — use a PNG, JPG, or WebP image.");
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
@@ -1010,7 +1010,7 @@ function LogoUploader({
         <input
           ref={inputRef}
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          accept="image/png,image/jpeg,image/webp"
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -1066,13 +1066,13 @@ function LogoUploader({
       </div>
 
       <p className="max-w-[13rem] text-xs text-text-faint">
-        PNG, JPG, SVG or WebP · up to 1 MB · resized to 512×512 and pinned to IPFS
+        PNG, JPG or WebP · up to 1 MB · resized to 512×512 and pinned to IPFS
       </p>
 
       {/* The consent gate — dropzone stays disabled/dimmed until this is ticked. */}
       <label className="flex cursor-pointer items-start gap-2 text-xs text-text-secondary">
         <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 accent-green" />
-        I understand the logo is uploaded to public IPFS and is permanent.
+        I understand the logo is uploaded to public IPFS, is permanent, and isn’t reviewed by BALLAST before it appears.
       </label>
       {locked && (
         <p className="text-xs text-text-faint">
