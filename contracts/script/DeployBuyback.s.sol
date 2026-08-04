@@ -34,39 +34,39 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 ///   BUYBACK_MAX_SLIPPAGE_BPS price-impact cap per buyback, ≤ 2000 (retunable)
 contract DeployBuyback is Script {
     function run() external returns (BuybackBurner buyback) {
-        address owner = vm.envAddress("PROTOCOL_OWNER_ADDRESS");
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address poolManager = vm.envAddress("POOL_MANAGER");
-        address weth = vm.envAddress("WETH");
-        address ballast = vm.envAddress("BALLAST_TOKEN");
-        address poolHook = vm.envAddress("BUYBACK_POOL_HOOK");
-        uint256 threshold = vm.envUint("BUYBACK_THRESHOLD_WEI");
-        uint256 slippage = vm.envUint("BUYBACK_MAX_SLIPPAGE_BPS");
-
-        require(owner != address(0), "PROTOCOL_OWNER_ADDRESS unset");
-        require(ballast < weth, "BALLAST must sort below WETH (currency0)");
-        require(slippage <= 2000, "slippage > 20%");
+        // Env read inline (a script pays no gas) to keep the stack shallow — the
+        // constructor takes 8 params and the default profile has no viaIR, so binding
+        // every value to a named local trips "stack too deep".
+        require(vm.envAddress("PROTOCOL_OWNER_ADDRESS") != address(0), "PROTOCOL_OWNER_ADDRESS unset");
+        require(vm.envAddress("BALLAST_TOKEN") < vm.envAddress("WETH"), "BALLAST must sort below WETH (currency0)");
+        require(vm.envUint("BUYBACK_MAX_SLIPPAGE_BPS") <= 2000, "slippage > 20%");
 
         address[] memory defaultHooks = new address[](1);
-        defaultHooks[0] = poolHook;
-        address[] memory claimHooks = vm.envOr("BUYBACK_CLAIM_HOOKS", ",", defaultHooks);
+        defaultHooks[0] = vm.envAddress("BUYBACK_POOL_HOOK");
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(ballast),
-            currency1: Currency.wrap(weth),
+            currency0: Currency.wrap(vm.envAddress("BALLAST_TOKEN")),
+            currency1: Currency.wrap(vm.envAddress("WETH")),
             fee: 0,
             tickSpacing: 60,
-            hooks: IHooks(poolHook)
+            hooks: IHooks(vm.envAddress("BUYBACK_POOL_HOOK"))
         });
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
         buyback = new BuybackBurner(
-            IPoolManager(poolManager), weth, ballast, key, claimHooks, threshold, uint16(slippage), owner
+            IPoolManager(vm.envAddress("POOL_MANAGER")),
+            vm.envAddress("WETH"),
+            vm.envAddress("BALLAST_TOKEN"),
+            key,
+            vm.envOr("BUYBACK_CLAIM_HOOKS", ",", defaultHooks),
+            vm.envUint("BUYBACK_THRESHOLD_WEI"),
+            uint16(vm.envUint("BUYBACK_MAX_SLIPPAGE_BPS")),
+            vm.envAddress("PROTOCOL_OWNER_ADDRESS")
         );
         vm.stopBroadcast();
 
         console2.log("BuybackBurner:", address(buyback));
-        console2.log("Owner:        ", owner);
+        console2.log("Owner:        ", vm.envAddress("PROTOCOL_OWNER_ADDRESS"));
         console2.log("Next: FeeConfig.setPlatformVault(this), set NEXT_PUBLIC_BUYBACK_ADDRESS, move owner to the Safe.");
     }
 }
