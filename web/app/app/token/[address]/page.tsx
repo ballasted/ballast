@@ -26,11 +26,14 @@ import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
+import { MotionSection } from "@/components/app/MotionSection";
+import { Freshness } from "@/components/app/Freshness";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress, formatBackingPerToken } from "@/lib/format";
 import { formatSmallUsd, marketCapSupply } from "@/lib/market";
+import { cn } from "@/lib/cn";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. The treasury is
 // resolved on-chain from token.treasury(). Everything that can be sourced from
@@ -84,147 +87,154 @@ export default function TokenDetailPage() {
 
   return (
     <div className="space-y-4">
-      {/* Pending withdrawal — above everything when active (spec 5). */}
       {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
 
-      {/* Half-launched: token exists but pool never seeded. Offer to finish it
-          (permissionless graduate) rather than leaving a dead token (Part B).
-          Consistency guard: if ANY source shows a live pool (on-chain sqrtPriceX96
-          → marketPriceUsd, or a GeckoTerminal price), the pool exists — never render
-          the "incomplete" panel, whatever the registry says. The panel itself also
-          simulates graduate() and hides if it would revert (belt-and-suspenders,
-          and it routes to ownerFactory, not the current one). */}
+      {/* Half-launched: pool never seeded — offer to finish it (permissionless
+          graduate). Suppressed if ANY source shows a live pool. */}
       {!graduated && !hasPool && marketPriceUsd === undefined && market?.priceUsd === undefined && (
         <ResumeLaunchPanel token={token!} symbol={symbol} factory={ownerFactory} />
       )}
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
-            <div className="min-w-0">
-              <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
-              <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
+      <MotionSection>
+        <header className="card p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
+              <div className="min-w-0">
+                <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
+                <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end">
+              {/* Chain price governs; GeckoTerminal is the labelled fallback. */}
+              <div className="figure-primary text-2xl">
+                {(() => {
+                  const v =
+                    marketPriceUsd !== undefined
+                      ? formatBackingPerToken(marketPriceUsd)
+                      : market?.priceUsd !== undefined
+                        ? formatSmallUsd(market.priceUsd)
+                        : "—";
+                  return <span key={v} className="anim-fade inline-block">{v}</span>;
+                })()}
+              </div>
+              <div className="mt-0.5">
+                {marketPriceUsd !== undefined ? (
+                  <Freshness updatedAt={now} source="on-chain" />
+                ) : market?.priceUsd !== undefined ? (
+                  <Freshness updatedAt={market.fetchedAt} source="GeckoTerminal" />
+                ) : (
+                  <span className="metric-secondary">{graduated ? "no market yet" : "not launched"}</span>
+                )}
+              </div>
+              {ratio !== null && (
+                <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>
+                  {ratio.toFixed(2)}× backing
+                </div>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            {/* Chain price wins when available (on-chain StateView); otherwise fall
-                back to GeckoTerminal, clearly labelled. Never a fabricated figure. */}
-            <div className="figure-primary text-2xl">
-              {(() => {
-                const v =
-                  marketPriceUsd !== undefined
-                    ? formatBackingPerToken(marketPriceUsd)
-                    : market?.priceUsd !== undefined
-                      ? formatSmallUsd(market.priceUsd)
-                      : "—";
-                // Crossfade the price on change; never count it up.
-                return <span key={v} className="anim-fade inline-block">{v}</span>;
-              })()}
-            </div>
-            <div className="metric-secondary">
-              {marketPriceUsd !== undefined
-                ? "market price · on-chain"
-                : market?.priceUsd !== undefined
-                  ? "market price · GeckoTerminal"
-                  : graduated
-                    ? "no market yet"
-                    : "not launched"}
-            </div>
-            {ratio !== null && (
-              <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>{ratio.toFixed(2)}× backing</div>
+
+          <ProjectLinks meta={meta} variant="row" className="mt-3" />
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+            {meta?.category && <Badge>{meta.category}</Badge>}
+            <Badge>{activeChain.name}</Badge>
+            <CopyAddress address={token!} label="Token contract" />
+            {market?.change24hPct != null && (
+              <span className={cn("tabular-nums", market.change24hPct >= 0 ? "text-positive" : "text-negative")}>
+                {market.change24hPct >= 0 ? "+" : ""}
+                {market.change24hPct.toFixed(2)}% 24h
+              </span>
             )}
           </div>
-        </div>
+          <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
+        </header>
+      </MotionSection>
 
-        {/* Self-declared project links beneath the name — icons + handles, unverified
-            (see ProjectLinks: never a "verified" label, never a check mark). */}
-        <ProjectLinks meta={meta} variant="row" className="mt-3" />
-
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          {meta?.category && <Badge>{meta.category}</Badge>}
-          <Badge>{activeChain.name}</Badge>
-          <CopyAddress address={token!} label="Token contract" />
-        </div>
-        {/* 24h change from GeckoTerminal when available, labelled with source;
-            otherwise say plainly it needs a market source — never a fabricated %. */}
-        <div className="mt-2 text-xs">
-          {market?.change24hPct != null ? (
-            <span className={market.change24hPct >= 0 ? "text-positive" : "text-negative"}>
-              {market.change24hPct >= 0 ? "+" : ""}
-              {market.change24hPct.toFixed(2)}% 24h{" "}
-              <span className="text-text-faint">· GeckoTerminal</span>
-            </span>
-          ) : (
-            <span className="text-text-faint">24h change: no market source yet</span>
-          )}
-        </div>
-        {/* Thin-liquidity disclosure — the pool depth is read live; when a few hundred
-            dollars can move the published price, we state it, the same discipline as
-            the backing panel. Renders nothing once the pool is deep enough. */}
-        <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
-      </header>
-
-      {/* $BALLAST-only: it shares the platform name and routes creator fees to the
-          protocol vault, so a permanent "not a protocol token" notice sits here,
-          above the fold, right under the name (see ProtocolTokenNotice). */}
       <ProtocolTokenNotice token={token} />
 
-      {/* Verified backing — above the chart, the reason the page exists. */}
-      {backing && <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />}
-
-      {/* Market — price, 24h volume/change, chart embed and venues from
-          GeckoTerminal, clearly sourced; chain price governs when available. An
-          un-indexed token shows an honest empty state, never a flat line at zero. */}
-      <MarketPanel token={token!} symbol={symbol} chainPriceUsd={marketPriceUsd} />
-
-      {/* Swap */}
-      <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} spotPriceWeth={marketPriceWeth} />
-
-      {/* Creator fees — only the creator sees this, shown even at zero so they know
-          where fees land. The balance is the creator's aggregate across all their
-          launches (owed is per-recipient), so one claim sweeps everything. */}
-      {creator && <FeePanel requireAccount={creator} alwaysShow />}
-
-      {/* About */}
-      {meta?.description && (
-        <section className="card p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">About</h2>
-          <p className="mt-2 text-sm text-text-secondary">{meta.description}</p>
-        </section>
+      {/* Verified backing — the differentiator, full width above the split. */}
+      {backing && (
+        <MotionSection>
+          <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+        </MotionSection>
       )}
 
-      <MarketOverview
-        marketPriceUsd={marketPriceUsd}
-        totalSupply={marketCapSupply(backing?.totalSupply, totalSupply)}
-        hasPool={hasPool}
-        liquidityUsd={market?.top?.reserveUsd}
-        volume24hUsd={market?.volume24hUsd}
-        holdersCount={holders?.holdersCount}
-      />
+      {/* Two-column trade layout: chart + info on the left, a sticky trade rail
+          (swap, then creator fees) on the right — the pro-launchpad pattern. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+        <div className="min-w-0 space-y-4">
+          <MotionSection>
+            <MarketPanel token={token!} symbol={symbol} chainPriceUsd={marketPriceUsd} />
+          </MotionSection>
 
-      <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
+          {meta?.description && (
+            <MotionSection>
+              <section className="card p-5">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">About</h2>
+                <p className="mt-2 text-sm text-text-secondary">{meta.description}</p>
+              </section>
+            </MotionSection>
+          )}
 
-      <TradesPanel token={token!} symbol={symbol} now={now} />
+          <MotionSection>
+            <MarketOverview
+              marketPriceUsd={marketPriceUsd}
+              totalSupply={marketCapSupply(backing?.totalSupply, totalSupply)}
+              hasPool={hasPool}
+              liquidityUsd={market?.top?.reserveUsd}
+              volume24hUsd={market?.volume24hUsd}
+              holdersCount={holders?.holdersCount}
+            />
+          </MotionSection>
 
-      <AllocationSlot />
+          <MotionSection>
+            <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
+          </MotionSection>
 
-      <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
+          <MotionSection>
+            <TradesPanel token={token!} symbol={symbol} now={now} />
+          </MotionSection>
 
-      <CreatorTrackRecord creator={creator} thisToken={token!} />
+          <AllocationSlot />
 
-      {/* Launch-liquidity disclosure — verbatim approved copy. */}
-      <section className="card p-4">
-        <h2 className="text-sm font-semibold text-text-primary">No protocol liquidity below backing at launch — not a floor</h2>
-        <p className="mt-2 text-sm text-text-secondary">
-          A ballasted launch seeds the project&apos;s tokens from its backing price upward, and nothing below it. So at
-          the very first trades the token cannot print below its backing in this pool — not because the price is
-          supported, but because no one has placed a bid there yet. The protocol spends nothing to hold the price and
-          never will. Anyone can add liquidity below backing at any time, and once they do, the token can and will trade
-          below its backing. Do not read the launch state as a floor.
-        </p>
-      </section>
+          <MotionSection>
+            <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
+          </MotionSection>
+
+          <MotionSection>
+            <CreatorTrackRecord creator={creator} thisToken={token!} />
+          </MotionSection>
+
+          {/* Launch-liquidity disclosure — verbatim approved copy. */}
+          <MotionSection>
+            <section className="card p-4">
+              <h2 className="text-sm font-semibold text-text-primary">No protocol liquidity below backing at launch — not a floor</h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                A ballasted launch seeds the project&apos;s tokens from its backing price upward, and nothing below it. So
+                at the very first trades the token cannot print below its backing in this pool — not because the price is
+                supported, but because no one has placed a bid there yet. The protocol spends nothing to hold the price and
+                never will. Anyone can add liquidity below backing at any time, and once they do, the token can and will
+                trade below its backing. Do not read the launch state as a floor.
+              </p>
+            </section>
+          </MotionSection>
+        </div>
+
+        {/* Sticky trade rail */}
+        <div className="space-y-4 lg:sticky lg:top-20">
+          <MotionSection>
+            <SwapPanel token={token!} symbol={symbol ?? "TOKEN"} hasPool={hasPool} spotPriceWeth={marketPriceWeth} />
+          </MotionSection>
+          {creator && (
+            <MotionSection>
+              <FeePanel requireAccount={creator} alwaysShow />
+            </MotionSection>
+          )}
+        </div>
+      </div>
 
       <Meander className="opacity-60" />
 
