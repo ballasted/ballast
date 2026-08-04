@@ -42,14 +42,14 @@ export function DiscoverStats({
       <StatCard
         label="Total ballast"
         value={isLoading ? undefined : formatUsd(totalBallastUsd, { compact: true })}
-        sub="on-chain"
+        sub="Live · on-chain"
         loading={isLoading}
         accent
       />
       <StatCard
         label="Tokens launched"
         value={isLoading ? undefined : String(count)}
-        sub="on-chain"
+        sub="Live · on-chain"
         loading={isLoading}
       />
       <StatCard
@@ -98,8 +98,16 @@ function StatCard({
           </span>
         </div>
       )}
-      <div className="mt-1 text-xs text-text-faint">
-        {loading ? <span className="inline-block h-3 w-16 animate-pulse rounded bg-surface-raised align-middle" /> : sub}
+      <div className="mt-1 flex items-center gap-1 text-xs text-text-faint">
+        {loading ? (
+          <span className="inline-block h-3 w-16 animate-pulse rounded bg-surface-raised align-middle" />
+        ) : (
+          <>
+            {/* A quiet live dot when the figure updates on our 12s/30s cadence. */}
+            {sub.startsWith("Live") && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green" aria-hidden />}
+            <span>{sub}</span>
+          </>
+        )}
       </div>
     </div>
   );

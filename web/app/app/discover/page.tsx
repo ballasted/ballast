@@ -9,6 +9,7 @@ import { useProtocolHolders } from "@/hooks/useProtocolHolders";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { FeaturedStrip } from "@/components/app/FeaturedStrip";
+import { MotionSection } from "@/components/app/MotionSection";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { SortRail, type SortId } from "@/components/app/SortRail";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
@@ -113,9 +114,9 @@ export default function DiscoverPage() {
           SAME projects listed below, so the totals reconcile by construction. Hidden
           only when the app isn't configured (nothing to read). */}
       {isConfigured && (
-        <div className="mt-5">
+        <MotionSection className="mt-5">
           <DiscoverStats projects={projects} count={count} isLoading={isLoading} />
-        </div>
+        </MotionSection>
       )}
 
       {/* Protocol token — pinned ABOVE the featured strip, labelled as a placement,
@@ -129,9 +130,9 @@ export default function DiscoverPage() {
       {/* Featured strip — beneath the stats/pinned, above the rail. Ranked by locked
           backing; renders nothing until at least one ballasted project qualifies. */}
       {isConfigured && !isLoading && (
-        <div className="mt-6">
+        <MotionSection className="mt-6">
           <FeaturedStrip projects={ranked} />
-        </div>
+        </MotionSection>
       )}
 
       {/* Sort rail — chips for every order we can actually compute, plus the
