@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useProjects, type Project } from "@/hooks/useProjects";
+import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { useTrending } from "@/hooks/useTrending";
 import { useProtocolHolders } from "@/hooks/useProtocolHolders";
 import { ProjectCard } from "@/components/app/ProjectCard";
@@ -53,9 +54,24 @@ export default function DiscoverPage() {
   // The protocol token is PINNED, not ranked — pull it out and rank everything else
   // separately, so it never appears to have earned a spot in the sorted list.
   const protocolProject = useMemo(() => projects.find((p) => isProtocolToken(p.token)), [projects]);
+
+  // Category lives in each project's pinned metadata (off-chain, no indexer). Fetch
+  // it for the whole board so the category filter works; a project is simply not
+  // matched until its metadata lands.
+  const metaByToken = useProjectsMeta(projects);
   const ranked = useMemo(
-    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token)), sort, { volumeByToken, holdersByToken }),
-    [projects, sort, volumeByToken, holdersByToken],
+    () =>
+      sortProjects(
+        projects.filter(
+          (p) =>
+            !isProtocolToken(p.token) &&
+            (category === "all" ||
+              (metaByToken.get(p.token.toLowerCase())?.category ?? "").toLowerCase() === category),
+        ),
+        sort,
+        { volumeByToken, holdersByToken },
+      ),
+    [projects, sort, volumeByToken, holdersByToken, category, metaByToken],
   );
 
   // Trending order comes from the /api/trending aggregation (unique buyers + 24h
@@ -65,8 +81,14 @@ export default function DiscoverPage() {
     const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
     return (trending.data?.items ?? [])
       .map((it) => byToken.get(it.token.toLowerCase()))
-      .filter((p): p is Project => Boolean(p) && !isProtocolToken(p!.token));
-  }, [trending.data, projects]);
+      .filter(
+        (p): p is Project =>
+          Boolean(p) &&
+          !isProtocolToken(p!.token) &&
+          (category === "all" ||
+            (metaByToken.get(p!.token.toLowerCase())?.category ?? "").toLowerCase() === category),
+      );
+  }, [trending.data, projects, category, metaByToken]);
 
   // A wallet is "known" once it has launched before. First-time creators get an
   // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
@@ -120,28 +142,24 @@ export default function DiscoverPage() {
       </div>
 
       {/* Category chips — a distinct SECOND row (leading label + pills) so a filter is
-          never confused with a sort. Non-All filters need the indexer's category
-          metadata. */}
+          never confused with a sort. Category comes from each project's pinned
+          metadata JSON (off-chain, no indexer needed), fetched for the whole board. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="mr-1 text-xs uppercase tracking-wide text-text-faint">Category</span>
-        {CATEGORIES.map((c) => {
-          const disabled = c.id !== "all"; // metadata pending indexer
-          return (
-            <button
-              key={c.id}
-              onClick={() => !disabled && setCategory(c.id)}
-              disabled={disabled}
-              title={disabled ? "Category filter pending indexer" : undefined}
-              className={cn(
-                "rounded-full border px-3 py-1 text-sm",
-                category === c.id ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
-                disabled && "cursor-not-allowed opacity-40",
-              )}
-            >
-              {c.label}
-            </button>
-          );
-        })}
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCategory(c.id)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-sm transition-colors",
+              category === c.id
+                ? "border-green bg-green-bg text-green"
+                : "border-border text-text-muted hover:text-text-secondary",
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5">
@@ -194,15 +212,22 @@ export default function DiscoverPage() {
         ) : sort === "holders" && !holdersAgg.data.available ? (
           <SourceUnavailableNotice metric="holders" source="Blockscout" />
         ) : ranked.length === 0 ? (
-          <EmptyState
-            title="Only the protocol token so far"
-            body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
-            action={
-              <Link href="/app/create" className="btn-primary inline-block px-5">
-                Create a launch
-              </Link>
-            }
-          />
+          category !== "all" ? (
+            <EmptyState
+              title={`No ${category} projects yet`}
+              body="No launched project carries this category. Clear the filter to see everything."
+            />
+          ) : (
+            <EmptyState
+              title="Only the protocol token so far"
+              body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
+              action={
+                <Link href="/app/create" className="btn-primary inline-block px-5">
+                  Create a launch
+                </Link>
+              }
+            />
+          )
         ) : (
           <CardGrid projects={ranked} priorLaunches={priorLaunches} hideSparkline={chainTimeSort} />
         )}
