@@ -1,0 +1,112 @@
+export const metadata = {
+  title: "Why scanners flag us",
+  description:
+    "Automated token scanners are built for Uniswap v2/v3 on a few major chains. BALLAST is Uniswap v4 on Robinhood Chain with a modified router, so several of their checks return blanks or question marks. Here is each flag, why it reads that way, and how to verify the truth on-chain yourself.",
+};
+
+# Why scanners flag us
+
+Automated token scanners — GMGN, honeypot.is, GoPlus and the like — are built
+around Uniswap **v2/v3** on a handful of major chains. BALLAST is Uniswap **v4**
+on **Robinhood Chain (4663)** behind a **modified swap router**. Several of the
+checks these tools run either cannot see our setup or cannot execute against it,
+so they return a blank, a question mark, or a red cross that means *"couldn't
+determine"* rather than *"failed"*.
+
+This page explains each flag and **links the on-chain code for every claim**, so
+you can verify rather than take our word for it. Nothing here is an argument that
+BALLAST is a good investment — it is an explanation of what the scanners are and
+are not measuring.
+
+## "Burnt ✗" — liquidity not burnt
+
+**What the scanner looks for:** a v2-style pair mints an ERC-20 *LP token*; the
+scanner checks whether that LP token was sent to a dead address (burned) or a
+lock contract.
+
+**Why it reads this way for us:** Uniswap v4 has **no LP token**. Liquidity is a
+position held inside a single `PoolManager`, so there is no LP token to send
+anywhere — the check has nothing to inspect and shows a cross.
+
+**What is actually true:** our pool's liquidity is seeded by `BallastSeeder`, and
+that contract exposes **no way to remove, reduce, or transfer** the position — its
+only liquidity operation adds, one-way. The liquidity is **permanently locked**.
+That is a different shape from a v2 "burn", but it is at least as final, and you
+can read the code:
+
+- [`BallastSeeder` on Blockscout →](https://robinhoodchain.blockscout.com/address/0x7830e1f67598e8c76ce1fff79b1d2a3e915325e4?tab=contract)
+  — confirm there is no `withdraw`, `decreaseLiquidity`, `collect`, or `transfer`
+  path, no owner, and no upgrade mechanism.
+
+(To be exact: locking the liquidity is a statement about custody, not a prediction
+about price. What a token's price does is not something BALLAST controls.)
+
+## "NoHoneypot ?" — sell simulation unavailable
+
+**What the scanner does:** to decide "honeypot / not honeypot", it *simulates* a
+buy and then a sell against a canonical Uniswap router and checks whether the sell
+reverts.
+
+**Why it reads this way for us:** the router on Robinhood Chain is a **modified
+fork** (it carries an extra field in its swap struct). Calldata built for the
+standard Uniswap router reverts against it, so the scanner's own sell simulation
+cannot execute and it reports **unknown** rather than a pass. This is an inability
+to simulate — not evidence that you cannot sell. Sells work through the app and
+directly through the pool.
+
+## "Verified ✗" — verified, but not where GMGN looks
+
+GMGN's "verified" mirrors an **Etherscan-family** explorer on the major chains it
+indexes. It does **not index Robinhood Chain** or read its Blockscout explorer, so
+it cannot see our source at all — let alone its verification state.
+
+Our contracts **are** verified — on Blockscout, this chain's explorer:
+
+- [`BallastFactory`](https://robinhoodchain.blockscout.com/address/0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1?tab=contract)
+- [`BallastHook`](https://robinhoodchain.blockscout.com/address/0x743102aa1De955b5F0Fada1377B6E545Fdb080cc?tab=contract)
+- [`BallastSeeder`](https://robinhoodchain.blockscout.com/address/0x7830e1f67598e8c76ce1fff79b1d2a3e915325e4?tab=contract)
+- [`FeeConfig`](https://robinhoodchain.blockscout.com/address/0xc0b895bc683bf4aca30c7277d42d068e0973a594?tab=contract)
+- [`AssetRegistry`](https://robinhoodchain.blockscout.com/address/0x427764d0d19aB765c35A41A5aa4771580307dA81?tab=contract)
+- [`BackingLens`](https://robinhoodchain.blockscout.com/address/0x73ac3574c8743553f41c6e25f92a145b5c0e7240?tab=contract)
+
+## "Renounced ?" — there is nothing to renounce
+
+On a launched BALLAST token there is **no ownership to renounce**:
+
+- The token contract is **not `Ownable`**. It has no owner, no pause, no
+  blacklist, no transfer fee.
+- Its **entire supply is minted once at creation** and there is **no mint
+  function** — supply is fixed and cannot be inflated.
+- The only thing the creator can change is the **off-chain metadata pointer**
+  (name, logo, links), and every change is logged on-chain.
+
+Global fee parameters live in a **separate** `FeeConfig` contract owned by the
+platform (being moved to a multisig). Its owner can retune the swap fee and its
+split within a hard cap — it **cannot** mint tokens, touch a project's treasury,
+or unlock the pool liquidity. Read it yourself:
+
+- [`FeeConfig` on Blockscout →](https://robinhoodchain.blockscout.com/address/0xc0b895bc683bf4aca30c7277d42d068e0973a594?tab=contract)
+
+Because the scanner finds no standard `Ownable` pattern, it cannot report
+"renounced" and leaves a question mark.
+
+## "Phishing 26.4%" — a holder-mix metric, not a malware score
+
+This figure measures **holder composition**, not whether the contract is
+malicious: roughly, the share of holders who **received** the token by
+transfer/airdrop rather than by **buying** it. It is meant to flag fabricated
+distribution.
+
+A BALLAST launch seeds **100% of supply into the pool** with no team allocation,
+presale, or airdrop, so early on the holder graph is small and this metric can
+read high or noisy. It is a statement about the shape of the holder set, not about
+the contract's code.
+
+## Verify everything yourself
+
+You never have to trust this interface. Every core contract is verified on the
+[Robinhood Chain block explorer](https://robinhoodchain.blockscout.com), and the
+[contract addresses page](/docs/contract-addresses) lists them with instructions
+for resolving per-launch addresses from the factory. The
+[verify a treasury yourself](/docs/verify-a-treasury) page walks through checking a
+project's backing directly on-chain.
