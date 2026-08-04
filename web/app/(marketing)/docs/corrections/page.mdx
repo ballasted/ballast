@@ -1,0 +1,40 @@
+export const metadata = {
+  title: "Corrections",
+  description:
+    "BALLAST's pitch is accuracy. When we get something wrong, we record it here with a date rather than editing it away. This is the full list of self-reported corrections.",
+};
+
+# Corrections
+
+BALLAST's whole pitch is accuracy, so when we get something wrong we **record it
+here with a date** instead of quietly editing it away. A disclosure product should
+not be able to rewrite its own history. This is the complete list, newest first.
+
+## 2026-08-04 — The upload consent said "moderated"; nothing was
+
+The logo-upload consent checkbox in the create flow described uploaded artwork as
+being "moderated." **Nothing moderated uploads** — there was no review of any kind.
+On a site whose entire claim is accuracy, that sentence was simply untrue.
+
+Corrected to state plainly that an uploaded logo is public, permanent, and **not
+reviewed by BALLAST before it appears**. In the same pass we stopped accepting SVG
+uploads (an SVG is an active document that can carry scripts), added server-side
+validation of the actual image bytes, and — separately — introduced an
+owner-managed [metadata denylist](/docs/content-policy) so we can withhold
+impersonation branding we would otherwise serve under our own domain.
+
+## 28 July 2026 — Launch factory redeployed (freshness gate)
+
+The launch factory was redeployed with a corrected freshness gate for backed
+launches. **$BALLAST was not relaunched**: it remains the original launch from the
+first factory and is still listed through the multi-factory read union. Only new
+launches use the new factory; nothing about $BALLAST changed on-chain.
+
+## 28 July 2026 — $BALLAST protocol-token disclosure
+
+This site previously stated that $BALLAST was **not** a protocol token. That was
+corrected — before any trading occurred — to state plainly that $BALLAST is the
+protocol's own token, launched by the BALLAST team under exactly the same rules as
+every other launch (100% of supply seeded the pool, no presale, no team
+allocation, the team holds none of it), and that it confers no ownership, revenue
+share, governance, or claim.

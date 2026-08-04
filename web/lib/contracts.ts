@@ -22,6 +22,12 @@ export const HOOK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS);
 export const FEE_CONFIG_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS,
 );
+// MetadataDenylist — owner-managed, default-allow display takedown for impersonation
+// metadata. Unset = nothing is ever suppressed (default-allow), so a missing address
+// degrades to the permissive state, never to hiding tokens.
+export const METADATA_DENYLIST_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_METADATA_DENYLIST_ADDRESS,
+);
 
 // ── Pre-existing chain infrastructure (verified, docs/robinhood-chain-research) ─
 export const WETH_ADDRESS = asAddress(process.env.NEXT_PUBLIC_WETH_ADDRESS);
@@ -49,6 +55,7 @@ export const isLensConfigured = Boolean(LENS_ADDRESS);
 export const isFactoryConfigured = Boolean(FACTORY_ADDRESS);
 export const isRegistryConfigured = Boolean(ASSET_REGISTRY_ADDRESS);
 export const isFeeConfigConfigured = Boolean(FEE_CONFIG_ADDRESS);
+export const isDenylistConfigured = Boolean(METADATA_DENYLIST_ADDRESS);
 
 // ── Factory registry: multi-factory union ───────────────────────────────────
 // The launch registry is VERSIONED. Changing factory logic (e.g. graduate()'s

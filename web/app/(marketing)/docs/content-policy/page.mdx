@@ -1,0 +1,79 @@
+export const metadata = {
+  title: "Content policy & the metadata denylist",
+  description:
+    "BALLAST is permissionless: anyone can launch, and we do not curate what exists. The one thing we will do is refuse to render impersonation or phishing metadata under our own domain. This page states exactly what that denylist is, what it will and will not be used for, and where its public record lives.",
+};
+
+# Content policy & the metadata denylist
+
+BALLAST is permissionless. Anyone can launch a token, and **we do not decide what
+is allowed to exist** — the chain does that, not us. This page describes the one
+narrow control we keep, why it exists, and the hard limits on how it is used.
+
+## The problem it solves
+
+A token's metadata (its name, logo, description, and links) is set by whoever
+launches it, through a pointer (`metadataURI`) recorded on-chain. Anyone can point
+it at anything — including branding that **impersonates a real company, person, or
+project**, or a **phishing link**. When our interface renders that metadata, we are
+serving it under **ballasted.xyz**. That is the exact thing browser safe-browsing
+systems flag as deceptive content, and it is a real harm to whoever is being
+impersonated.
+
+## What the denylist is
+
+An owner-managed, on-chain
+[`MetadataDenylist`](/docs/contract-addresses) contract. It is **default-allow**: it
+starts empty and suppresses nothing until an entry is added. When a token is added:
+
+- Our interface **stops rendering that token's project-supplied metadata** — name,
+  logo, description, and links.
+- The token **still appears**, by its ticker and contract address, and still links
+  to its token page.
+- Its **price, backing, holders, and trades are shown exactly as before.**
+- **Nothing on-chain changes.** The token, its supply, its pool, and its
+  `metadataURI` are all untouched, and the raw metadata remains fully readable —
+  we link it directly on the token's page so you can see precisely what we withheld.
+
+It is a decision about **what we serve under our own domain**, not a decision about
+what may exist. That distinction is the whole point: hiding a token entirely would
+be us deciding what exists; declining to host impersonation branding is not.
+
+## What it will be used for
+
+Only to withhold metadata that we should not be serving under our domain:
+
+- **Impersonation** of a real company, person, project, or token.
+- **Phishing or malware links**, or links to deceptive destinations.
+- **Deceptive content** designed to make a token look like something it is not.
+
+## What it will NOT be used for
+
+Plainly, and before we have ever used it:
+
+- **Not** to suppress competitors, or projects that compete with $BALLAST or with
+  the team.
+- **Not** to suppress critics, criticism of BALLAST, or unflattering but honest
+  projects.
+- **Not** as editorial taste — we do not withhold a project because we dislike it,
+  disagree with it, or would not have launched it ourselves.
+- **Not** to alter, hide, or interfere with anything **on-chain** — we cannot and
+  will not, and this contract has no such power.
+
+If a project's only offence is existing, competing, or disagreeing with us, it will
+not be on this list.
+
+## The record is public
+
+Every change to the denylist is an **on-chain event carrying the reason and the
+timestamp**, so the fact that we suppressed something — and the grounds we gave —
+is itself public and cannot be quietly rewritten. This page and the token's own
+page mirror that record, but the **contract's event log is the canonical source**;
+read it directly from
+[the contract](/docs/contract-addresses) rather than trusting our summary.
+
+Ownership of the contract sits with the protocol owner and moves to the project
+multisig alongside the other owner-controlled contracts, so no single hot key can
+operate it once the migration is complete.
+
+_As of publication, the denylist is empty — nothing is suppressed._

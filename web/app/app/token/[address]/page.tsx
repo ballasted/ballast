@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Address } from "viem";
 import { useBacking } from "@/hooks/useBacking";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
+import { useDenylistEntry } from "@/hooks/useDenylist";
 import { useMarket } from "@/hooks/useMarket";
 import { useNow } from "@/hooks/useNow";
 import { BackingPanel } from "@/components/app/BackingPanel";
@@ -67,6 +68,12 @@ export default function TokenDetailPage() {
   const { meta } = useProjectMeta(metadataURI);
   const { market } = useMarket(token);
   const { holders } = useHolders(token);
+  // Metadata denylist: a denied token keeps its ticker, price, backing, holders and
+  // trades, but its project-supplied branding (name, logo, description, links) is
+  // withheld and replaced by a notice stating why, with the raw metadataURI so
+  // anyone can read what we withheld. Default-allow — undenied unless listed.
+  const { denied: metaDenied, reason: denyReason } = useDenylistEntry(token);
+  const shownMeta = metaDenied ? undefined : meta;
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -102,10 +109,12 @@ export default function TokenDetailPage() {
       <header className="card p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
+            <Logo src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={48} />
             <div className="min-w-0">
               <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
-              <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>
+              <p className="truncate text-sm text-text-muted">
+                {metaDenied ? <span className="italic text-text-faint">Metadata withheld</span> : (name ?? "Unnamed project")}
+              </p>
             </div>
           </div>
           <div className="text-right">
@@ -139,11 +148,12 @@ export default function TokenDetailPage() {
         </div>
 
         {/* Self-declared project links beneath the name — icons + handles, unverified
-            (see ProjectLinks: never a "verified" label, never a check mark). */}
-        <ProjectLinks meta={meta} variant="row" className="mt-3" />
+            (see ProjectLinks: never a "verified" label, never a check mark). Withheld
+            for a denylisted token (shownMeta is undefined → renders nothing). */}
+        <ProjectLinks meta={shownMeta} variant="row" className="mt-3" />
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-          {meta?.category && <Badge>{meta.category}</Badge>}
+          {shownMeta?.category && <Badge>{shownMeta.category}</Badge>}
           <Badge>{activeChain.name}</Badge>
           <CopyAddress address={token!} label="Token contract" />
         </div>
@@ -166,6 +176,40 @@ export default function TokenDetailPage() {
         <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
       </header>
 
+      {/* Metadata withheld — this token is on the owner-managed denylist. The token
+          itself is untouched (ticker, price, backing, holders, trades all still
+          shown); only the project-supplied branding is withheld, with the reason and
+          the raw metadataURI so anyone can read exactly what we withheld. */}
+      {metaDenied && (
+        <section className="card border-warning-border bg-warning-bg p-5" role="note">
+          <h2 className="font-serif text-lg font-semibold text-bone">Project metadata withheld</h2>
+          <div className="mt-2 space-y-2 text-sm text-text-secondary">
+            <p>
+              BALLAST is not rendering this project&apos;s self-declared name, logo, description, or links.
+              {denyReason ? <> Reason: <span className="text-text-primary">{denyReason}</span>.</> : null} The token is
+              otherwise untouched — its price, backing, holders and trades are shown as normal, and nothing on-chain has
+              changed. See our <a className="text-green underline underline-offset-2" href="/docs/content-policy">content policy</a> for
+              what this is and is not used for.
+            </p>
+            <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-faint">
+              {ipfsToGateway(metadataURI) && (
+                <a className="underline underline-offset-2 hover:text-text-secondary" href={ipfsToGateway(metadataURI)} target="_blank" rel="noopener noreferrer nofollow">
+                  Read the raw metadata yourself ↗
+                </a>
+              )}
+              <a
+                className="underline underline-offset-2 hover:text-text-secondary"
+                href={`${activeChain.blockExplorers.default.url}/token/${token}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Token contract on Blockscout ↗
+              </a>
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* $BALLAST-only: it shares the platform name and routes creator fees to the
           protocol vault, so a permanent "not a protocol token" notice sits here,
           above the fold, right under the name (see ProtocolTokenNotice). */}
@@ -187,11 +231,11 @@ export default function TokenDetailPage() {
           launches (owed is per-recipient), so one claim sweeps everything. */}
       {creator && <FeePanel requireAccount={creator} alwaysShow />}
 
-      {/* About */}
-      {meta?.description && (
+      {/* About — the project's own description, withheld for a denylisted token. */}
+      {shownMeta?.description && (
         <section className="card p-5">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">About</h2>
-          <p className="mt-2 text-sm text-text-secondary">{meta.description}</p>
+          <p className="mt-2 text-sm text-text-secondary">{shownMeta.description}</p>
         </section>
       )}
 
