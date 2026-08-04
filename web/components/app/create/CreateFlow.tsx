@@ -14,6 +14,7 @@ import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
 import { ActingAs } from "@/components/app/ActingAs";
 import { Logo } from "@/components/app/Logo";
+import { MotionSection } from "@/components/app/MotionSection";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
@@ -295,7 +296,7 @@ export function CreateFlow() {
     <>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* ── LEFT: form ──────────────────────────────────────────────── */}
-        <div className="space-y-5">
+        <MotionSection className="space-y-5">
           <section className="card space-y-4 p-5">
             <LogoUploader symbol={symbolClean} logoUri={logoUri} setLogoUri={setLogoUri} />
 
@@ -592,11 +593,11 @@ export function CreateFlow() {
             </>
           )}
           {pinError && <p className="text-center text-xs text-negative">{pinError}</p>}
-        </div>
+        </MotionSection>
 
         {/* ── RIGHT: live preview ─────────────────────────────────────── */}
         <div>
-          <div className="lg:sticky lg:top-20">
+          <MotionSection className="lg:sticky lg:top-20">
             <PreviewCard
               name={name.trim()}
               symbol={symbolClean}
@@ -612,7 +613,7 @@ export function CreateFlow() {
               freshness={freshness}
               openFdv={openFdv}
             />
-          </div>
+          </MotionSection>
         </div>
       </div>
 
