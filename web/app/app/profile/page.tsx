@@ -85,7 +85,7 @@ export default function ProfilePage() {
 function CommunityLinks() {
   return (
     <section className="border-t border-border pt-4">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-text-faint">Community</h2>
+      <h2 className="eyebrow font-semibold">Community</h2>
       <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2">
         {COMMUNITY_LINKS.map((l) =>
           l.external ? (

@@ -99,7 +99,7 @@ function FeaturedCard({ project }: { project: Project }) {
       </div>
 
       <div className="mt-4">
-        <div className="text-xs uppercase tracking-wide text-text-faint">Market cap</div>
+        <div className="eyebrow">Market cap</div>
         <div className="figure-primary text-xl tabular-nums">
           {mcap1e18 !== undefined ? (
             <span key={mcap1e18.toString()} className="anim-fade inline-block">

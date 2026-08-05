@@ -216,7 +216,7 @@ export default function TokenDetailPage() {
           {shownMeta?.description && (
             <MotionSection>
               <section className="card p-5">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">About</h2>
+                <h2 className="section-label">About</h2>
                 <p className="mt-2 text-sm text-text-secondary">{shownMeta.description}</p>
               </section>
             </MotionSection>

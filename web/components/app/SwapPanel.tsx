@@ -135,12 +135,12 @@ export function SwapPanel({
             key={sd}
             onClick={() => sd !== side && flipSide()}
             className={cn(
-              "rounded px-3 py-2 text-sm font-semibold capitalize transition-colors",
+              "tab-segment capitalize",
               side === sd
                 ? sd === "buy"
                   ? "bg-green-bg text-green"
                   : "bg-warning-bg text-warning"
-                : "text-text-muted hover:text-text-secondary",
+                : "tab-idle",
             )}
           >
             {sd}

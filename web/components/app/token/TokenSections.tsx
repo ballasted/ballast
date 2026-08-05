@@ -41,7 +41,7 @@ export function MarketOverview({
 
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Market overview</h2>
+      <h2 className="section-label">Market overview</h2>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
         <Stat label="FDV" value={fdv !== undefined ? formatUsd(fdv, { compact: true }) : hasPool ? "—" : "no market"} />
         <Stat label="Liquidity" value={liquidityUsd !== undefined ? formatCompactUsd(liquidityUsd) : "—"} />
@@ -77,7 +77,7 @@ export function HoldersPanel({
   return (
     <section className="card p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Holders</h2>
+        <h2 className="section-label">Holders</h2>
         {holders?.holdersCount !== undefined && (
           <span className="text-sm text-text-secondary">
             <span className="font-semibold text-text-primary">{holders.holdersCount.toLocaleString("en")}</span> total
@@ -195,7 +195,7 @@ function Stat({ label, value, pending }: { label: string; value: string; pending
 export function AllocationSlot() {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Supply &amp; allocation</h2>
+      <h2 className="section-label">Supply &amp; allocation</h2>
       <div className="mt-3 flex items-baseline gap-3">
         <span className="figure-primary text-3xl text-green">100%</span>
         <span className="text-sm text-text-secondary">of supply seeded the pool</span>
@@ -227,19 +227,19 @@ export function MetadataHistory({
 
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Metadata history</h2>
+      <h2 className="section-label">Metadata history</h2>
       <ol className="mt-3 space-y-3">
         {changed && (
           <HistoryRow
             tag="Current"
-            tagClass="bg-green-bg text-green"
+            tagClass="chip-accent"
             name={currentMeta.meta?.name}
             uri={currentUri}
           />
         )}
         <HistoryRow
           tag="Launch · original"
-          tagClass="bg-border text-text-secondary"
+          tagClass="chip-neutral"
           name={launchMeta.meta?.name}
           uri={launchUri}
         />
@@ -271,7 +271,7 @@ function HistoryRow({
   return (
     <li className="flex items-center justify-between gap-3 text-sm">
       <div className="flex items-center gap-2">
-        <span className={cn("rounded px-2 py-0.5 text-xs font-medium", tagClass)}>{tag}</span>
+        <span className={cn("chip", tagClass)}>{tag}</span>
         <span className="text-text-primary">{name ?? "metadata"}</span>
       </div>
       {gw && (
@@ -303,7 +303,7 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
 
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Creator track record</h2>
+      <h2 className="section-label">Creator track record</h2>
       <div className="mt-3 flex items-center justify-between">
         <span className="text-sm text-text-muted">Creator</span>
         <span className="font-mono text-sm text-text-primary">{shortAddress(creator)}</span>
@@ -318,7 +318,7 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
         <>
           <Meander className="my-4 opacity-60" />
           <div className="space-y-2">
-            <div className="text-xs uppercase tracking-wide text-text-faint">Other launches</div>
+            <div className="eyebrow">Other launches</div>
             {others.map((p) => (
               <Link
                 key={p.token}
@@ -347,7 +347,7 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
 
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Recent trades</h2>
+      <h2 className="section-label">Recent trades</h2>
 
       {isLoading ? (
         <div className="mt-4 space-y-2" aria-hidden>

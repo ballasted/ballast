@@ -15,6 +15,11 @@ import { cn } from "@/lib/cn";
 // can look up its balance and confirm the burn total independently of this interface.
 const DEAD = "0x000000000000000000000000000000000000dEaD";
 
+// The address that owns the buyback today. It is a single team key, NOT a multisig
+// yet — disclosed here rather than discovered. When ownership moves to the project
+// multisig, update this and the copy below (and note it in /docs/corrections).
+const OWNER = "0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1";
+
 const EXPLORER = activeChain.blockExplorers.default.url;
 
 // Format a WETH/token amount (1e18) with a sensible number of digits.
@@ -63,6 +68,14 @@ export default function BuybackPage() {
             <NextBuyback threshold={s.threshold} accrued={s.accruedWeth} />
           </div>
 
+          {/* ── How a buyback runs (mechanics observed on-chain) ───────── */}
+          <p className="max-w-2xl text-xs text-text-faint">
+            Each buyback is size-capped so a single call can&apos;t swing the pool. The pool is thin, so a large
+            accrued balance isn&apos;t spent all at once — it&apos;s spent across many small buybacks, automatically:
+            whatever a call can&apos;t buy within its price cap simply stays and funds the next one. Nothing is lost
+            between them.
+          </p>
+
           {/* ── Copy rules block (spec 2.4) ────────────────────────────── */}
           <p className="max-w-2xl text-xs text-text-faint">
             Burning reduces the circulating supply. What happens to price after that is not something we control or
@@ -71,7 +84,7 @@ export default function BuybackPage() {
 
           {/* ── Burn address ───────────────────────────────────────────── */}
           <section className="card p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">The burn address</h2>
+            <h2 className="section-label">The burn address</h2>
             <p className="mt-2 text-sm text-text-secondary">
               Every token bought is sent here and can never be moved again. Confirm the total yourself — you don&apos;t
               have to trust this page.
@@ -99,7 +112,7 @@ export default function BuybackPage() {
 
           {/* ── Where the money comes from ─────────────────────────────── */}
           <section className="card p-5">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Where the money comes from</h2>
+            <h2 className="section-label">Where the money comes from</h2>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
               <Node>1% swap fee (WETH)</Node>
               <Arrow />
@@ -112,12 +125,17 @@ export default function BuybackPage() {
             <p className="mt-3 text-xs text-text-faint">
               Only the platform&apos;s share of the swap fee funds buybacks — no treasury assets, and no fee on treasury
               deposits. Each buyback is itself a swap through the pool, so it pays the same 1% fee and appears in the
-              trades feed like any other buy.{" "}
+              trades feed like any other buy. Because of that fee, a small slice of every buyback flows back into the
+              fee pool rather than into burned tokens — so the $BALLAST burned is always a little less than the WETH
+              accrued, not a one-to-one conversion.{" "}
               <Link href="/docs/how-ballast-works" className="text-green underline underline-offset-2">
                 How the fee works ↗
               </Link>
             </p>
           </section>
+
+          {/* ── Who controls this ──────────────────────────────────────── */}
+          <WhoControls />
 
           <Meander className="opacity-60" />
         </>
@@ -133,8 +151,8 @@ function NextBuyback({ threshold, accrued }: { threshold?: bigint; accrued?: big
       ? Math.min(100, Number((accrued * 100n) / threshold))
       : undefined;
   return (
-    <div className="rounded-card border border-border bg-surface p-4">
-      <div className="text-xs uppercase tracking-wide text-text-faint">Next buyback</div>
+    <div className="card p-4">
+      <div className="eyebrow">Next buyback</div>
       {threshold === undefined ? (
         <div className="mt-1 text-sm text-text-muted">—</div>
       ) : ready ? (
@@ -157,7 +175,7 @@ function SupplyEffect({ totalSupply, burned }: { totalSupply?: bigint; burned?: 
   const circulating = totalSupply !== undefined && burned !== undefined ? totalSupply - burned : undefined;
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Supply effect</h2>
+      <h2 className="section-label">Supply effect</h2>
       <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-surface-raised" aria-hidden>
         <div className="h-full rounded-full bg-green" style={{ width: `${pctBurned}%` }} />
       </div>
@@ -183,10 +201,59 @@ function SupplyEffect({ totalSupply, burned }: { totalSupply?: bigint; burned?: 
   );
 }
 
+function WhoControls() {
+  return (
+    <section className="card p-5">
+      <h2 className="section-label">Who controls this</h2>
+      <p className="mt-2 text-sm text-text-secondary">
+        This contract is owned by a single BALLAST-team key — not a multisig, today. We&apos;d rather say that plainly
+        than wait on a wallet we can&apos;t yet create. Here is exactly what that key can and cannot do; verify the owner
+        yourself with <span className="font-mono">owner()</span> on the contract.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <CopyAddress address={OWNER} />
+        <a
+          className="text-xs text-green underline underline-offset-2"
+          href={`${EXPLORER}/address/${OWNER}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View the owner on Blockscout ↗
+        </a>
+      </div>
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div>
+          <dt className="eyebrow">It can</dt>
+          <dd className="mt-1 text-sm text-text-secondary">
+            Change the threshold that triggers a buyback (delaying one, never diverting it), adjust the price-impact cap
+            within a fixed 20% ceiling, and change which fee ledgers it sweeps.
+          </dd>
+        </div>
+        <div>
+          <dt className="eyebrow">It cannot</dt>
+          <dd className="mt-1 text-sm text-text-secondary">
+            Withdraw the WETH, change the token it buys, or change the burn address — there is no function for any of
+            these. Every token a buyback buys goes to <span className="font-mono">0x…dEaD</span>, fixed in the contract.
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs text-text-faint">
+        One thing to know: the platform fee only reaches this contract because the fee config points here. The same key
+        controls that config and could point <em>future</em> fees elsewhere — it cannot touch WETH already held here,
+        which can only ever be spent buying $BALLAST and burning it. When ownership moves to a multisig, this section
+        will say so.{" "}
+        <Link href="/docs/corrections" className="text-green underline underline-offset-2">
+          On the record ↗
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: boolean; loading: boolean; now: number }) {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Burn history</h2>
+      <h2 className="section-label">Burn history</h2>
       {error ? (
         <p className="mt-3 text-sm text-warning">Couldn&apos;t read the burn events right now — the RPC may be busy. Retry shortly.</p>
       ) : rows.length === 0 ? (
@@ -199,7 +266,7 @@ function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: bo
           <div className="mt-3 hidden overflow-x-auto sm:block">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-text-faint">
+                <tr className="text-left eyebrow">
                   <th className="pb-2 font-medium">Date</th>
                   <th className="pb-2 text-right font-medium">WETH spent</th>
                   <th className="pb-2 text-right font-medium">$BALLAST bought</th>
@@ -254,8 +321,8 @@ function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: bo
 
 function Figure({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div className={cn("rounded-card border bg-surface p-4", accent ? "border-accent" : "border-border")}>
-      <div className="text-xs uppercase tracking-wide text-text-faint">{label}</div>
+    <div className={cn("card p-4", accent && "border-accent")}>
+      <div className="eyebrow">{label}</div>
       <div className="mt-1 figure-primary text-2xl tabular-nums">{value}</div>
       {sub && <div className="metric-secondary mt-0.5">{sub}</div>}
     </div>

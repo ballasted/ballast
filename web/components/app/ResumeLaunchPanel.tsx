@@ -123,7 +123,7 @@ export function ResumeLaunchPanel({ token, symbol, factory }: { token: Address; 
       </p>
 
       {phase === "done" ? (
-        <div className="mt-4 rounded-input border border-green/40 bg-green-bg p-3 text-sm">
+        <div className="note note-positive mt-4">
           <div className="font-semibold text-green">Pool seeded ✓</div>
           <p className="mt-1 text-text-secondary">The market is live. Reload to see the price.</p>
           <button className="btn-primary mt-3 w-full" onClick={() => window.location.reload()}>
@@ -131,7 +131,7 @@ export function ResumeLaunchPanel({ token, symbol, factory }: { token: Address; 
           </button>
         </div>
       ) : phase === "lost" ? (
-        <div className="mt-4 rounded-input border border-warning-border bg-warning-bg p-3 text-sm">
+        <div className="note note-warning mt-4">
           <div className="font-semibold text-warning">We lost track of this transaction</div>
           <p className="mt-1 text-text-secondary">
             It may still have succeeded — check Blockscout before retrying, so you don&apos;t seed twice.

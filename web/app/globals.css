@@ -157,6 +157,17 @@
     @apply text-text-muted text-sm tabular-nums;
   }
 
+  /* Eyebrow / section label — the faint uppercase caption used above section
+     bodies and stat values everywhere. .section-label is the standard <h2> section
+     title (sm, semibold); .eyebrow is the smaller micro-caption over a value or
+     stat tile. Add font-semibold to an .eyebrow for the few semibold micro-labels. */
+  .section-label {
+    @apply text-sm font-semibold uppercase tracking-wide text-text-faint;
+  }
+  .eyebrow {
+    @apply text-xs uppercase tracking-wide text-text-faint;
+  }
+
   .card {
     @apply bg-card border border-border rounded-card;
   }
@@ -168,18 +179,86 @@
 
   .input {
     @apply w-full rounded-input border border-border bg-bg px-3 py-2.5 text-sm text-text-primary
-      placeholder:text-text-faint focus:border-green focus:outline-none;
+      transition-colors placeholder:text-text-faint focus:border-green focus:outline-none
+      focus:ring-1 focus:ring-green/25;
   }
   .field-label {
     @apply mb-1.5 block text-sm font-medium text-text-secondary;
   }
+  /* Controls transition and give a real press state. Hover shifts to a dedicated
+     shade rather than fading opacity (a fade reads as "disabling", not "pressable"),
+     and active:brightness-95 gives the tactile dip on click. */
   .btn-primary {
     @apply rounded-button bg-green px-4 py-3 text-center font-semibold text-bg
-      hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40;
+      transition-colors hover:bg-green-hover active:brightness-95
+      disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-green;
   }
   .btn-secondary {
     @apply rounded-button border border-border px-4 py-3 text-center font-semibold text-text-secondary
-      hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40;
+      transition-colors hover:border-border-strong hover:bg-surface-hover hover:text-text-primary
+      active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  /* Chip / tag — the small status pills scattered across the app (freshness,
+     "prices resting", "first launch", tab counts). One base + intent variants so
+     they stop drifting apart. Base is layout only; a variant sets the colour. */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
+      tabular-nums;
+  }
+  .chip-neutral {
+    @apply bg-card border border-border text-text-muted;
+  }
+  .chip-accent {
+    @apply bg-green-bg text-green;
+  }
+  .chip-warning {
+    @apply bg-warning-bg text-warning;
+  }
+  .chip-negative {
+    @apply bg-card border border-border text-negative;
+  }
+
+  /* Tabs / toggles — the segmented and pill controls used for sorts, filters,
+     category, buy/sell, and option grids. A layout base (.tab pill · .tab-block
+     grid option · .tab-segment button inside a bordered container) paired with a
+     composable state (.tab-active | .tab-idle) so a new toggle can't drift its
+     colours. Buy/sell keeps a bespoke active tone (green vs warning) and reuses
+     only the layout base. .tab-idle's border-color is a no-op on .tab-segment
+     (no border-width there), so the same idle state fits all three shapes. */
+  .tab {
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-full border
+      px-3 py-1.5 text-sm transition-colors;
+  }
+  .tab-block {
+    @apply rounded-input border py-2 text-center text-sm transition-colors;
+  }
+  .tab-segment {
+    @apply rounded px-3 py-2 text-center text-sm font-semibold transition-colors;
+  }
+  .tab-active {
+    @apply border-green bg-green-bg text-green;
+  }
+  .tab-idle {
+    @apply border-border text-text-muted hover:text-text-secondary;
+  }
+
+  /* Note — a full-width message box (lost-transaction warnings, "pool seeded"
+     confirmations, inline cautions). Layout base + an intent variant that sets the
+     surface and default text tone; headings/links inside keep their own colour, so
+     the variant's text tone only fills untinted body copy. For panel-sized notices
+     use .card with an overriding surface instead; this is the inline box. */
+  .note {
+    @apply rounded-input border p-3 text-sm;
+  }
+  .note-warning {
+    @apply border-warning-border bg-warning-bg text-text-secondary;
+  }
+  .note-positive {
+    @apply border-green/40 bg-green-bg text-text-secondary;
+  }
+  .note-neutral {
+    @apply border-border bg-bg text-text-muted;
   }
 
   .prose-doc {

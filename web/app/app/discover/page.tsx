@@ -146,17 +146,12 @@ export default function DiscoverPage() {
           never confused with a sort. Category comes from each project's pinned
           metadata JSON (off-chain, no indexer needed), fetched for the whole board. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs uppercase tracking-wide text-text-faint">Category</span>
+        <span className="mr-1 eyebrow">Category</span>
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
             onClick={() => setCategory(c.id)}
-            className={cn(
-              "rounded-full border px-3 py-1 text-sm transition-colors",
-              category === c.id
-                ? "border-green bg-green-bg text-green"
-                : "border-border text-text-muted hover:text-text-secondary",
-            )}
+            className={cn("tab", category === c.id ? "tab-active" : "tab-idle")}
           >
             {c.label}
           </button>

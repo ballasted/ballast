@@ -128,7 +128,7 @@ export function MarketPanel({
 }
 
 function SectionTitle() {
-  return <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Market</h2>;
+  return <h2 className="section-label">Market</h2>;
 }
 
 function Stat({ label, value, source, tone }: { label: string; value: string; source: string; tone?: "pos" | "neg" }) {

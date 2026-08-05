@@ -86,7 +86,7 @@ function StatCard({
 }) {
   return (
     <div className={cn("card p-4", accent && "border-accent")}>
-      <div className="text-xs uppercase tracking-wide text-text-faint">{label}</div>
+      <div className="eyebrow">{label}</div>
       {loading ? (
         <div className="mt-1.5 h-7 w-20 animate-pulse rounded bg-surface-raised" />
       ) : value === null || value === undefined ? (

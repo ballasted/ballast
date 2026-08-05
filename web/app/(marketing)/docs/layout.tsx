@@ -12,7 +12,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
     <Container className="py-12">
       <div className="grid gap-10 md:grid-cols-[220px_1fr]">
         <aside className="md:sticky md:top-20 md:self-start">
-          <p className="text-xs font-semibold uppercase tracking-wide text-text-faint">
+          <p className="eyebrow font-semibold">
             Documentation
           </p>
           <nav className="mt-3 flex flex-col gap-1">
@@ -34,7 +34,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
           </nav>
 
           {/* Community — external channels, distinct labels for the two Telegrams. */}
-          <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-text-faint">
+          <p className="mt-6 eyebrow font-semibold">
             Community
           </p>
           <nav className="mt-3 flex flex-col gap-1">
