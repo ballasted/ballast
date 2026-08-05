@@ -85,9 +85,7 @@ export function ProjectCard({
               </div>
             </div>
             {backing.anyStale && (
-              <span className="rounded bg-warning-bg px-2 py-0.5 text-xs text-warning">
-                prices resting
-              </span>
+              <span className="chip chip-warning">prices resting</span>
             )}
           </div>
         ) : (

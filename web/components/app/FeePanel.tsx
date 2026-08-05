@@ -44,7 +44,7 @@ export function FeePanel({
 
   return (
     <section className="card border-accent p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">{title}</h2>
+      <h2 className="section-label">{title}</h2>
 
       <div className="mt-3 flex items-baseline gap-2">
         <span key={fmtWeth(f.accruedWeth)} className="figure-primary anim-fade text-3xl">

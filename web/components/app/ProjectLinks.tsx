@@ -164,7 +164,7 @@ function LeaveInterstitial({ item, onClose }: { item: Item | null; onClose: () =
           BALLAST. Check the destination before you continue.
         </p>
         <div className="mt-4 rounded-input border border-border bg-bg p-3">
-          <div className="text-xs uppercase tracking-wide text-text-faint">Destination</div>
+          <div className="eyebrow">Destination</div>
           <div className="mt-1 font-medium text-text-primary">{host}</div>
           <div className="mt-0.5 break-all font-mono text-xs text-text-faint">{item.href}</div>
         </div>

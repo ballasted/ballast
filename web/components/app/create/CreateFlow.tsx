@@ -327,12 +327,7 @@ export function CreateFlow() {
                     key={c}
                     type="button"
                     onClick={() => setCategory(c)}
-                    className={cn(
-                      "rounded-full border px-3 py-1 text-sm transition-colors",
-                      category === c
-                        ? "border-green bg-green-bg text-green"
-                        : "border-border text-text-muted hover:text-text-secondary",
-                    )}
+                    className={cn("tab", category === c ? "tab-active" : "tab-idle")}
                   >
                     {c}
                   </button>
@@ -482,10 +477,7 @@ export function CreateFlow() {
                         key={o.days}
                         type="button"
                         onClick={() => setNoticeDays(o.days)}
-                        className={cn(
-                          "rounded-input border py-2 text-sm transition-colors",
-                          noticeDays === o.days ? "border-green bg-green-bg text-green" : "border-border text-text-muted",
-                        )}
+                        className={cn("tab-block", noticeDays === o.days ? "tab-active" : "tab-idle")}
                       >
                         {o.label}
                       </button>
@@ -657,7 +649,7 @@ function UnbackedOpening({ openFdv }: { openFdv: OpenFdv }) {
         while its feed&apos;s market is open. You can add a treasury later by depositing.
       </p>
       <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
-        <span className="text-xs uppercase tracking-wide text-text-faint">Opening valuation</span>
+        <span className="eyebrow">Opening valuation</span>
         <span className="text-right">
           <span className="figure-primary block tabular-nums">{fmtEthFdv(eth)}</span>
           {usd && <span className="metric-secondary tabular-nums">{usd}</span>}
@@ -693,7 +685,7 @@ function PreviewCard(p: {
             reason the preview lives on the same screen. Reflects the input; it never
             counts up (Phase 4 motion rule 2). */}
         <div className={cn("rounded-input border bg-bg p-4", p.backed ? "border-accent" : "border-border")}>
-          <div className="text-xs uppercase tracking-wide text-text-faint">
+          <div className="eyebrow">
             {p.backed ? "Backing per token" : "Opening valuation"}
           </div>
           <div className="mt-1 figure-primary text-3xl tabular-nums">
@@ -863,7 +855,7 @@ function LaunchProgress(p: {
             may have succeeded and retrying could double-deploy. Show the hash and
             send them to the explorer first. */}
         {lostStep && !p.isRunning && (
-          <div className="mt-4 rounded-input border border-warning-border bg-warning-bg p-3 text-sm">
+          <div className="note note-warning mt-4">
             <div className="font-semibold text-warning">We lost track of this transaction</div>
             <p className="mt-1 text-text-secondary">
               It may still have succeeded — check Blockscout before retrying, so you don&apos;t send it twice.
@@ -1002,10 +994,10 @@ function LogoUploader({
         className={cn(
           "relative flex h-[132px] w-[132px] flex-col items-center justify-center gap-2 rounded-card border border-dashed px-3 text-center transition-colors",
           locked
-            ? "cursor-not-allowed border-[#2E352F] opacity-40"
+            ? "cursor-not-allowed border-border-strong opacity-40"
             : dragOver
               ? "cursor-pointer border-green bg-surface-raised"
-              : "cursor-pointer border-[#2E352F] hover:bg-surface-raised",
+              : "cursor-pointer border-border-strong hover:bg-surface-raised",
         )}
       >
         <input
@@ -1334,14 +1326,7 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
 
 function InlineNotice({ children, tone }: { children: React.ReactNode; tone?: "warning" }) {
   return (
-    <p
-      className={cn(
-        "rounded-input border p-3 text-sm",
-        tone === "warning"
-          ? "border-warning-border bg-warning-bg text-text-secondary"
-          : "border-border bg-bg text-text-muted",
-      )}
-    >
+    <p className={cn("note", tone === "warning" ? "note-warning" : "note-neutral")}>
       {children}
     </p>
   );

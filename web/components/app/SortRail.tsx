@@ -43,12 +43,7 @@ export function SortRail({
                 key={s.id}
                 onClick={() => onSort(s.id)}
                 aria-pressed={active}
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors",
-                  active
-                    ? "border-green bg-green-bg text-green"
-                    : "border-border text-text-muted hover:text-text-secondary",
-                )}
+                className={cn("tab shrink-0", active ? "tab-active" : "tab-idle")}
               >
                 {s.label}
               </button>
@@ -63,7 +58,7 @@ export function SortRail({
             onClick={() => onTrending(!trending)}
             aria-pressed={trending}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border border-dashed px-3 py-1.5 text-sm transition-colors",
+              "tab shrink-0 border-dashed",
               trending ? "border-green text-green" : "border-border-strong text-text-muted hover:text-text-secondary",
             )}
           >

@@ -19,6 +19,8 @@ const config: Config = {
         "border-strong": "#313A33",
         green: {
           DEFAULT: "#00C805", // Accent (patina)
+          hover: "#1FD424", // Accent hover — a touch brighter so a press reads as
+          // feedback, not a fade; dark button text stays readable against it.
           bg: "#0E2A12", // Accent deep
           mid: "#2E6B33", // Accent mid — second data/step tone
         },

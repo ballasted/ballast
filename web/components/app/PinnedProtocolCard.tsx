@@ -27,7 +27,7 @@ export function PinnedProtocolCard({ project }: { project: Project }) {
     >
       {/* Placement label — not a ranking badge. */}
       <div className="flex items-center justify-between gap-3">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-bg px-2.5 py-1 text-xs font-medium text-green">
+        <span className="chip chip-accent">
           <span aria-hidden>◆</span> Protocol token · pinned by BALLAST
         </span>
         <span className="text-xs text-text-faint">not a ranking</span>

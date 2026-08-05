@@ -45,7 +45,7 @@ export function Footer() {
           </div>
           {COLS.map((col) => (
             <div key={col.heading}>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">
+              <h3 className="eyebrow font-semibold">
                 {col.heading}
               </h3>
               <ul className="mt-3 space-y-2">

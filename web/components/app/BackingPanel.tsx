@@ -60,7 +60,7 @@ export function BackingPanel({
 
   return (
     <section className="card border-accent p-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">
+      <h2 className="section-label">
         Verified backing
       </h2>
 
@@ -160,13 +160,13 @@ function Split({
 
 function FreshnessChip({ tier, label }: { tier: FreshnessTier; label: string }) {
   const styles: Record<FreshnessTier, string> = {
-    fresh: "bg-green-bg text-green",
-    resting: "bg-card text-text-muted border border-border",
-    stale: "bg-warning-bg text-warning",
+    fresh: "chip-accent",
+    resting: "chip-neutral",
+    stale: "chip-warning",
   };
   const icon = tier === "fresh" ? "●" : tier === "resting" ? "◴" : "⚠";
   return (
-    <span className={cn("shrink-0 rounded px-2 py-0.5 text-xs", styles[tier])}>
+    <span className={cn("chip shrink-0", styles[tier])}>
       {icon} {label}
     </span>
   );
