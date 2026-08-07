@@ -94,6 +94,35 @@ export type TrendingData = {
   items: TrendingItem[]; // ranked: unique buyers desc, then 24h volume desc
 };
 
+// ── OHLCV candles (GeckoTerminal per-pool OHLCV endpoint) ────────────────────
+// The terminal chart draws candlesticks from GeckoTerminal, the same source as
+// trades/volume. Our six timeframes map onto GT's {minute,hour,day} + an aggregate
+// count. Every candle is market colour (price discovery), never backing valuation.
+export type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+
+export const TIMEFRAMES: { key: Timeframe; label: string; gt: "minute" | "hour" | "day"; aggregate: number }[] = [
+  { key: "1m", label: "1m", gt: "minute", aggregate: 1 },
+  { key: "5m", label: "5m", gt: "minute", aggregate: 5 },
+  { key: "15m", label: "15m", gt: "minute", aggregate: 15 },
+  { key: "1h", label: "1h", gt: "hour", aggregate: 1 },
+  { key: "4h", label: "4h", gt: "hour", aggregate: 4 },
+  { key: "1d", label: "1d", gt: "day", aggregate: 1 },
+];
+
+export const DEFAULT_TIMEFRAME: Timeframe = "5m";
+
+export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
+
+export type OhlcvData = {
+  available: boolean;
+  source: "GeckoTerminal";
+  reason?: "no-token" | "not-indexed" | "unreachable";
+  fetchedAt?: number; // unix seconds, when our server fetched it
+  pool?: string;
+  timeframe: Timeframe;
+  candles: Candle[]; // chronological (oldest first)
+};
+
 export function geckoPoolUrl(pool: string): string {
   return `https://www.geckoterminal.com/${GT_NETWORK}/pools/${pool}`;
 }
