@@ -35,11 +35,13 @@ export function SwapPanel({
   symbol,
   hasPool,
   spotPriceWeth,
+  dense = false,
 }: {
   token: Address;
   symbol: string;
   hasPool: boolean;
   spotPriceWeth?: bigint; // WETH per token, 1e18 — pool mid, for price impact
+  dense?: boolean; // tighter padding for the terminal rail
 }) {
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
@@ -127,7 +129,7 @@ export function SwapPanel({
   }
 
   return (
-    <div className="card p-5">
+    <div className={cn("card", dense ? "p-4" : "p-5")}>
       {/* Buy / Sell segmented control */}
       <div className="grid grid-cols-2 gap-2 rounded-input border border-border p-1">
         {(["buy", "sell"] as const).map((sd) => (
@@ -214,6 +216,16 @@ export function SwapPanel({
             </span>
           )}
         </div>
+        {/* This field is display-only — you enter what you PAY, never a target
+            output. Sells are exact-input only in the contracts (an exact-output
+            sell reverts SellExactOutNotSupported), so we say so here rather than
+            let anyone try to pin the received amount and hit a raw revert. */}
+        {side === "sell" && (
+          <p className="mt-1 text-[11px] text-text-faint">
+            Estimated. Sells are exact-input, so the received amount can&apos;t be fixed — the least you&apos;ll
+            accept is the slippage-based minimum below.
+          </p>
+        )}
       </div>
 
       {s.quoteError && amount && (
@@ -257,8 +269,8 @@ export function SwapPanel({
         {(slipWarn || slipBlocked) && (
           <p className={cn("mt-1.5 text-xs", slipBlocked ? "text-negative" : "text-warning")}>
             {slipBlocked
-              ? "Slippage over 15% is blocked — you'd risk losing a large share of the trade to price movement."
-              : "High slippage: you may receive noticeably less than quoted."}
+              ? "Over 15% is blocked. Pools here are thin, so a large order can move the price a long way — this size would hand too much of the trade to that movement. Split it smaller."
+              : "Above 5%. Thin pools are the normal case on BALLAST, not an edge case — a modest order can still move the price, so you may receive noticeably less than quoted."}
           </p>
         )}
       </div>
@@ -284,6 +296,17 @@ export function SwapPanel({
             hint="Estimated gas, paid in ETH. Your wallet shows the exact amount at signing; priority fees do nothing on this chain."
             value={feeWei !== undefined ? `≈ ${fmt(feeWei, 6)} ETH` : "shown at signing"}
           />
+          <DetailRow
+            label="Route"
+            hint="The venue this trades through, and how ETH is handled inside the single swap call"
+            value={side === "buy" ? "Uniswap v4 · ETH wrapped in-route" : "Uniswap v4 · unwrapped to ETH"}
+          />
+          {highImpact && (
+            <p className="pt-1 text-xs text-warning">
+              Your own order moves the price by {priceImpactPct!.toFixed(1)}%. Liquidity here is thin by design, so
+              this is expected on larger sizes — a smaller order, or splitting it, keeps more of the quote.
+            </p>
+          )}
         </div>
       )}
 

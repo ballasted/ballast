@@ -12,6 +12,7 @@ import { useOhlcv } from "@/hooks/useOhlcv";
 import { useNow } from "@/hooks/useNow";
 import { TerminalStatStrip } from "@/components/app/terminal/TerminalStatStrip";
 import { TerminalChart } from "@/components/app/terminal/TerminalChart";
+import { SwapPanel } from "@/components/app/SwapPanel";
 import { Meander } from "@/components/Meander";
 import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
 import { ipfsToGateway } from "@/lib/ipfs";
@@ -89,9 +90,10 @@ export default function TerminalPage() {
             <Placeholder label="Tabs · Trades · Holders · Top traders · Your position" note="next slice" tall />
           </div>
 
-          {/* Right rail (next slice): swap · market · backing · treasury · project state */}
+          {/* Right rail: swap (this slice), then market · backing · treasury ·
+              project state (next slice). */}
           <div className="space-y-3">
-            <Placeholder label="Swap panel" note="next slice" tall />
+            <SwapPanel dense token={token!} symbol={b.symbol ?? "TOKEN"} hasPool={b.hasPool} spotPriceWeth={b.marketPriceWeth} />
             <Placeholder label="Market · backing · treasury · project state" note="next slice" />
           </div>
         </div>
