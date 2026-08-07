@@ -13,9 +13,14 @@ import { useNow } from "@/hooks/useNow";
 import { TerminalStatStrip } from "@/components/app/terminal/TerminalStatStrip";
 import { TerminalChart } from "@/components/app/terminal/TerminalChart";
 import { TerminalBackingPanel } from "@/components/app/terminal/TerminalBackingPanel";
+import { TerminalTreasuryPanel } from "@/components/app/terminal/TerminalTreasuryPanel";
+import { TerminalMarketPanel } from "@/components/app/terminal/TerminalMarketPanel";
+import { TerminalProjectState } from "@/components/app/terminal/TerminalProjectState";
+import { TerminalTabs } from "@/components/app/terminal/TerminalTabs";
+import { TerminalStatusBar } from "@/components/app/terminal/TerminalStatusBar";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { Meander } from "@/components/Meander";
-import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
+import { DEFAULT_TIMEFRAME, marketCapSupply, type Timeframe } from "@/lib/market";
 import { ipfsToGateway } from "@/lib/ipfs";
 
 // TERMINAL — a dense, single-screen working surface for people actually trading,
@@ -23,10 +28,9 @@ import { ipfsToGateway } from "@/lib/ipfs";
 // as-is; this is the terminal (docs/Ballast-terminal). Backing is a first-class
 // figure here, never a footnote, and every number carries a source + age.
 //
-// This slice builds the top strip + chart only (terminal stop point 2 — density
-// check). The right rail (swap, backing, treasury, project state), the under-chart
-// tabs, and the bottom status bar are stubbed as labelled placeholders so the column
-// proportions are judgeable, and land in the next slices.
+// Complete: top strip + chart, the under-chart tabs (Trades · Holders · Top traders ·
+// Your position), a right rail (swap · market · backing · treasury · project state),
+// and a live status bar. No placeholders remain.
 export default function TerminalPage() {
   const params = useParams();
   const raw = typeof params.address === "string" ? params.address : "";
@@ -53,6 +57,9 @@ export default function TerminalPage() {
   }
 
   const ballasted = Boolean(b.backing && b.backing.totalValueUsd > 0n);
+  const priceUsdNum =
+    b.marketPriceUsd !== undefined ? Number(b.marketPriceUsd) / 1e18 : market?.priceUsd;
+  const supply = marketCapSupply(b.backing?.totalSupply, b.totalSupply);
 
   return (
     // Break out of the shared 1200px app column: the terminal is designed for 1440+
@@ -77,7 +84,7 @@ export default function TerminalPage() {
         />
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start xl:grid-cols-[minmax(0,1.63fr)_1fr]">
-          {/* Left + centre: chart, then the under-chart tabs (next slice) */}
+          {/* Left + centre: chart, then the under-chart tabs. */}
           <div className="min-w-0 space-y-3">
             <TerminalChart
               candles={ohlcv?.candles ?? []}
@@ -88,40 +95,44 @@ export default function TerminalPage() {
               loading={ohlcvLoading}
               available={ohlcvAvailable}
             />
-            <Placeholder label="Tabs · Trades · Holders · Top traders · Your position" note="next slice" tall />
+            <TerminalTabs
+              token={token!}
+              symbol={b.symbol}
+              creator={b.creator}
+              treasury={b.treasury}
+              priceUsd={priceUsdNum}
+              now={now}
+            />
           </div>
 
-          {/* Right rail: swap + backing (this slice), then market reference ·
-              treasury composition · project state (next slices). */}
+          {/* Right rail: swap · market · backing · treasury · project state. */}
           <div className="space-y-3">
             <SwapPanel dense token={token!} symbol={b.symbol ?? "TOKEN"} hasPool={b.hasPool} spotPriceWeth={b.marketPriceWeth} />
+            <TerminalMarketPanel
+              marketPriceUsd={b.marketPriceUsd}
+              supply={supply}
+              liquidityUsd={market?.top?.reserveUsd}
+              now={now}
+              marketFetchedAt={market?.fetchedAt}
+            />
             <TerminalBackingPanel backing={b.backing} symbol={b.symbol ?? ""} now={now} />
-            <Placeholder label="Market reference · treasury composition · project state" note="next slice" />
+            <TerminalTreasuryPanel backing={b.backing} now={now} />
+            <TerminalProjectState
+              creator={b.creator}
+              treasury={b.treasury}
+              graduated={b.graduated}
+              hasPool={b.hasPool}
+              noticePeriod={b.noticePeriod}
+              pending={b.pending}
+              now={now}
+            />
           </div>
         </div>
 
-        {/* Bottom status bar (next slice): block · connection · RPC latency · last update */}
-        <div className="flex items-center justify-between rounded-input border border-border px-3 py-1.5 text-[11px] text-text-faint">
-          <span>Status bar — block · connection · RPC latency · last update</span>
-          <span className="italic">next slice</span>
-        </div>
+        <TerminalStatusBar now={now} />
 
         <Meander className="opacity-40" />
       </div>
-    </div>
-  );
-}
-
-// Muted, dashed stub so the column proportions read at the density check without
-// investing in throwaway UI. Clearly not real content.
-function Placeholder({ label, note, tall }: { label: string; note: string; tall?: boolean }) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center rounded-card border border-dashed border-border px-4 text-center"
-      style={{ minHeight: tall ? 220 : 120 }}
-    >
-      <span className="text-sm text-text-muted">{label}</span>
-      <span className="mt-1 text-[11px] italic text-text-faint">{note}</span>
     </div>
   );
 }

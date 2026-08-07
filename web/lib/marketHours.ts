@@ -187,7 +187,7 @@ export function classifyFreshness(
     // Beyond the calendar we cannot know holidays. Fail SAFE: never a false STALE.
     if (isCalendarExhausted(nowSec)) {
       return quiet
-        ? { tier: "resting", label: "Calendar out of date — freshness unverified" }
+        ? { tier: "resting", label: "Market calendar unavailable — can't tell if a fresh price is due" }
         : { tier: "fresh", label: "Live" };
     }
 
