@@ -1,5 +1,5 @@
 import "server-only";
-import { GT_NETWORK, type Trade } from "@/lib/market";
+import { GT_NETWORK, type Trade, type Candle } from "@/lib/market";
 
 // Server-only GeckoTerminal helpers shared by /api/trades and /api/trending, so
 // pool resolution and trade normalization live in ONE place. Never imported by the
@@ -71,6 +71,36 @@ export async function fetchPoolOhlcvDaily(pool: string, limit = 30): Promise<Arr
     return rows
       .filter((r) => Array.isArray(r) && r.length >= 6)
       .map((r) => ({ ts: num(r[0]), volumeUsd: num(r[5]) }));
+  } catch {
+    return [];
+  } finally {
+    done();
+  }
+}
+
+// Full OHLCV candles for a pool at a given GeckoTerminal timeframe (minute/hour/day)
+// and aggregate count. Powers the terminal candlestick chart. GT returns rows
+// newest-first; we reverse to chronological for charting. Returns [] on any failure.
+export async function fetchPoolOhlcv(
+  pool: string,
+  gt: "minute" | "hour" | "day",
+  aggregate: number,
+  limit = 200,
+): Promise<Candle[]> {
+  const { signal, done } = withTimeout();
+  try {
+    const res = await fetch(
+      `${GT}/networks/${GT_NETWORK}/pools/${pool}/ohlcv/${gt}?aggregate=${aggregate}&limit=${limit}`,
+      { headers: { Accept: "application/json" }, signal, next: { revalidate: 30 } },
+    );
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: { attributes?: { ohlcv_list?: number[][] } } };
+    const rows = json.data?.attributes?.ohlcv_list ?? [];
+    // Each row: [timestamp, open, high, low, close, volume].
+    return rows
+      .filter((r) => Array.isArray(r) && r.length >= 6)
+      .map((r) => ({ t: num(r[0]), o: num(r[1]), h: num(r[2]), l: num(r[3]), c: num(r[4]), v: num(r[5]) }))
+      .reverse();
   } catch {
     return [];
   } finally {
