@@ -1,0 +1,131 @@
+# BALLAST — Discover and token page, referencing pools.trade
+
+Read `CLAUDE.md`, `docs/BALLAST-v2.md`, and `docs/BALLAST-terminal.md` first.
+Every hard rule still applies — the copy rules especially.
+
+**Scope: two screens only.** Discover and the token page. Everything else —
+create, portfolio, analytics, profile, buyback — gets consistency touch-ups
+only, and only where the new work makes something look obviously out of place.
+No rebuilds outside the two screens.
+
+---
+
+## Step 1 — Go and look, and report before designing
+
+Two pages:
+
+- https://pools.trade
+- https://pools.trade/t/0x6245e67affA44a23077f0Ea7f981a8DC743a0c47
+
+Both are client-rendered, so fetching the HTML returns almost nothing. Use a
+browser tool if you have one. If you can't render them, **say so plainly** and
+I'll send screenshots — do not design from assumptions about what a Uniswap
+product probably looks like.
+
+What I want, in this order:
+
+**The listing page**
+- Grid, table, or feed?
+- What each row or card carries, and in what order
+- How sorting and filtering are presented
+- What's above the fold
+
+**The token page**
+- Where the chart, the swap panel, and the metadata sit relative to each other
+- What's on screen at once versus what needs scrolling
+- How identity, market data, and trading are separated
+- What the header carries
+
+**Density and rhythm, on both**
+- Rough container width and gutters
+- Padding inside cards versus between them
+- Type sizes for headings, body, numbers
+- Whether tables have visible rules, alternating rows, or neither
+
+**What they chose not to show.** Often more instructive than what they did.
+
+Report all of that before writing any code. I want to read your description and
+recognise the page from it.
+
+---
+
+## Step 2 — Take the structure, not the skin
+
+Worth adopting if it's good: information hierarchy, what earns above-the-fold
+space, table density, how a token page organises identity against market data
+against trading.
+
+Stays ours without exception:
+
+- **Palette.** Ground `#050A06`, panels `#0E1410`, borders `#18201A`, patina
+  green `#22C93A` used functionally, bone `#F5F3EC` for headings. Their theme
+  is `#131313` — near-black neutral. Ours is near-black green. Do not drift.
+- **Two-register type.** Serif for page titles, token names, headline figures.
+  Sans for dense text. Mono for addresses, hashes, raw amounts.
+- **The keel mark**, stroked, never filled, never recoloured.
+- **Motion.** 150–250ms, ease-out, transform and opacity only. No bounce, no
+  pulse, no counting up.
+- **No gradients, no glow, no glassmorphism.**
+
+If a structural idea only works with their visual language, drop the idea
+rather than bending ours.
+
+---
+
+## Step 3 — Where we must differ, because our product does
+
+pools.trade is a venue for trading. BALLAST reports what a token holds. Their
+layout has nowhere to put that, so ours can't just be theirs.
+
+**Discover** must carry, per token:
+- Backing per token, or "not ballasted" plainly — never a zero
+- Whether a treasury exists at all, readable at a glance
+- Every ranking with its rule printed beneath it
+
+**Token page** must carry:
+- Backing per token beside price, not beneath it
+- The treasury, asset by asset: ticker, quantity, Chainlink price, USD value,
+  and how long since that feed published. A stale SGOV price is normal — the
+  panel should teach that rather than alarm.
+- Withdrawal state: the notice period chosen, whether one is announced, and a
+  countdown if so
+- Creator holding, which is 0% on every token, always, with the reason
+- The no-claim disclaimer inside the backing panel, not in a footer
+- A source and an age on every figure, using the existing `<Freshness>`
+
+Never "floor", "guaranteed", "secured", "yield", or anything implying
+redemption.
+
+---
+
+## Step 4 — Propose before building
+
+After Step 1, give me a specific list: what changes on Discover, what changes
+on the token page, and the structural reason for each. Cite what you saw rather
+than "it looks better".
+
+Then, separately and briefly: anything on the other screens that will look
+wrong next to the new work. Consistency fixes only — a spacing value, a card
+treatment, a type size. If a fix would take more than a few minutes, list it
+and leave it.
+
+Build the token page first. It's the one people share.
+
+---
+
+## Stop points
+
+Report and wait:
+
+1. **After looking**, before designing. If you couldn't see the pages, say so.
+2. **After proposing**, before building.
+3. **After the token page**, before touching Discover.
+
+## Report
+
+- Container widths and bundle sizes before and after, for both screens
+- Marketing tree stays free of the web3 bundle — confirm with numbers
+- Reduced-motion disables all motion, checked in a browser
+- What you took from pools.trade, and what it replaced
+- What you decided against, and why
+- Which other screens you touched, and exactly what changed

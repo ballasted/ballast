@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BALLAST — how a launch seeds the pool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ground:#050A06;
+    --green:#22C93A;
+    --bone:#F5F3EC;
+    --bone-70:rgba(245,243,236,0.70);
+    --bone-55:rgba(245,243,236,0.55);
+    --bone-38:rgba(245,243,236,0.38);
+    --line:rgba(245,243,236,0.16);
+    --serif:"Fraunces",Georgia,"Times New Roman",serif;
+    --sans:"Inter",system-ui,-apple-system,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    /* settle curve, no overshoot — same as the app's motion system */
+    --ease:cubic-bezier(0.16,1,0.3,1);
+    --dur:340ms;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+
+  /* frame-scrub mode (?t=seconds): settle instantly, no in-flight transitions */
+  body.seek *{transition:none !important;}
+
+  html,body{
+    background:#000;
+    color:var(--bone);
+    font-family:var(--sans);
+  }
+
+  body{
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:24px 0 40px;
+  }
+
+  /* The recordable frame — exactly 1200×675. Crop your screen recording to this. */
+  #stage{
+    position:relative;
+    width:1200px;
+    height:675px;
+    background:var(--ground);
+    overflow:hidden;
+    flex:0 0 auto;
+  }
+
+  /* ---- scenes (full-frame fading layers) ---- */
+  .scene{
+    position:absolute;
+    inset:0;
+    opacity:0;                 /* hidden until its scene is active */
+    transition:opacity 500ms ease;
+  }
+  .scene.on{opacity:1;}
+
+  /* ---- generic entrance ---- */
+  .anim{
+    opacity:0;
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .anim.show{opacity:1;}
+  .gone{opacity:0 !important;}
+
+  /* ---- scene 1 : premise ---- */
+  #scene1{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+  }
+  .premise{
+    font-family:var(--serif);
+    font-weight:400;
+    color:var(--bone);
+    font-size:44px;
+    letter-spacing:0.015em;
+    line-height:1.3;
+    transform:translateY(10px);
+  }
+  .premise.show{transform:translateY(0);}
+  .premise-sub{
+    font-family:var(--serif);
+    font-weight:400;
+    color:var(--bone-55);
+    font-size:26px;
+    letter-spacing:0.02em;
+    margin-top:20px;
+    transform:translateY(10px);
+  }
+  .premise-sub.show{transform:translateY(0);}
+
+  /* ---- diagram scene ---- */
+  #diagram svg{position:absolute;inset:0;width:1200px;height:675px;}
+
+  /* SVG element entrances */
+  #g-axis{transform:scaleX(0);transform-box:fill-box;transform-origin:left center;
+          transition:transform 420ms var(--ease);}
+  #g-axis.show{transform:scaleX(1);}
+
+  #g-price{opacity:0;transform:translateY(6px);
+           transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);}
+  #g-price.show{opacity:1;transform:translateY(0);}
+
+  .bar{opacity:0;transform:scaleY(0);transform-box:fill-box;transform-origin:center bottom;
+       transition:opacity 300ms var(--ease), transform 360ms var(--ease);}
+  .bar.show{opacity:1;transform:scaleY(1);}
+
+  #g-lock{opacity:0;transform:translateY(-22px);
+          transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);}
+  #g-lock.show{opacity:1;transform:translateY(0);}
+
+  #g-hook{opacity:0;transform:translateY(-14px);
+          transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);}
+  #g-hook.show{opacity:1;transform:translateY(0);}
+
+  #g-swap{opacity:0;transform:translateX(-140px);
+          transition:opacity 500ms var(--ease), transform 600ms var(--ease);}
+  #g-swap.show{opacity:1;transform:translateX(0);}
+
+  #g-slice{opacity:0;transform:translate(0,0);
+           transition:opacity 480ms var(--ease), transform 480ms var(--ease);}
+  #g-slice.show{opacity:1;transform:translate(300px,52px);}
+
+  #g-ledger{opacity:0;transform:translateY(8px);
+            transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);}
+  #g-ledger.show{opacity:1;transform:translateY(0);}
+
+  /* HTML overlay labels (coords map 1:1 to the SVG viewBox) */
+  .lbl{
+    position:absolute;
+    font-family:var(--sans);
+    font-weight:500;
+    font-size:24px;
+    letter-spacing:0.01em;
+    color:var(--bone-70);
+    white-space:nowrap;
+    transform:translate(-50%,8px);
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    opacity:0;
+  }
+  .lbl.show{opacity:1;transform:translate(-50%,0);}
+  #lbl-supply{left:660px;top:96px;color:var(--green);}
+  #lbl-price{left:360px;top:398px;}
+
+  .micro{
+    position:absolute;
+    font-family:var(--mono);
+    font-weight:400;
+    font-size:18px;
+    letter-spacing:0.02em;
+    color:var(--bone-38);
+    white-space:nowrap;
+    transform:translate(-50%,6px);
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    opacity:0;
+  }
+  .micro.show{opacity:1;transform:translate(-50%,0);}
+  #micro-hook{left:600px;top:520px;}
+  #micro-swap{left:300px;top:446px;}
+  #micro-1pct{left:772px;top:498px;color:var(--green);}
+  #micro-ledger{left:910px;top:566px;}
+
+  .caption{
+    position:absolute;
+    left:600px;top:614px;
+    transform:translate(-50%,8px);
+    font-family:var(--sans);
+    font-weight:400;
+    font-size:26px;
+    letter-spacing:0.01em;
+    color:var(--bone-70);
+    white-space:nowrap;
+    opacity:0;
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+  }
+  .caption.show{opacity:1;transform:translate(-50%,0);}
+
+  /* ---- scene 5 : denials ---- */
+  #scene5{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:26px;
+  }
+  .deny{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:48px;
+    letter-spacing:0.02em;
+    color:var(--bone);
+    transform:translateY(10px);
+  }
+  .deny.show{transform:translateY(0);}
+
+  /* ---- scene 6 : mark ---- */
+  #scene6{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+  .markwrap{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    transform:translateY(12px);
+  }
+  .markwrap.show{transform:translateY(0);}
+  .wordmark{
+    font-family:var(--serif);
+    font-weight:400;
+    font-size:56px;
+    letter-spacing:0.34em;
+    /* letterspacing pushes the whole word right; nudge back so it reads centred */
+    text-indent:0.34em;
+    color:var(--bone);
+    margin-top:26px;
+  }
+  .url{
+    font-family:var(--mono);
+    font-weight:400;
+    font-size:22px;
+    letter-spacing:0.06em;
+    color:var(--bone-55);
+    margin-top:20px;
+    transform:translateY(8px);
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    opacity:0;
+  }
+  .url.show{opacity:1;transform:translateY(0);}
+  .runson{
+    font-family:var(--mono);
+    font-weight:400;
+    font-size:18px;
+    letter-spacing:0.08em;
+    color:var(--bone-38);
+    margin-top:14px;
+    transform:translateY(8px);
+    transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
+    opacity:0;
+  }
+  .runson.show{opacity:1;transform:translateY(0);}
+
+  /* ---- controls (outside the recordable frame) ---- */
+  #bar{
+    margin-top:18px;
+    display:flex;
+    align-items:center;
+    gap:16px;
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:0.04em;
+    color:var(--bone-38);
+  }
+  #replay{
+    font-family:var(--mono);
+    font-size:13px;
+    letter-spacing:0.06em;
+    color:var(--bone-70);
+    background:transparent;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px 16px;
+    cursor:pointer;
+    transition:border-color 200ms ease,color 200ms ease;
+  }
+  #replay:hover{border-color:var(--bone-55);color:var(--bone);}
+</style>
+</head>
+<body>
+  <div id="stage">
+
+    <!-- ============ SCENE 1 : premise ============ -->
+    <div id="scene1" class="scene">
+      <div class="premise anim" data-el="s1a">Most launchpads run a curve, then graduate.</div>
+      <div class="premise-sub anim" data-el="s1b">This one doesn&rsquo;t.</div>
+    </div>
+
+    <!-- ============ DIAGRAM : pool, lock, hook, fee ============ -->
+    <div id="diagram" class="scene">
+      <svg viewBox="0 0 1200 675" aria-hidden="true">
+        <!-- concentrated liquidity band: one-sided, rising to the right -->
+        <g fill="#22C93A" fill-opacity="0.14" stroke="#22C93A" stroke-width="1.5">
+          <rect class="bar" x="372" y="320" width="78" height="60"  data-el="bar0"/>
+          <rect class="bar" x="456" y="296" width="78" height="84"  data-el="bar1"/>
+          <rect class="bar" x="540" y="272" width="78" height="108" data-el="bar2"/>
+          <rect class="bar" x="624" y="248" width="78" height="132" data-el="bar3"/>
+          <rect class="bar" x="708" y="224" width="78" height="156" data-el="bar4"/>
+          <rect class="bar" x="792" y="200" width="78" height="180" data-el="bar5"/>
+          <rect class="bar" x="876" y="176" width="78" height="204" data-el="bar6"/>
+        </g>
+
+        <!-- horizontal axis -->
+        <g id="g-axis">
+          <line x1="200" y1="380" x2="1000" y2="380" stroke="rgba(245,243,236,0.16)" stroke-width="1.5"/>
+        </g>
+
+        <!-- opening price point -->
+        <g id="g-price">
+          <line x1="360" y1="352" x2="360" y2="380" stroke="rgba(245,243,236,0.55)" stroke-width="1.5"/>
+          <circle cx="360" cy="380" r="5" fill="#22C93A"/>
+        </g>
+
+        <!-- padlock, stroked, settling onto the band -->
+        <g id="g-lock" fill="none" stroke="#F5F3EC" stroke-width="2.5" stroke-linecap="round">
+          <rect x="600" y="250" width="52" height="42" rx="7"/>
+          <path d="M610 250 v-9 a16 16 0 0 1 32 0 v9"/>
+          <line x1="626" y1="266" x2="626" y2="278"/>
+        </g>
+
+        <!-- v4 hook beneath the pool -->
+        <g id="g-hook" fill="none" stroke="rgba(245,243,236,0.70)" stroke-width="3" stroke-linecap="round">
+          <path d="M600 386 v58 a18 18 0 0 0 36 0"/>
+        </g>
+
+        <!-- swap arrow passing through the hook -->
+        <g id="g-swap" fill="none" stroke="#F5F3EC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="330" y1="470" x2="638" y2="470"/>
+          <polyline points="624,462 640,470 624,478"/>
+        </g>
+
+        <!-- 1% fee slice peeling off toward the ledger -->
+        <g id="g-slice">
+          <rect x="590" y="466" width="40" height="7" rx="2" fill="#22C93A"/>
+        </g>
+
+        <!-- ledger -->
+        <g id="g-ledger" fill="none" stroke="rgba(245,243,236,0.70)" stroke-width="2" stroke-linecap="round">
+          <rect x="882" y="486" width="58" height="64" rx="4"/>
+          <line x1="894" y1="506" x2="928" y2="506"/>
+          <line x1="894" y1="520" x2="928" y2="520"/>
+          <line x1="894" y1="534" x2="916" y2="534"/>
+        </g>
+      </svg>
+
+      <div id="lbl-supply" class="lbl">100% of supply</div>
+      <div id="lbl-price"  class="lbl">opens at backing</div>
+
+      <div id="micro-swap"   class="micro">swap</div>
+      <div id="micro-hook"   class="micro">v4 hook</div>
+      <div id="micro-1pct"   class="micro">1%</div>
+      <div id="micro-ledger" class="micro">ledger</div>
+
+      <div id="cap3" class="caption">locked permanently, before anyone can trade</div>
+      <div id="cap4" class="caption">fee taken inside the swap, from the trader</div>
+    </div>
+
+    <!-- ============ SCENE 5 : denials ============ -->
+    <div id="scene5" class="scene">
+      <div class="deny anim" data-el="d1">No curve.</div>
+      <div class="deny anim" data-el="d2">No graduation.</div>
+      <div class="deny anim" data-el="d3">No creator allocation.</div>
+    </div>
+
+    <!-- ============ SCENE 6 : mark ============ -->
+    <div id="scene6" class="scene">
+      <div class="markwrap anim" data-el="mark">
+        <svg width="150" height="96" viewBox="0 0 150 96" fill="none"
+             stroke="#F5F3EC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <!-- waterline -->
+          <line x1="30" y1="28" x2="120" y2="28"/>
+          <!-- keel drop -->
+          <line x1="75" y1="28" x2="75" y2="50"/>
+          <!-- hanging keel weight (stroked, never filled) -->
+          <path d="M61 50 h28 l-6 30 h-16 z"/>
+        </svg>
+        <div class="wordmark">BALLAST</div>
+      </div>
+      <div class="url anim" data-el="url">ballasted.xyz</div>
+      <div class="runson anim" data-el="runson">Uniswap v4 &middot; Robinhood Chain</div>
+    </div>
+
+  </div>
+
+  <div id="bar">
+    <button id="replay">&#9654;&nbsp; Replay</button>
+    <span>25.0s &middot; 1200&times;675 &middot; crop the top frame to record</span>
+  </div>
+
+<script>
+  var timers = [];
+  function el(name){ return document.querySelector('[data-el="'+name+'"]'); }
+  function id(x){ return document.getElementById(x); }
+  function show(node){ node.classList.add('show'); }
+
+  var scenes = ['scene1','diagram','scene5','scene6'];
+  var animEls = document.querySelectorAll('.anim, .lbl, .micro, .caption, #g-axis, #g-price, #g-lock, #g-hook, #g-swap, #g-slice, #g-ledger, .bar');
+
+  // The whole sequence as [timeMs, fn] — one source of truth, replayed live or scrubbed.
+  var events = [
+    // SCENE 1 — premise (0–4s)
+    [200,  function(){ show(el('s1a')); }],
+    [850,  function(){ show(el('s1b')); }],
+    [3600, function(){ id('scene1').classList.remove('on'); }],
+
+    // DIAGRAM appears (4s)
+    [4000, function(){ id('diagram').classList.add('on'); }],
+    [4200, function(){ show(id('g-axis')); }],
+    [4750, function(){ show(id('g-price')); }],
+    [5100, function(){ show(id('lbl-price')); }],
+    [5500, function(){ show(el('bar0')); }],
+    [5670, function(){ show(el('bar1')); }],
+    [5840, function(){ show(el('bar2')); }],
+    [6010, function(){ show(el('bar3')); }],
+    [6180, function(){ show(el('bar4')); }],
+    [6350, function(){ show(el('bar5')); }],
+    [6520, function(){ show(el('bar6')); }],
+    [7100, function(){ show(id('lbl-supply')); }],
+
+    // lock (9–14s)
+    [9000, function(){ show(id('g-lock')); }],
+    [9250, function(){ show(id('cap3')); }],
+
+    // hook + swap + fee slice (14–19s)
+    [13950, function(){ id('cap3').classList.add('gone'); }],
+    [14000, function(){ show(id('g-hook')); show(id('micro-hook')); }],
+    [14300, function(){ show(id('cap4')); }],
+    [14900, function(){ show(id('g-swap')); show(id('micro-swap')); }],
+    [15700, function(){ show(id('g-ledger')); show(id('micro-ledger')); }],
+    [16400, function(){ show(id('g-slice')); show(id('micro-1pct')); }],
+
+    // fade diagram (18.6s)
+    [18600, function(){ id('diagram').classList.remove('on'); }],
+
+    // SCENE 5 — denials (19–23s)
+    [19000, function(){ id('scene5').classList.add('on'); show(el('d1')); }],
+    [20000, function(){ show(el('d2')); }],
+    [21000, function(){ show(el('d3')); }],
+    [22600, function(){ id('scene5').classList.remove('on'); }],
+
+    // SCENE 6 — mark (23–25s)
+    [23000, function(){ id('scene6').classList.add('on'); show(el('mark')); }],
+    [23450, function(){ show(el('url')); }],
+    [23900, function(){ show(el('runson')); }]
+    // holds on the mark; no loop
+  ];
+
+  function reset(){
+    timers.forEach(clearTimeout);
+    timers = [];
+    document.body.classList.remove('seek');
+    animEls.forEach(function(n){ n.classList.remove('show','gone'); });
+    scenes.forEach(function(x){ id(x).classList.remove('on'); });
+    id('scene1').classList.add('on');   // premise is the opening scene
+  }
+
+  function play(){
+    reset();
+    events.forEach(function(ev){ timers.push(setTimeout(ev[1], ev[0])); });
+  }
+
+  // Jump straight to the settled state at t seconds (transitions off) for frame checks.
+  function seek(t){
+    reset();
+    document.body.classList.add('seek');
+    events.forEach(function(ev){ if (ev[0] <= t * 1000) ev[1](); });
+  }
+
+  id('replay').addEventListener('click', play);
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'r' || e.key === 'R' || e.key === ' '){ e.preventDefault(); play(); }
+  });
+
+  var m = (location.hash + location.search).match(/t=([0-9.]+)/);
+  if (m){
+    // scrub mode — render one frame, no autoplay
+    if (document.fonts && document.fonts.ready){
+      document.fonts.ready.then(function(){ seek(parseFloat(m[1])); });
+      setTimeout(function(){ seek(parseFloat(m[1])); }, 1200);
+    } else { seek(parseFloat(m[1])); }
+  } else if (document.fonts && document.fonts.ready){
+    document.fonts.ready.then(play);
+    setTimeout(function(){ if (timers.length === 0) play(); }, 1500);
+  } else {
+    play();
+  }
+</script>
+</body>
+</html>

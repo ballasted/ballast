@@ -1,0 +1,179 @@
+# BALLAST — Terminal
+
+Read `CLAUDE.md` and `docs/BALLAST-v2.md` first. Every hard rule still applies,
+especially the copy rules and the rule that no figure appears without a source.
+
+New route: `/app/terminal/[address]`. A dense, single-screen trading view. The
+existing token page stays as the shareable public page; the terminal is the
+working surface for people actually trading.
+
+---
+
+## Reference, and what to take from it
+
+I looked at lemon.fun's terminal. Its structure is worth copying; several of
+its features are not, and the reasons matter.
+
+**Take the layout.** Three columns: chart and activity in the centre, a swap
+panel on the right, token intelligence beneath it. A stat strip across the top.
+A status bar along the bottom. Dense, no wasted space, everything on one screen.
+
+**Take these features:**
+- Timeframe switching on the chart with an OHLC readout
+- Tabs beneath the chart: Trades, Holders, Top traders, Your positions
+- Buy/sell toggle with quick-amount presets
+- Slippage control with a warning when it's set high
+- A live trades feed that appends rather than reloads
+- 5m / 1h / 6h / 24h change row
+- Buys vs sells count for the period
+- A connection and block indicator
+
+**Do not build these, and here's why each:**
+
+**A risk score.** lemon.fun shows "LOW RISK" as a badge. We publish, on our own
+site, that we report figures and do not rate anyone. A risk badge is a rating.
+Building one would contradict a page we already have live, and someone will
+notice.
+
+Show the components instead — holder concentration, creator holding, top-ten
+share — and let the reader draw the conclusion. Numbers, not a verdict.
+
+**Sniper and insider percentages.** These are inferences dressed as measurements.
+Nobody can reliably tell an insider from an early buyer on-chain. If you can
+define one precisely and compute it from public data, propose the definition
+and we'll discuss. Otherwise leave it out.
+
+**Copy trading and a token scanner.** Not our product.
+
+---
+
+## What this terminal has that neither reference does
+
+This is the reason to build it at all.
+
+**Backing, as a first-class figure.** Not a footnote. The stat strip carries
+backing per token beside price, and a ratio of market price to backing. On a
+token with no treasury it reads "not ballasted" plainly rather than showing a
+zero.
+
+**A treasury panel.** What the project actually holds, asset by asset: ticker,
+quantity, Chainlink price, USD value, and when that feed last published. If a
+feed is stale, say so and say how stale — an old price on SGOV is normal, and
+the panel should teach that rather than alarm.
+
+**Withdrawal state.** The notice period this project chose, whether a
+withdrawal has been announced, and if so a countdown to when it could execute.
+This is the single most useful thing a trader can know that no other terminal
+shows.
+
+**Creator holding, which is always zero.** Where other terminals show a dev
+holding percentage that varies, ours reads 0% on every token, always, with a
+line explaining there is no allocation mechanism in the contracts. The constant
+is the point.
+
+**A source on every figure.** Each number carries where it came from and how
+old it is, using the existing `<Freshness>` component. On-chain reads at 12s,
+GeckoTerminal and Blockscout at 30s.
+
+---
+
+## Layout
+
+Desktop, 1440 and up. Three columns.
+
+**Top strip** — full width, one row:
+Token identity (logo, ticker, name, truncated address with copy) · Price ·
+Market cap · Backing per token · Price ÷ backing · Liquidity (locked) ·
+Supply (fixed) · 24h volume · 24h change
+
+Every figure gets a freshness dot. "Locked" and "fixed" are not decoration —
+they're facts other launchpads can't print.
+
+**Left and centre, ~62% width**
+- Chart. Timeframes 1m, 5m, 15m, 1h, 4h, 1d. OHLC readout. Source label.
+- A horizontal line marking backing per token, so the relationship between
+  price and backing is visible at a glance. Label it clearly. It is not a
+  floor and the label must not imply one.
+- Beneath: tabs — Trades · Holders · Top traders · Your position · Treasury
+- Trades feed appends new rows with a subtle enter transition, no reload
+
+**Right, ~38% width**
+- Swap panel. Buy/sell toggle, amount with quick presets, expected output,
+  price impact, slippage with a warning above 5%, route shown plainly.
+- Sell exact-out is not supported by our contracts. If someone tries, explain
+  why rather than showing a raw revert.
+- Your position: bought, sold, holding, current value. Not P&L — cost basis
+  can't be derived from public data without guessing, and the existing
+  explanation for that should appear here too.
+- Backing panel: backing per token, total treasury value, the no-claim
+  disclaimer inside the panel as the copy rules require.
+- Treasury composition: each asset with quantity, price, value, feed age.
+- Project state: creator address, creator holding (0%), LP status, withdrawal
+  notice period, any announced withdrawal with countdown.
+
+**Bottom status bar** — thin, muted:
+Block number · connection state · RPC latency · last update
+
+**Mobile** — not a shrunk desktop. Chart, then a sticky buy/sell bar, then the
+tabs as a scrollable row. Everything reachable with one thumb. Tap targets 44px.
+
+---
+
+## Visual
+
+Same palette, same type. Terminals are dense, so tighten but do not change the
+system.
+
+- Ground `#050A06`, panels `#0E1410`, borders `#18201A`
+- Panel padding drops to 16–20px from the 24–32px used elsewhere
+- Body text 13–14px, numbers tabular and right-aligned in every table
+- Serif for the token name and headline figures only. Everything else sans.
+  Mono for addresses, hashes and raw amounts.
+- Green for the accent and for buys. For sells use a muted red that reads as
+  information, not alarm — no bright #FF0000.
+- No gradients, no glow, no pulsing. A live feed is proven by rows arriving,
+  not by something blinking.
+
+---
+
+## Data
+
+Nothing new. Everything already has a source:
+- Price, backing, supply, treasury, creator, withdrawal state — on-chain
+- Holders, top traders — Blockscout
+- OHLCV, trades, volume — GeckoTerminal
+
+If a figure in this spec has no source, tell me. Do not invent one and do not
+compute something that looks precise from data that can't support it.
+
+---
+
+## On pools.trade
+
+I also referenced pools.trade, but its content is client-rendered and I could
+not read the layout. I'll send screenshots separately. Build from the lemon.fun
+structure above for now; treat anything from pools.trade as a later pass.
+
+What I could confirm: it's live on Robinhood Chain, token pages sit at
+`/t/{address}`, and it's from Uniswap.
+
+---
+
+## Stop points
+
+Report and wait:
+
+1. **Before building** — a layout sketch or wireframe description of the three
+   columns at desktop and the mobile stack. I want to see the shape before the
+   code.
+2. **After the stat strip and chart** — before the swap panel, so I can check
+   the density is right.
+3. **Before any figure that needs a definition** — holder concentration, top
+   ten share, anything computed rather than read. Tell me the exact formula.
+
+## Report
+
+- Which figures are read live, from where, at what interval
+- Bundle size for the new route
+- Anything in this spec you could not source, and what you did instead
+- Confirmation that reduced-motion disables the trades-feed transition

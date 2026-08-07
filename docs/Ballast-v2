@@ -1,0 +1,351 @@
+# BALLAST v2
+
+Read `CLAUDE.md` and `docs/BALLAST-build-spec.md` before starting. Every hard
+rule in those still applies — copy rules, valuation rules, contract invariants.
+Nothing here overrides them.
+
+Four pieces of work. They are independent, so build in the order given and
+commit each separately, but stop and report where the document says to.
+
+**The rule that governs all of it:** every figure displayed must come from a
+real source and agree with every other place it appears. If a number cannot be
+sourced, it does not get displayed — an honest label goes in its place.
+
+---
+
+# PART 1 — Live on-chain data
+
+Several figures currently update only on page load, some go stale silently, and
+some still read "needs indexer". Fix all of it.
+
+## 1.1 — Source map first
+
+Before writing anything, produce a table of every figure the app displays: its
+source, its refresh behaviour, and what it does when that source fails.
+**Report this to me before making changes.**
+
+Intended sources:
+
+| Figure | Source |
+|---|---|
+| Price | On-chain, StateView `getSlot0` |
+| Backing per token | On-chain, BackingLens |
+| Total ballast | On-chain, summed across projects |
+| Launches | On-chain, factory registry union |
+| Holder count and list | Blockscout |
+| 24h volume, change, OHLCV | GeckoTerminal |
+| Recent trades | GeckoTerminal |
+| Fees accrued and claimed | On-chain, hook ledger |
+| Burns | On-chain, from Part 2 |
+
+Anything not in that table either has no source or is derived from these. Say
+which.
+
+## 1.2 — Refresh behaviour
+
+- **On-chain reads** every 12 seconds, and immediately after any transaction
+  the user sends.
+- **Blockscout and GeckoTerminal** every 30 seconds through the existing
+  server-side proxies, cached so a hundred viewers cause one upstream call.
+- **Recent trades** append new rows rather than replacing the list, so the feed
+  reads as live rather than as a page that reloaded.
+- Refresh pauses when the tab is hidden, resumes on focus. Do not burn RPC
+  quota on background tabs.
+
+Every figure carries a freshness indicator: a small dot and a relative
+timestamp. "Live", "delayed 2m", or "unavailable". Never a number with no
+indication of when it was true.
+
+## 1.3 — Degrade honestly
+
+This matters more than the refresh rate.
+
+- Source unreachable → "unavailable". Never a zero, never the last value
+  presented as current.
+- Source lagging → show the value with "delayed" and its actual age.
+- External source disagrees with chain by more than 1% → the chain governs, and
+  say so. This already happens on the token page; apply it everywhere.
+- Never silently substitute one source for another.
+
+## 1.4 — Reconciliation
+
+Every figure must agree everywhere it appears. Same source, no separate
+counters, no cached totals that drift.
+
+- Analytics totals equal the sum of what Discover lists
+- A token's market cap is identical on Discover, its token page, and in a
+  portfolio row
+- Holder count equals the length of the holder list
+- 24h volume equals the sum of the trades feed over that window
+
+Add a development-only console check that flags any mismatch. If two paths can
+disagree, eventually they will.
+
+## 1.5 — Remaining "needs indexer" labels
+
+Report which figures still show that. For each: source it from Blockscout or
+GeckoTerminal, or state honestly why it cannot be sourced.
+
+Portfolio cost basis stays absent. It cannot be reconstructed from public data
+without guessing, and a wrong P&L is worse than none. Keep the explanation
+visible on the page.
+
+## 1.6 — On Dune
+
+I am willing to build Dune dashboards if they add something.
+
+Investigate and recommend: does Dune index chain 4663, and would it give us
+anything the three sources above cannot? My instinct is that its real value is
+**independent measurement** rather than new data — Pons publishes through Dune
+and being measured by someone else is more credible than reporting your own
+numbers.
+
+If that is the only benefit, say so, and I will build a public dashboard as a
+marketing asset rather than a data dependency. Do not make the app depend on it.
+
+---
+
+# PART 2 — Buyback and burn
+
+New route `/app/buyback`, publicly readable without a wallet.
+
+## 2.1 — Decide the mechanism, and report before building
+
+Three answers I need, and I do not want them invented:
+
+1. **What triggers a buyback?** A schedule, a threshold on accumulated fees, or
+   a manual call? Recommend one and say why.
+2. **Automated or manual?** If manual, the page must say so. A buyback that
+   depends on someone remembering is a promise, not a mechanism.
+3. **Where do burned tokens go?** A real burn to a dead address, or a contract
+   holding them? These are different and the page must state which.
+
+Also: the platform's WETH has to become $BALLAST by swapping through the pool
+like anyone else. So each buyback is a visible trade with price impact, and it
+will appear in our own trades feed. The page must not imply it happens outside
+the market.
+
+## 2.2 — What the page shows
+
+All read live from chain.
+
+**Header figures**
+- Total $BALLAST burned, and that as a percentage of supply
+- Total WETH spent on buybacks
+- Fees accrued but not yet spent
+- Next buyback: whatever the trigger actually is, stated plainly
+
+**Burn history** — the entire point of the page.
+A table, newest first: date, WETH spent, $BALLAST bought, effective price,
+tokens burned, transaction hash linking to Blockscout.
+
+Anyone must be able to click through and verify every row without trusting us.
+
+**The burn address**
+Prominent, with a copy button and a link to its Blockscout balance, so the
+total can be confirmed independently of anything we display.
+
+**Supply effect**
+Original supply, current supply, burned. A simple bar. Never a price chart.
+
+**Where the money comes from**
+Short diagram: 1% swap fee → creator and platform shares → the platform share
+funds this. Link to the fee documentation.
+
+## 2.3 — Creator opt-in
+
+Creators may route their own fee share into buying back and burning their own
+token instead of claiming it.
+
+- A toggle in the fee panel, per project
+- The choice displayed publicly on the token page either way, so a buyer can
+  see which the creator picked
+- The token page gains its own burn history
+- Switching is allowed and the change is visible — same principle as withdrawal
+  announcements
+
+**Confirm whether the contracts support this today.** If it needs new contract
+code, say so plainly rather than building a UI for something that cannot
+execute.
+
+## 2.4 — Copy rules, with particular force here
+
+A buyback page is the easiest place on this site to accidentally promise a
+price.
+
+- Never state or imply that burning raises the price
+- Never use "floor", "support", or "deflationary pressure"
+- Never project future burns from past ones
+- State plainly: burning reduces supply, and what happens to price is not
+  something we control or predict
+
+Include this line near the top, in the site's voice:
+
+> This buys $BALLAST on the open market like any other buyer, and destroys what
+> it buys. It confers nothing on holders and predicts nothing about price.
+
+## 2.5 — Update the $BALLAST disclosure
+
+The token's page states it confers "no revenue share". A buyback funded by
+protocol fees **is** a revenue share, delivered through price rather than
+distribution. That line becomes false the moment this ships.
+
+Rewrite it, and record the change with today's date, keeping the previous
+wording visible. Same pattern as both earlier corrections. Do not quietly
+replace the text.
+
+---
+
+# PART 3 — Five more treasury assets, including HOOD
+
+## 3.1 — Clarify first
+
+"Five new stock pairs" has two readings:
+
+**(a) Five more treasury assets** — like SGOV and NVDA. Deposited into a
+treasury, priced by Chainlink, contributing to backing per token. This is what
+I mean.
+
+**(b) Five new trading pairs** — tokens pairing against a stock token instead
+of WETH. That is an architecture change: the hook takes its fee on the WETH
+leg, the seeder assumes WETH, and the swap path is built around it.
+
+Assume (a). If anything suggests (b), stop and ask.
+
+## 3.2 — The assets
+
+**HOOD is the notable one** — Robinhood's own equity as treasury collateral on
+Robinhood Chain. Confirm it exists as a stock token before planning around it.
+
+I will supply the other four tickers. For each, including HOOD:
+
+- Confirm the canonical token address from the on-chain asset registry, never
+  from a ticker match
+- Confirm a Chainlink feed exists on chain 4663
+- Use the **Standard proxy**, never SVR
+- Read `decimals()` rather than assuming 8
+- Require `description()` to contain "Robinhood" or "RH", the ticker, and "USD"
+- Set `staleAfter` per asset from its observed cadence, not a default
+- Set a sensible `minDeposit` given the asset's unit price
+
+Run `DRY_RUN` and show me the verification table before writing anything.
+
+If a candidate has no Chainlink feed, say so and drop it. An asset without a
+feed cannot be ballast, and one wrong feed address would corrupt every backing
+figure on the platform.
+
+---
+
+# PART 4 — Rebuild the UI
+
+The interface is the most common complaint and the complaint is fair.
+
+**Bundle weight in `/app` is no longer a constraint.** Use a proper animation
+library, a proper chart library, and a component system if it produces a better
+result. Ship the weight.
+
+**One rule survives, and it is structural rather than about weight:** the
+marketing tree stays free of the web3 bundle. That is what keeps the landing
+page static. Report its size before and after and keep it close to where it is.
+
+## 4.1 — Baseline before rebuilding
+
+Screenshot every screen at desktop and mobile widths and write down what
+specifically fails on each. Not "looks bad" — the actual defect. Cramped
+spacing, misaligned columns, inconsistent card treatments, missing empty
+states, text colliding with chrome.
+
+**Report that list before rebuilding.** It becomes the checklist, and it stops
+the rebuild being based on taste alone.
+
+## 4.2 — What good looks like
+
+The reference is not any single launchpad. It is: dense, calm, obviously
+maintained. Linear, Stripe, Vercel — interfaces that feel like instruments.
+
+**Layout**
+- 1200px container, consistent gutters, nothing full-bleed
+- One card treatment everywhere: surface `#181F1B`, 1px border `#232B25`, no
+  shadows. Cards carrying backing data get the `#1B3A20` accent border.
+- Vertical rhythm on a scale — 8, 16, 24, 32, 48. No arbitrary spacing.
+- Tables align. Numbers use tabular figures, right-aligned. Every column has a
+  header.
+
+**Typography**
+- Serif for page titles, token names, headline figures
+- Sans for everything dense
+- Four text levels used consistently: `#DDD8CA` headings, `#C7CDBE` body,
+  `#8A938D` labels, `#5F665F` footnotes
+
+**Charts**
+- A real charting library rather than hand-rolled SVG
+- Consistent axes, gridlines at 8% opacity, tooltips matching our card styling
+- Every chart states its source and freshness
+
+**Motion**
+- `framer-motion` in `/app` is allowed now
+- Page transitions, list stagger, skeleton-to-content crossfade, number
+  crossfade
+- 150–250ms, ease-out, transform and opacity only
+- `prefers-reduced-motion` disables all of it. Verify in a browser.
+
+**States**
+- Every screen has a designed loading, empty, and error state
+- Skeletons match the final layout exactly so nothing shifts when data lands
+- No screen shows a bare spinner or an unexplained blank
+
+**Mobile**
+- Every screen designed for it, not shrunk into it
+- Bottom nav clears the safe area; content never runs beneath it
+- Tables become cards below 768px
+- Tap targets at least 44px
+
+## 4.3 — Order
+
+Rebuild in this order, committing each:
+
+1. **Token page** — the one people share. Chart, swap panel, backing panel,
+   market stats, holders, trades.
+2. **Discover** — stats row, featured strip, sort rail, card grid.
+3. **Create** — the flow that decides whether someone launches at all.
+4. **Buyback** — from Part 2.
+5. **Portfolio** — holdings, backing exposure, fee claims.
+6. **Analytics** — protocol totals and charts.
+7. **Profile** — creator record.
+
+## 4.4 — What not to do
+
+- No gradient buttons, no glow, no glassmorphism
+- No animated numbers counting up
+- No pulsing warning states
+- No emoji in the interface
+- No stock illustration
+- Nothing that would look at home on a memecoin site
+
+The product's claim is that it reports honestly. The interface should look like
+it was built by someone who means that.
+
+---
+
+# STOP POINTS
+
+Report and wait at each of these:
+
+- **1.1** the source map, before changing any data path
+- **1.6** your Dune recommendation
+- **2.1** the three mechanism questions, before building the buyback page
+- **2.3** whether creator opt-in needs a contract change
+- **3.2** the DRY_RUN verification table, before writing any asset
+- **4.1** the defect list, before rebuilding any screen
+
+---
+
+# FINAL REPORT
+
+- Which figures are live, at what interval, and what each does on failure
+- The buyback mechanism as built, and the burn address
+- Which of the five assets went in and which were dropped, with reasons
+- Bundle sizes: marketing and every `/app` route, before and after
+- Confirmation that reduced-motion disables motion, checked in a browser
+- Every dated disclosure line added, and where
+- Anything you chose not to do, and why
