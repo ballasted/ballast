@@ -3,8 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatUnits } from "viem";
-import { useBuyback, type BurnRow } from "@/hooks/useBuyback";
+import { useAccount } from "wagmi";
+import { useBuyback, type BurnRow, type BuybackState } from "@/hooks/useBuyback";
+import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
+import { ConnectButton } from "@/components/app/ConnectButton";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { formatEt } from "@/lib/marketHours";
@@ -67,6 +70,9 @@ export default function BuybackPage() {
             <Figure label="Fees accrued, not yet spent" value={amt(s.accruedWeth)} sub="WETH waiting" />
             <NextBuyback threshold={s.threshold} accrued={s.accruedWeth} />
           </div>
+
+          {/* ── Trigger (the one write on this page) ────────────────────── */}
+          <TriggerBuyback s={s} />
 
           {/* ── How a buyback runs (mechanics observed on-chain) ───────── */}
           <p className="max-w-2xl text-xs text-text-faint">
@@ -164,6 +170,75 @@ function NextBuyback({ threshold, accrued }: { threshold?: bigint; accrued?: big
       )}
       <p className="mt-1 text-xs text-text-faint">Not scheduled — permissionless once the threshold is met.</p>
     </div>
+  );
+}
+
+// The single write on this page. A buyback never runs on its own — the contract just
+// sits until someone sends a transaction. This is that transaction: permissionless,
+// so any connected wallet may run it once accrued ≥ threshold. The caller pays gas and
+// receives nothing — every token bought goes to the dead address. We say that plainly
+// so no one mistakes triggering it for a way to earn anything.
+function TriggerBuyback({ s }: { s: BuybackState }) {
+  const { isConnected } = useAccount();
+  const net = useNetworkGuard();
+  const busy = s.triggerPhase === "triggering";
+
+  return (
+    <section className="card p-5">
+      <h2 className="section-label">Trigger this buyback</h2>
+      <p className="mt-2 max-w-2xl text-sm text-text-secondary">
+        A buyback isn&apos;t scheduled and no one runs it for you — it only happens when someone sends the transaction.
+        Anyone can: it&apos;s a public function on the contract. You pay the gas; you receive nothing. It claims the
+        accrued WETH, buys $BALLAST through the pool, and sends every token to the dead address.
+      </p>
+
+      {s.triggerPhase === "success" ? (
+        <div className="mt-4 space-y-2">
+          <p className="text-sm text-green">Buyback confirmed — the $BALLAST it bought was burned.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {s.triggerTxHash && (
+              <a
+                className="text-xs text-green underline underline-offset-2"
+                href={`${EXPLORER}/tx/${s.triggerTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View it on Blockscout ↗
+              </a>
+            )}
+            <button className="text-xs text-text-faint hover:text-text-secondary" onClick={s.resetTrigger}>
+              Done
+            </button>
+          </div>
+        </div>
+      ) : !isConnected ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <ConnectButton />
+          <span className="text-xs text-text-faint">Connect a wallet to trigger a buyback.</span>
+        </div>
+      ) : net.wrongNetwork ? (
+        <button
+          className="btn-primary mt-4 w-full sm:w-auto"
+          disabled={net.isSwitching}
+          onClick={() => void net.switchToRobinhood()}
+        >
+          {net.isSwitching ? "Switching…" : `Switch to ${net.targetChain.name}`}
+        </button>
+      ) : (
+        <button
+          className="btn-primary mt-4 w-full sm:w-auto"
+          disabled={busy || !s.ready}
+          onClick={() => void s.trigger()}
+          title={s.ready ? undefined : "The accrued WETH hasn't reached the threshold yet."}
+        >
+          {busy ? "Confirming…" : s.ready ? "Trigger buyback & burn" : "Below threshold — not ready yet"}
+        </button>
+      )}
+
+      {(s.triggerError || net.error) && (
+        <p className="mt-2 text-xs text-negative">{s.triggerError ?? net.error}</p>
+      )}
+    </section>
   );
 }
 
