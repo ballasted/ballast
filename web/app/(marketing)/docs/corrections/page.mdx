@@ -10,6 +10,28 @@ BALLAST's whole pitch is accuracy, so when we get something wrong we **record it
 here with a date** instead of quietly editing it away. A disclosure product should
 not be able to rewrite its own history. This is the complete list, newest first.
 
+## 4 August 2026 — The buyback and other owner-controlled contracts run on a single key today
+
+We had always intended to hold the owner-controlled contracts — the buyback, the
+fee config, the asset registry, and the metadata denylist — with a **project
+multisig** from day one. Creating that multisig is currently blocked, and rather
+than stall the buyback behind a wallet we cannot yet create, **we deployed it owned
+by a single BALLAST-team key** (`0xA277…37D1`). We are recording that here rather
+than letting anyone discover it.
+
+What that key can and cannot do is stated in full on the
+[buyback page](/app/buyback). In short: it can retune parameters (the trigger
+threshold, the slippage cap, which fee ledgers are swept) and, because the same key
+owns the fee config, it can **redirect where _future_ fees flow**. It **cannot**
+withdraw or divert any WETH already held by the buyback — there is no such function,
+and every token a buyback buys goes to a fixed dead address. So the risk this key
+carries is that it could **stop feeding or stall** the buyback, not that it could
+take what the buyback already holds.
+
+Ownership will move to the multisig once it exists, and we will record that here
+with its date — the same commitment we make for the
+[metadata denylist](/docs/content-policy).
+
 ## Upload consent said "moderated"; nothing was — visible 24–31 July 2026
 
 From **24 July 2026** (the first version of the create flow) until **31 July
