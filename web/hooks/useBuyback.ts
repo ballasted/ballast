@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useReadContracts, usePublicClient } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
+import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import type { Address } from "viem";
 import { erc20Abi } from "@/lib/abis";
 import { BUYBACK_ADDRESS, isBuybackConfigured } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
+import { decodeTxError } from "@/lib/txError";
+import { pollReceipt } from "@/lib/waitForReceipt";
+import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
 
 const CHAIN_ID = activeChain.id;
 
@@ -21,6 +24,15 @@ export const buybackBurnerAbi = [
   { type: "function", name: "maxSlippageBps", stateMutability: "view", inputs: [], outputs: [{ type: "uint16" }] },
   { type: "function", name: "accruedWeth", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "burnedBalance", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  // The one write: permissionless, threshold-gated. Anyone may call it; it claims the
+  // accrued WETH, buys $BALLAST through the pool, and burns it. Returns the amount burned.
+  {
+    type: "function",
+    name: "buybackAndBurn",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
   {
     type: "event",
     name: "BuybackBurned",
@@ -58,7 +70,18 @@ export type BuybackState = {
   buybackCount?: number;
   history: BurnRow[];
   historyError: boolean;
+
+  // Trigger action (the one write). `ready` mirrors the on-chain gate: accrued ≥
+  // threshold. Anyone connected may call `trigger` when ready — it is permissionless.
+  ready: boolean;
+  triggerPhase: TriggerPhase;
+  triggerTxHash?: `0x${string}`;
+  triggerError?: string;
+  trigger: () => Promise<void>;
+  resetTrigger: () => void;
 };
+
+export type TriggerPhase = "idle" | "triggering" | "success" | "error";
 
 // Everything on this page is read live from chain: the BuybackBurner's state + its
 // BuybackBurned event log (the burn history), plus $BALLAST's total supply. The dead
@@ -165,6 +188,54 @@ export function useBuyback(): BuybackState {
     };
   }, [publicClient]);
 
+  // ── The trigger (buybackAndBurn) ──────────────────────────────────────────
+  // Permissionless: any connected wallet may call it once accrued ≥ threshold. The
+  // caller pays gas and gets nothing back — this is a mechanism, not a reward. On
+  // success we refetch the page's reads and invalidate every live query (the buy is
+  // a real swap that moves price, the trades feed, and the burn total at once).
+  const { writeContractAsync } = useWriteContract();
+  const invalidateChainReads = useInvalidateChainReads();
+  const [triggerPhase, setTriggerPhase] = useState<TriggerPhase>("idle");
+  const [triggerTxHash, setTriggerTxHash] = useState<`0x${string}` | undefined>();
+  const [triggerError, setTriggerError] = useState<string | undefined>();
+
+  const ready = threshold !== undefined && accruedWeth !== undefined && accruedWeth >= threshold;
+
+  const trigger = useCallback(async () => {
+    if (!publicClient || !BUYBACK_ADDRESS) return;
+    setTriggerError(undefined);
+    setTriggerTxHash(undefined);
+    setTriggerPhase("triggering");
+    try {
+      const hash = await writeContractAsync({
+        address: BUYBACK_ADDRESS,
+        abi: buybackBurnerAbi,
+        functionName: "buybackAndBurn",
+        chainId: CHAIN_ID,
+      });
+      setTriggerTxHash(hash);
+      const outcome = await pollReceipt(publicClient, hash);
+      if (outcome.status === "lost") {
+        throw new Error(`We lost track of the buyback — check Blockscout before retrying: ${hash}`);
+      }
+      if (outcome.status === "reverted") {
+        throw new Error(`The buyback reverted — check Blockscout: ${hash}`);
+      }
+      setTriggerPhase("success");
+      void stateRes.refetch();
+      invalidateChainReads(); // burn total, supply, accrued, price all move at once
+    } catch (e) {
+      setTriggerError(decodeTxError(e));
+      setTriggerPhase("error");
+    }
+  }, [publicClient, writeContractAsync, stateRes, invalidateChainReads]);
+
+  const resetTrigger = useCallback(() => {
+    setTriggerPhase("idle");
+    setTriggerError(undefined);
+    setTriggerTxHash(undefined);
+  }, []);
+
   return {
     configured: isBuybackConfigured,
     isLoading: stateRes.isLoading,
@@ -180,5 +251,11 @@ export function useBuyback(): BuybackState {
     buybackCount,
     history,
     historyError,
+    ready,
+    triggerPhase,
+    triggerTxHash,
+    triggerError,
+    trigger,
+    resetTrigger,
   };
 }
