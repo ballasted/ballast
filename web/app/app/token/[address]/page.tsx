@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import type { Address } from "viem";
 import { useBacking } from "@/hooks/useBacking";
@@ -113,6 +114,14 @@ export default function TokenDetailPage() {
                 <p className="truncate text-sm text-text-muted">
                   {metaDenied ? <span className="italic text-text-faint">Metadata withheld</span> : (name ?? "Unnamed project")}
                 </p>
+                {/* Entry point to the dense trading terminal for this token — the
+                    terminal is per-token, so it's reached from here, not the global nav. */}
+                <Link
+                  href={`/app/terminal/${token}`}
+                  className="mt-1 inline-flex items-center gap-1 text-xs text-green underline underline-offset-2"
+                >
+                  Open in terminal ↗
+                </Link>
               </div>
             </div>
             <div className="flex flex-col items-end">
