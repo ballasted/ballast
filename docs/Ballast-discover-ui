@@ -1,0 +1,246 @@
+# BALLAST — Discover, Create, and project links
+
+Read `CLAUDE.md`, `docs/BALLAST-build-spec.md`, `docs/BALLAST-visual-upgrade.md`
+and `docs/BALLAST-ui-density.md` first. Palette, typography, motion and copy
+rules all still apply.
+
+Two references, used differently:
+
+- **Uniswap's launchpad** — the information architecture. Stats row, featured
+  strip, sort rail. Take the structure.
+- **Pons' create form** — the upload interaction. Take the behaviour.
+
+Neither is a visual reference. Our palette, serif headings and meander stay.
+
+Run every phase in order. Commit after each. Push to main at the end.
+
+---
+
+## PHASE 0 — Cancel the 5 ETH change, fix the docs instead
+
+**Decision: the unbacked opening FDV stays at 1 ETH.** Do not redeploy for
+this. Revert or discard any uncommitted work on `unbackedOpenFdvWeth`, the
+derived tick, and the associated tests. The contracts stay exactly as they are.
+
+What needs correcting is the writing, not the code:
+
+- `CreateFlow.tsx:358` currently says "the token opens at a fixed nominal
+  price". Replace with the real figure, read live from the contract:
+  *"Opens at approximately 1 ETH fully diluted (~$1,900 at the current ETH
+  price). The pool is priced in WETH, so the dollar figure moves with ETH."*
+- Show the live opening FDV in the create flow, in both ETH and USD, before the
+  user signs. A number, not a description.
+- Add a docs line explaining the WETH peg and why: unbacked launches carry no
+  oracle dependency, so they can launch at any hour, unlike backed ones.
+- Search the whole repo for any remaining `$5,000` or `$5k` reference to an
+  opening valuation and remove it. That figure came from the bonding-curve era
+  and was never true of the direct-seed model.
+
+**One UI consequence worth handling, since we're keeping the low FDV.** At a
+1 ETH opening, roughly 0.41 ETH of net buying doubles the price. That's thin,
+and we publish a price and a chart on every card. The answer isn't to change
+the number — it's to say so.
+
+Add a liquidity depth indicator to the token page and Discover cards: read the
+pool's live liquidity and, where it's below a stated threshold, label it
+plainly — something like *"Thin liquidity — a few hundred dollars moves this
+price significantly."* Static, factual, no warning triangle. Same discipline as
+the backing panel: state what's true and let the reader decide.
+
+---
+
+## PHASE 1 — The logo upload control
+
+Currently a solid magenta circle beside a separate "Upload logo" button. It
+reads as a bug, and the colour belongs to no part of our palette.
+
+Replace with a proper dropzone:
+
+- A rounded square, roughly 132px, **dashed border** in `#2E352F`.
+- Centred inside: an image/gallery glyph — rounded rectangle outline with a
+  small circle top-left and a diagonal mountain line — in `#5F665F` at about
+  32px. Inline SVG, no icon library.
+- Beneath the glyph, small muted text: `Upload logo`.
+- Below the dropzone, faint: `PNG, JPG, SVG or WebP · up to 1 MB · resized to
+  512×512 and pinned to IPFS`.
+
+Behaviour:
+
+- The whole dropzone is the click target. Remove the separate button.
+- Drag and drop supported, with the border turning `#00C805` and the surface
+  lifting to `#181F1B` while a file hovers.
+- Keyboard accessible: focusable, activates on Enter or Space, visible focus
+  ring.
+- Uploading: the glyph becomes a small indeterminate indicator, label reads
+  `Pinning to IPFS…`. Never leave it looking idle.
+- Uploaded: image fills the square, small remove control in the corner, label
+  becomes `Replace`.
+- Failure: inline error inside the dropzone stating what went wrong — too
+  large, wrong type, pinning failed. Never a toast that vanishes.
+
+The IPFS consent checkbox stays, but the dropzone is **disabled and visibly
+dimmed** until it's ticked, with a line explaining why. Pons does this and it
+sets the right expectation that the upload is permanent and public.
+
+The preview card uses the same treatment: with no logo, show ticker initials on
+a neutral `#181F1B` circle. Never a coloured placeholder.
+
+---
+
+## PHASE 2 — Project links
+
+Every launch can carry links. All optional.
+
+**Fields in the create flow**, grouped under a "Links" heading:
+
+| Field | Prefix shown | Validation |
+|---|---|---|
+| Website | `https://` | Valid URL, https only |
+| X | `x.com/` | Handle characters only |
+| Telegram | `t.me/` | Handle, `+invite`, or `joinchat/…` |
+
+Store them in the token's metadata JSON alongside name, description and image,
+so they live on IPFS with everything else and are readable by anyone without
+our interface.
+
+**Display:**
+
+- Token page: a links row beneath the project name — small icons with the
+  handle beside each, rendering only links that exist. No empty slots, no
+  greyed placeholders.
+- Discover cards: icons only, no handles, and only if at least one exists.
+- All links `target="_blank"` with `rel="noopener noreferrer"`.
+- Inline SVG icons in our palette. Do not use platform brand colours, and do
+  not add an icon library for four glyphs.
+
+**One thing that must not be blurred.** These links are typed in by the project
+and are not verified. We never built link verification, and displaying an X
+handle a project entered is not proof they control it.
+
+So: never label this section "Verified links" and never place a check mark
+beside it. Call it "Links" and add a small faint line: *"Provided by the
+project. Not verified by BALLAST."*
+
+That distinction matters more here than almost anywhere else on the site,
+because "verified" is a word we use precisely — the backing panel earns it, and
+this doesn't.
+
+If a link is malformed or a field is empty, store nothing rather than an empty
+string, so a dead `t.me/` can never render.
+
+---
+
+## PHASE 3 — Discover stats row
+
+Four cards above the tabs. Structure from Uniswap; content is ours.
+
+| Card | Source |
+|---|---|
+| **Total ballast** | Chain, via BackingLens — sum of verified treasury USD |
+| **Tokens launched** | Chain, factory registry union — all time |
+| **24h volume** | GeckoTerminal, summed across our pools |
+| **Holders** | Blockscout, unique addresses across our tokens |
+
+**Total ballast goes first.** Uniswap leads with token count because volume is
+their story. Ours is backing, and nobody else can show it.
+
+Rules that matter more than the layout:
+
+- These must reconcile exactly with what Discover lists beneath them. Same
+  source, no separate counters, no cached totals that can drift.
+- Each card states its source and freshness in small faint text — "on-chain",
+  "GeckoTerminal · 40s ago".
+- If a source is unreachable, that card shows an em dash and "unavailable",
+  never a zero.
+- **Numbers will be small.** Total ballast may read $0. Show it anyway. A stats
+  row that only appears once the figures look good is a stats row nobody can
+  trust.
+- Never animate a value counting up. Crossfade when it changes.
+
+Skeleton loaders while reads resolve, matching final card dimensions exactly.
+
+---
+
+## PHASE 4 — Featured strip
+
+Beneath the stats, above the tabs: up to four project cards, larger than the
+list cards below.
+
+Each shows logo, name, ticker, market cap, and — where Uniswap shows a
+bonding-curve progress bar — **the backing bar**.
+
+That substitution is the point. We have no bonding curve and no graduation
+event, so a progress bar would be meaningless. Show the locked versus
+creator-withdrawable split as a two-segment bar with the backing ratio beside
+it. Unbacked tokens show no bar and read `Not ballasted`.
+
+Selection rule, stated on the strip: ranked by locked backing, descending. If
+fewer than four qualify, show fewer rather than padding with unbacked ones.
+
+The protocol token stays pinned above this strip, labelled as pinned. It must
+never appear inside the ranked strip.
+
+---
+
+## PHASE 5 — Sort rail
+
+Replace the three tabs with a chip rail. Only sorts we can actually compute:
+
+- **Ballasted** — default. Ballasted first, then locked backing descending.
+- **Newest** — registry order reversed. Chain only.
+- **Oldest** — registry order. Chain only.
+- **Market cap** — live price × supply. Chain only.
+- **Backing ratio** — market cap ÷ treasury value. Ours alone.
+- **24h volume** — GeckoTerminal.
+- **Holders** — Blockscout.
+
+No ATH, no Last Trade. We have no reliable source, and a sort that silently
+falls back to another order is worse than an absent one.
+
+**Trending stays out of the rail.** The existing honest notice — that it needs
+unique-buyer data and won't fake an order — is correct and stays as its own
+state.
+
+Category chips remain as a second row, visually distinct from the sort rail.
+
+Each sort states its rule in a small line beneath the rail: "ranked by locked
+backing, descending". A ranking whose rule isn't stated is an editorial
+decision pretending to be a measurement.
+
+---
+
+## PHASE 6 — Polish
+
+- Constrain to the 1200px container from the density spec.
+- One card treatment throughout: `#181F1B` surface, 1px `#232B25` border, no
+  shadow. Cards carrying backing data get the `#1B3A20` accent border.
+- Hover lifts the surface and brightens the border. No transform scale.
+- Featured cards stagger in ~40ms apart as data resolves, capped.
+- Backing bars animate width from 0 on first paint only.
+- Mobile: stats row becomes 2×2; featured strip scrolls horizontally with snap
+  points; sort rail scrolls horizontally.
+- Visible focus ring on every interactive element.
+- `prefers-reduced-motion: reduce` disables all of it. Verify in a browser.
+
+---
+
+## What not to do
+
+- No progress bars implying a graduation that doesn't exist.
+- No "verified" label on self-declared links.
+- No flame or rocket icons, no gradient buttons.
+- No hiding a figure because it is small.
+- No sort that can't be computed from a real source.
+- No new dependency for icons or charts. Inline SVG.
+
+Marketing must stay free of the web3 bundle.
+
+---
+
+## Report
+
+- Bundle sizes for marketing and every `/app` route, before and after
+- Which stats resolved live and which fell back to unavailable during testing
+- Confirmation that reduced-motion disables motion, checked in a browser
+- Confirmation the 5 ETH work is fully reverted and no `$5k` reference remains
+- Anything you chose not to build, and why
