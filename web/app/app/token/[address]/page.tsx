@@ -17,25 +17,25 @@ import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanne
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import {
-  MarketOverview,
   AllocationSlot,
   MetadataHistory,
   CreatorTrackRecord,
   HoldersPanel,
   TradesPanel,
 } from "@/components/app/token/TokenSections";
+import { TokenStatRow } from "@/components/app/token/TokenStatRow";
+import { TerminalChart } from "@/components/app/terminal/TerminalChart";
+import { useOhlcv } from "@/hooks/useOhlcv";
+import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
 import { useHolders } from "@/hooks/useHolders";
 import { Logo } from "@/components/app/Logo";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
-import { Freshness } from "@/components/app/Freshness";
 import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { shortAddress, formatBackingPerToken } from "@/lib/format";
-import { formatSmallUsd, marketCapSupply } from "@/lib/market";
-import { cn } from "@/lib/cn";
+import { shortAddress } from "@/lib/format";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. The treasury is
 // resolved on-chain from token.treasury(). Everything that can be sourced from
@@ -57,7 +57,6 @@ export default function TokenDetailPage() {
     launchMetadataURI,
     metadataChanged,
     creator,
-    totalSupply,
     pending,
     marketPriceUsd,
     marketPriceWeth,
@@ -72,6 +71,8 @@ export default function TokenDetailPage() {
   const { meta } = useProjectMeta(metadataURI);
   const { market } = useMarket(token);
   const { holders } = useHolders(token);
+  const [tf, setTf] = useState<Timeframe>(DEFAULT_TIMEFRAME);
+  const { ohlcv, isLoading: ohlcvLoading, available: ohlcvAvailable } = useOhlcv(token, tf);
   // Metadata denylist: a denied token keeps its ticker, price, backing, holders and
   // trades, but its project-supplied branding (name, logo, description, links) is
   // withheld and replaced by a notice stating why, with the raw metadataURI so
@@ -88,10 +89,7 @@ export default function TokenDetailPage() {
     return <Notice title="Nothing here" body="No BALLAST token found at this address on the active chain." />;
   }
 
-  const ratio =
-    marketPriceUsd !== undefined && backing && backing.backingPerToken > 0n
-      ? Number((marketPriceUsd * 10n ** 18n) / backing.backingPerToken) / 1e18
-      : null;
+  const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
 
   return (
     <div className="space-y-4">
@@ -124,34 +122,6 @@ export default function TokenDetailPage() {
                 </Link>
               </div>
             </div>
-            <div className="flex flex-col items-end">
-              {/* Chain price governs; GeckoTerminal is the labelled fallback. */}
-              <div className="figure-primary text-2xl">
-                {(() => {
-                  const v =
-                    marketPriceUsd !== undefined
-                      ? formatBackingPerToken(marketPriceUsd)
-                      : market?.priceUsd !== undefined
-                        ? formatSmallUsd(market.priceUsd)
-                        : "—";
-                  return <span key={v} className="anim-fade inline-block">{v}</span>;
-                })()}
-              </div>
-              <div className="mt-0.5">
-                {marketPriceUsd !== undefined ? (
-                  <Freshness updatedAt={now} source="on-chain" />
-                ) : market?.priceUsd !== undefined ? (
-                  <Freshness updatedAt={market.fetchedAt} source="GeckoTerminal" />
-                ) : (
-                  <span className="metric-secondary">{graduated ? "no market yet" : "not launched"}</span>
-                )}
-              </div>
-              {ratio !== null && (
-                <div className={`mt-0.5 text-xs ${ratio >= 1 ? "text-green" : "text-warning"}`}>
-                  {ratio.toFixed(2)}× backing
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Withheld (shownMeta undefined) for a denylisted token. */}
@@ -161,15 +131,26 @@ export default function TokenDetailPage() {
             {shownMeta?.category && <Badge>{shownMeta.category}</Badge>}
             <Badge>{activeChain.name}</Badge>
             <CopyAddress address={token!} label="Token contract" />
-            {market?.change24hPct != null && (
-              <span className={cn("tabular-nums", market.change24hPct >= 0 ? "text-positive" : "text-negative")}>
-                {market.change24hPct >= 0 ? "+" : ""}
-                {market.change24hPct.toFixed(2)}% 24h
-              </span>
-            )}
           </div>
           <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} className="mt-2" />
         </header>
+      </MotionSection>
+
+      {/* Stat row above the fold — price, backing beside it, and the market figures,
+          each with its source + age (spec: pools.trade anchoring row, our figures). */}
+      <MotionSection>
+        <TokenStatRow
+          priceUsd1e18={marketPriceUsd}
+          priceFallbackNum={market?.priceUsd}
+          ballasted={ballasted}
+          backingPerToken1e18={backing?.backingPerToken}
+          change24hPct={market?.change24hPct}
+          volume24hUsd={market?.volume24hUsd}
+          liquidityUsd={market?.top?.reserveUsd}
+          holdersCount={holders?.holdersCount}
+          now={now}
+          marketFetchedAt={market?.fetchedAt}
+        />
       </MotionSection>
 
       {/* Metadata withheld — this token is on the owner-managed denylist. Ticker,
@@ -218,8 +199,18 @@ export default function TokenDetailPage() {
           (swap, then creator fees) on the right — the pro-launchpad pattern. */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         <div className="min-w-0 space-y-4">
+          {/* Native candlestick (reused from the terminal) — replaces the off-palette
+              GeckoTerminal iframe. Chart left, swap sticky on the right. */}
           <MotionSection>
-            <MarketPanel token={token!} symbol={symbol} chainPriceUsd={marketPriceUsd} />
+            <TerminalChart
+              candles={ohlcv?.candles ?? []}
+              timeframe={tf}
+              onTimeframe={setTf}
+              source={ohlcv?.source ?? "GeckoTerminal"}
+              fetchedAt={ohlcv?.fetchedAt}
+              loading={ohlcvLoading}
+              available={ohlcvAvailable}
+            />
           </MotionSection>
 
           {shownMeta?.description && (
@@ -232,22 +223,15 @@ export default function TokenDetailPage() {
           )}
 
           <MotionSection>
-            <MarketOverview
-              marketPriceUsd={marketPriceUsd}
-              totalSupply={marketCapSupply(backing?.totalSupply, totalSupply)}
-              hasPool={hasPool}
-              liquidityUsd={market?.top?.reserveUsd}
-              volume24hUsd={market?.volume24hUsd}
-              holdersCount={holders?.holdersCount}
-            />
-          </MotionSection>
-
-          <MotionSection>
             <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
           </MotionSection>
 
           <MotionSection>
             <TradesPanel token={token!} symbol={symbol} now={now} />
+          </MotionSection>
+
+          <MotionSection>
+            <MarketPanel token={token!} chainPriceUsd={marketPriceUsd} />
           </MotionSection>
 
           <AllocationSlot />

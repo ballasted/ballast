@@ -345,6 +345,16 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
 export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: string; now: number }) {
   const { data, isLoading } = useTrades(token);
 
+  // Buys vs sells over the recent SAMPLE (not the full 24h — that needs an indexer).
+  const trades = data?.trades ?? [];
+  const shown = trades.slice(0, 15);
+  const buyVol = trades.filter((t) => t.kind === "buy").reduce((s, t) => s + t.volumeUsd, 0);
+  const sellVol = trades.filter((t) => t.kind === "sell").reduce((s, t) => s + t.volumeUsd, 0);
+  const totalVol = buyVol + sellVol;
+  const buyPct = totalVol > 0 ? (buyVol / totalVol) * 100 : 50;
+  const buyCount = trades.filter((t) => t.kind === "buy").length;
+  const sellCount = trades.length - buyCount;
+
   return (
     <section className="card p-5">
       <h2 className="section-label">Recent trades</h2>
@@ -366,15 +376,65 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
         </div>
       ) : (
         <>
-          <ul className="mt-4 space-y-1.5">
-            {data.trades.slice(0, 12).map((t, i) => (
+          {/* Buys vs sells over the sample — an at-a-glance sentiment read. */}
+          <div className="mt-3">
+            <div className="flex h-2 overflow-hidden rounded-full bg-border" aria-hidden>
+              <div className="bg-green" style={{ width: `${buyPct}%` }} />
+              <div className="bg-negative" style={{ width: `${100 - buyPct}%` }} />
+            </div>
+            <div className="mt-1.5 flex justify-between text-[11px] tabular-nums">
+              <span className="text-green">{buyCount} buys · {formatCompactUsd(buyVol)}</span>
+              <span className="text-negative">{formatCompactUsd(sellVol)} · {sellCount} sells</span>
+            </div>
+          </div>
+
+          {/* Desktop table (denser scan), cards on mobile. */}
+          <div className="mt-3 hidden overflow-x-auto sm:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="eyebrow text-left">
+                  <th className="pb-2 font-medium">Time</th>
+                  <th className="pb-2 font-medium">Side</th>
+                  <th className="pb-2 text-right font-medium">Value</th>
+                  <th className="pb-2 text-right font-medium">Amount</th>
+                  <th className="pb-2 text-right font-medium">Price</th>
+                  <th className="pb-2 text-right font-medium">Trader</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {shown.map((t, i) => (
+                  <tr key={`${t.txHash}-${i}`}>
+                    <td className="py-2 text-text-secondary">{fmtAgo(Math.max(0, now - t.ts))}</td>
+                    <td className="py-2">
+                      <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", t.kind === "buy" ? "bg-green-bg text-green" : "bg-negative/10 text-negative")}>
+                        {t.kind === "buy" ? "Buy" : "Sell"}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-text-primary">{formatCompactUsd(t.volumeUsd)}</td>
+                    <td className="py-2 text-right tabular-nums text-text-secondary">
+                      {t.tokenAmount.toLocaleString("en", { maximumFractionDigits: 2, notation: "compact" })}
+                    </td>
+                    <td className="py-2 text-right tabular-nums text-text-secondary">{formatSmallUsd(t.priceUsd)}</td>
+                    <td className="py-2 text-right">
+                      <a href={`${activeChain.blockExplorers.default.url}/address/${t.wallet}`} target="_blank" rel="noreferrer" className="font-mono text-xs text-text-faint hover:text-green">
+                        {shortAddress(t.wallet as Address)}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="mt-3 space-y-1.5 sm:hidden">
+            {shown.map((t, i) => (
               <TradeRow key={`${t.txHash}-${i}`} t={t} symbol={symbol} now={now} />
             ))}
           </ul>
+
           <p className="mt-4 text-[11px] text-text-faint">
             Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. These are the most
-            recent trades — a live sample, not the full 24h history. The 24h volume shown elsewhere is GeckoTerminal&apos;s
-            aggregate over the whole window, not the sum of the rows here.
+            recent trades — a live sample, not the full 24h history, so the buys/sells split above is for this sample.
+            The 24h volume shown elsewhere is GeckoTerminal&apos;s aggregate over the whole window.
           </p>
         </>
       )}
