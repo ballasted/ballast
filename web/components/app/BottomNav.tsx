@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 
 const ITEMS = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
+  { href: "/app/terminal", label: "Terminal", icon: IconTerminal },
   { href: "/app/analytics", label: "Analytics", icon: IconAnalytics },
   { href: "/app/buyback", label: "Buyback", icon: IconBurn },
   { href: "/app/create", label: "Create", icon: IconCreate },
@@ -68,6 +69,27 @@ function IconBurn({ active }: { active: boolean }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+function IconTerminal({ active }: { active: boolean }) {
+  // A console window: prompt chevron + input line. Fills faintly when active,
+  // matching the other icons' active treatment.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="16"
+        rx="3"
+        fill="currentColor"
+        fillOpacity={active ? 0.15 : 0}
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path d="M7 9.5l2.5 2.5L7 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12.5 15h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
