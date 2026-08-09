@@ -50,7 +50,7 @@ export default function BuybackPage() {
       {!s.configured ? (
         <Notice
           title="Not live yet"
-          body="The buyback contract isn't deployed on this network yet. Once it is (and NEXT_PUBLIC_BUYBACK_ADDRESS is set), every figure and every burn on this page is read live from chain — nothing here is stored or hand-entered."
+          body="The buyback contract isn't deployed here yet. Once it is (and NEXT_PUBLIC_BUYBACK_ADDRESS is set), every figure on this page reads live from chain."
         />
       ) : (
         <>
@@ -76,10 +76,8 @@ export default function BuybackPage() {
 
           {/* ── How a buyback runs (mechanics observed on-chain) ───────── */}
           <p className="max-w-2xl text-xs text-text-faint">
-            Each buyback is size-capped so a single call can&apos;t swing the pool. The pool is thin, so a large
-            accrued balance isn&apos;t spent all at once — it&apos;s spent across many small buybacks, automatically:
-            whatever a call can&apos;t buy within its price cap simply stays and funds the next one. Nothing is lost
-            between them.
+            Each buyback is size-capped so one call can&apos;t swing the thin pool. Whatever a call can&apos;t buy
+            within its cap stays and funds the next — spent across many small buybacks, nothing lost between them.
           </p>
 
           {/* ── Copy rules block (spec 2.4) ────────────────────────────── */}
@@ -92,8 +90,7 @@ export default function BuybackPage() {
           <section className="card p-5">
             <h2 className="section-label">The burn address</h2>
             <p className="mt-2 text-sm text-text-secondary">
-              Every token bought is sent here and can never be moved again. Confirm the total yourself — you don&apos;t
-              have to trust this page.
+              Every token bought lands here, unmovable. Confirm the total yourself — don&apos;t trust this page.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <CopyAddress address={DEAD} />
@@ -129,11 +126,8 @@ export default function BuybackPage() {
               <Node accent>funds this buyback</Node>
             </div>
             <p className="mt-3 text-xs text-text-faint">
-              Only the platform&apos;s share of the swap fee funds buybacks — no treasury assets, and no fee on treasury
-              deposits. Each buyback is itself a swap through the pool, so it pays the same 1% fee and appears in the
-              trades feed like any other buy. Because of that fee, a small slice of every buyback flows back into the
-              fee pool rather than into burned tokens — so the $BALLAST burned is always a little less than the WETH
-              accrued, not a one-to-one conversion.{" "}
+              Only the platform&apos;s fee share funds buybacks — no treasury assets. Each buyback is itself a 1% swap,
+              so a little WETH cycles back to fees and slightly less $BALLAST is burned than WETH accrued.{" "}
               <Link href="/docs/how-ballast-works" className="text-green underline underline-offset-2">
                 How the fee works ↗
               </Link>
@@ -187,9 +181,8 @@ function TriggerBuyback({ s }: { s: BuybackState }) {
     <section className="card p-5">
       <h2 className="section-label">Trigger this buyback</h2>
       <p className="mt-2 max-w-2xl text-sm text-text-secondary">
-        A buyback isn&apos;t scheduled and no one runs it for you — it only happens when someone sends the transaction.
-        Anyone can: it&apos;s a public function on the contract. You pay the gas; you receive nothing. It claims the
-        accrued WETH, buys $BALLAST through the pool, and sends every token to the dead address.
+        Nothing runs on a schedule — a buyback happens only when someone sends this public transaction. You pay gas and
+        receive nothing: it claims the accrued WETH, buys $BALLAST, and burns every token.
       </p>
 
       {s.triggerPhase === "success" ? (
@@ -269,8 +262,8 @@ function SupplyEffect({ totalSupply, burned }: { totalSupply?: bigint; burned?: 
         </div>
       </dl>
       <p className="mt-3 text-xs text-text-faint">
-        $BALLAST has no burn function, so its <span className="font-mono">totalSupply</span> is unchanged; the burned
-        tokens sit permanently at the dead address. Circulating is total supply minus that balance.
+        $BALLAST has no burn function, so <span className="font-mono">totalSupply</span> is unchanged — burned tokens
+        sit at the dead address. Circulating = supply − that balance.
       </p>
     </section>
   );
@@ -281,9 +274,8 @@ function WhoControls() {
     <section className="card p-5">
       <h2 className="section-label">Who controls this</h2>
       <p className="mt-2 text-sm text-text-secondary">
-        This contract is owned by a single BALLAST-team key — not a multisig, today. We&apos;d rather say that plainly
-        than wait on a wallet we can&apos;t yet create. Here is exactly what that key can and cannot do; verify the owner
-        yourself with <span className="font-mono">owner()</span> on the contract.
+        Owned by a single BALLAST-team key, not a multisig yet — we&apos;d rather say so plainly. Here&apos;s what it
+        can and can&apos;t do; verify with <span className="font-mono">owner()</span>.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <CopyAddress address={OWNER} />
@@ -300,23 +292,21 @@ function WhoControls() {
         <div>
           <dt className="eyebrow">It can</dt>
           <dd className="mt-1 text-sm text-text-secondary">
-            Change the threshold that triggers a buyback (delaying one, never diverting it), adjust the price-impact cap
-            within a fixed 20% ceiling, and change which fee ledgers it sweeps.
+            Change the trigger threshold (delay, never divert), adjust the price-impact cap under a fixed 20% ceiling,
+            and change which fee ledgers it sweeps.
           </dd>
         </div>
         <div>
           <dt className="eyebrow">It cannot</dt>
           <dd className="mt-1 text-sm text-text-secondary">
-            Withdraw the WETH, change the token it buys, or change the burn address — there is no function for any of
-            these. Every token a buyback buys goes to <span className="font-mono">0x…dEaD</span>, fixed in the contract.
+            Withdraw WETH, change the token it buys, or change the burn address — no function exists. Bought tokens
+            always go to <span className="font-mono">0x…dEaD</span>, fixed in the contract.
           </dd>
         </div>
       </dl>
       <p className="mt-3 text-xs text-text-faint">
-        One thing to know: the platform fee only reaches this contract because the fee config points here. The same key
-        controls that config and could point <em>future</em> fees elsewhere — it cannot touch WETH already held here,
-        which can only ever be spent buying $BALLAST and burning it. When ownership moves to a multisig, this section
-        will say so.{" "}
+        The same key controls the fee config and could redirect future fees elsewhere — but it can never touch WETH
+        already here, which can only buy and burn $BALLAST. We&apos;ll note it here when ownership moves to a multisig.{" "}
         <Link href="/docs/corrections" className="text-green underline underline-offset-2">
           On the record ↗
         </Link>
@@ -387,8 +377,7 @@ function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: bo
         </>
       )}
       <p className="mt-4 text-[11px] text-text-faint">
-        Read live from the contract&apos;s BuybackBurned events. Every row links to Blockscout — verify each without
-        trusting this page.
+        Live from BuybackBurned events. Every row links to Blockscout — verify without trusting this page.
       </p>
     </section>
   );

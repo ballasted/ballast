@@ -268,8 +268,7 @@ export function CreateFlow() {
   if (!isFactoryConfigured) {
     return (
       <Notice title="Not configured yet">
-        The factory isn&apos;t deployed on this network. Set NEXT_PUBLIC_FACTORY_ADDRESS after deploying the core
-        contracts, and the launch flow goes live.
+        Factory isn&apos;t deployed here. Set NEXT_PUBLIC_FACTORY_ADDRESS after deploy to enable launching.
       </Notice>
     );
   }
@@ -411,13 +410,12 @@ export function CreateFlow() {
               </Field>
             ) : assetsError ? (
               <InlineNotice tone="warning">
-                Couldn&apos;t read the asset registry from the chain right now — the RPC may be rate-limited or down.
-                This isn&apos;t &ldquo;no assets&rdquo;; it&apos;s a failed read. Retry in a moment.
+                Couldn&apos;t read the asset registry — the RPC may be down. This is a failed read, not &ldquo;no
+                assets.&rdquo; Retry shortly.
               </InlineNotice>
             ) : !hasAssets ? (
               <InlineNotice>
-                The registry has no allowed assets yet. The protocol owner allowlists assets (by canonical contract
-                address) before a backed launch is possible.
+                No allowed assets yet. The protocol owner must allowlist an asset before a backed launch is possible.
               </InlineNotice>
             ) : (
               <>
@@ -434,9 +432,8 @@ export function CreateFlow() {
                     ))}
                   </div>
                   <p className="mt-1.5 text-xs text-text-faint">
-                    Price and freshness are read live from each asset&apos;s Chainlink feed. A backed launch can only
-                    price against a feed that&apos;s trading — an asset showing anything but a live feed is why a launch
-                    is gated outside market hours.
+                    Price and freshness read live from each asset&apos;s Chainlink feed. A backed launch needs a trading
+                    feed — which is why launches are gated outside market hours.
                   </p>
                 </Field>
 
@@ -484,8 +481,8 @@ export function CreateFlow() {
                     ))}
                   </div>
                   <p className="mt-1.5 text-xs text-text-muted">
-                    You may withdraw only what you deposit, every withdrawal is announced publicly and delayed by this
-                    period, and this choice is permanent — the treasury cannot change it later.
+                    You can withdraw only what you deposit; every withdrawal is announced and delayed by this period.
+                    Permanent — can&apos;t be changed later.
                   </p>
                 </Field>
 
@@ -498,15 +495,15 @@ export function CreateFlow() {
                       <span aria-hidden>⚠</span> Market closed — a backed launch can&apos;t price yet
                     </div>
                     <p className="mt-2 text-text-secondary">
-                      A backed launch opens the pool at your treasury&apos;s live value, so {selected.symbol}&apos;s market
-                      must be open.{" "}
+                      A backed launch prices at your treasury&apos;s live value, so {selected.symbol}&apos;s market must
+                      be open.{" "}
                       {lastPublishedAgeSec !== undefined && (
-                        <>Its feed last published {fmtPublishedAge(lastPublishedAgeSec)} ago. </>
+                        <>Last feed print {fmtPublishedAge(lastPublishedAgeSec)} ago. </>
                       )}
                       {nextOpen ? (
-                        <>Next window opens <span className="font-semibold text-text-primary">{formatEt(nextOpen)}</span>.</>
+                        <>Next window: <span className="font-semibold text-text-primary">{formatEt(nextOpen)}</span>.</>
                       ) : (
-                        <>The next open time is beyond our market calendar — check back closer to a weekday session.</>
+                        <>Next open time is beyond our calendar — check back near a weekday session.</>
                       )}
                     </p>
                   </div>
@@ -516,9 +513,9 @@ export function CreateFlow() {
                       <span aria-hidden>⚠</span> {selected.symbol}&apos;s feed looks down
                     </div>
                     <p className="mt-2 text-text-secondary">
-                      The market is open but the feed hasn&apos;t published within its expected window
-                      {lastPublishedAgeSec !== undefined && <> (last update {fmtPublishedAge(lastPublishedAgeSec)} ago)</>}, so
-                      its price can&apos;t be trusted to open the pool. Try again once it&apos;s publishing.
+                      Market&apos;s open but the feed hasn&apos;t published on schedule
+                      {lastPublishedAgeSec !== undefined && <> (last {fmtPublishedAge(lastPublishedAgeSec)} ago)</>}, so
+                      its price can&apos;t open the pool. Try again once it&apos;s publishing.
                     </p>
                   </div>
                 ) : selected && lastPublishedAgeSec !== undefined ? (
@@ -552,8 +549,8 @@ export function CreateFlow() {
                   <span className="font-mono text-text-primary">{account ? shortAddress(account) : "connect a wallet"}</span>
                 </div>
                 <p className="text-xs text-text-faint">
-                  The wallet you launch from is recorded on-chain as the creator and receives the creator share of swap
-                  fees. It cannot be changed after launch.
+                  The launching wallet is recorded on-chain as creator and earns the creator fee share. Can&apos;t be
+                  changed after launch.
                 </p>
               </div>
             )}
@@ -642,11 +639,10 @@ function UnbackedOpening({ openFdv }: { openFdv: OpenFdv }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-text-secondary">
-        An unbacked launch — no treasury assets and no backing figure. It opens at approximately{" "}
+        No treasury, no backing figure. Opens at ~{" "}
         <span className="text-text-primary">{eth !== undefined ? eth.toFixed(2) : "1"} ETH</span> fully diluted
-        {usd ? <> ({usd} at the current ETH price)</> : null}. The pool is priced in WETH, so the dollar figure moves
-        with ETH. Because it carries no oracle, an unbacked launch can go live at any hour — a backed one can only price
-        while its feed&apos;s market is open. You can add a treasury later by depositing.
+        {usd ? <> ({usd})</> : null}; priced in WETH, so the dollar figure moves with ETH. No oracle, so it can launch
+        any hour — and you can add a treasury later.
       </p>
       <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
         <span className="eyebrow">Opening valuation</span>
@@ -752,8 +748,8 @@ function PreviewCard(p: {
         </PreviewRow>
 
         <p className="border-t border-border pt-3 text-xs text-text-faint">
-          100% of supply seeds the pool. You receive no allocation, no presale, no team bag — the one thing that makes a
-          BALLAST launch structurally different.
+          100% of supply seeds the pool. No allocation, presale, or team bag — the one thing that sets a BALLAST launch
+          apart.
         </p>
       </div>
     </section>
@@ -1065,11 +1061,11 @@ function LogoUploader({
       {/* The consent gate — dropzone stays disabled/dimmed until this is ticked. */}
       <label className="flex cursor-pointer items-start gap-2 text-xs text-text-secondary">
         <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 accent-green" />
-        I understand the logo is uploaded to public IPFS, is permanent, and isn’t reviewed by BALLAST before it appears.
+        I understand the logo goes to public IPFS, is permanent, and isn’t reviewed before it appears.
       </label>
       {locked && (
         <p className="text-xs text-text-faint">
-          Tick this to enable uploading — pinned files are public and can&apos;t be unpinned.
+          Tick to enable uploading — pinned files are public and permanent.
         </p>
       )}
 

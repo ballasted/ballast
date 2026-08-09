@@ -44,8 +44,7 @@ export default function TerminalIndexPage() {
     <div>
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Terminal</h1>
       <p className="mt-2 max-w-prose text-sm text-text-muted">
-        The dense, per-token trading view — candles, an order rail, treasury, trades and holders in one screen. Pick a
-        token below, or paste its address, to open its terminal.
+        A token&apos;s full trading view — chart, order rail, treasury, trades.
       </p>
 
       {/* Search / paste-address bar. A valid address enables Open (and Enter routes
@@ -73,16 +72,13 @@ export default function TerminalIndexPage() {
 
       <div className="mt-5">
         {!isConfigured ? (
-          <Empty
-            title="Not configured yet"
-            body="The factory and BackingLens addresses aren't set, so there are no launches to open a terminal for."
-          />
+          <Empty title="Not configured yet" body="No contracts set, so there are no launches yet." />
         ) : isLoading ? (
           <SkeletonList />
         ) : !hasLaunches ? (
           <Empty
             title="Nothing has launched yet"
-            body="The terminal opens per token. The first launch appears here the moment it confirms on-chain."
+            body="The first launch shows up here."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
@@ -92,7 +88,7 @@ export default function TerminalIndexPage() {
         ) : filtered.length === 0 ? (
           <Empty
             title="No match"
-            body={`Nothing matches "${trimmed}". Clear the search to see every launch${isAddr ? ", or press Open to go straight to that address." : "."}`}
+            body={isAddr ? `Nothing matches “${trimmed}”. Press Open to go to that address.` : `Nothing matches “${trimmed}”.`}
           />
         ) : (
           <ul className="space-y-2">

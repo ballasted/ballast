@@ -19,10 +19,9 @@ export function PendingWithdrawalBanner({ pending, now }: { pending: PendingWith
         <span className="font-semibold">Creator withdrawal announced</span>
       </div>
       <p className="mt-2 text-sm text-text-secondary">
-        {formatAmount(pending.amount)} of one treasury asset is scheduled to be
-        withdrawn.{" "}
+        {formatAmount(pending.amount)} of one treasury asset is queued to withdraw.{" "}
         {executable ? (
-          <span className="text-warning">The notice period has elapsed — it can be executed now.</span>
+          <span className="text-warning">Notice elapsed — executable now.</span>
         ) : now > 0 ? (
           <>
             Executable in <span className="font-semibold text-text-primary">{formatDuration(remaining)}</span>, on{" "}

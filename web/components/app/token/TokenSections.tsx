@@ -49,8 +49,8 @@ export function MarketOverview({
         <Stat label="24h volume" value={volume24hUsd !== undefined ? formatCompactUsd(volume24hUsd) : "—"} />
       </dl>
       <p className="mt-4 text-xs text-text-faint">
-        FDV is market price × total supply, computed live on-chain. Liquidity and 24h volume are from GeckoTerminal;
-        holder count from Blockscout. A dash means that source has nothing for this token yet.
+        FDV = price × supply, computed on-chain. Liquidity/volume from GeckoTerminal, holders from Blockscout. A dash
+        means that source has nothing yet.
       </p>
     </section>
   );
@@ -96,8 +96,8 @@ export function HoldersPanel({
           <Meander className="mb-4 max-w-[100px] opacity-60" />
           <p className="max-w-sm text-sm text-text-muted">
             {holders?.reason === "not-found"
-              ? "No transfers indexed for this token yet — until someone trades, the pool holds essentially the whole supply."
-              : "Blockscout is unreachable right now, so the holder list is shown as unavailable rather than a stale figure."}
+              ? "No transfers indexed yet — the pool holds essentially the whole supply until someone trades."
+              : "Blockscout is unreachable, so the holder list shows unavailable rather than stale."}
           </p>
         </div>
       ) : (
@@ -114,7 +114,7 @@ export function HoldersPanel({
             ))}
           </ul>
           <p className="mt-4 text-[11px] text-text-faint">
-            Source: Blockscout (full transfer history){holders.fetchedAt ? ` · updated ${formatEt(holders.fetchedAt)}` : ""}.
+            Source: Blockscout (full history){holders.fetchedAt ? ` · updated ${formatEt(holders.fetchedAt)}` : ""}.
             Balances are chain truth; labels explain known addresses.
           </p>
         </>
@@ -201,9 +201,8 @@ export function AllocationSlot() {
         <span className="text-sm text-text-secondary">of supply seeded the pool</span>
       </div>
       <p className="mt-3 text-sm text-text-secondary">
-        The creator holds <span className="font-semibold text-text-primary">none</span> — no presale, no team bag, no
-        vesting cliff. There is no allocation chart because there is no allocation. This is the one thing that makes a
-        BALLAST launch structurally different from every launchpad on this chain.
+        The creator holds <span className="font-semibold text-text-primary">none</span> — no presale, team bag, or
+        vesting. No allocation chart because there&apos;s no allocation: the one thing that sets a BALLAST launch apart.
       </p>
     </section>
   );
@@ -246,11 +245,10 @@ export function MetadataHistory({
       </ol>
       <p className="mt-4 text-xs text-text-faint">
         {changed
-          ? "Metadata has been updated since launch. The launch version above is permanent and always readable on-chain."
-          : "Unchanged since launch — the current metadata is the original."}{" "}
-        We show the permanent launch version and the current one. A full change-by-change dated timeline would mean
-        indexing every on-chain MetadataUpdated event; until then, each change is emitted as that event and is readable
-        on the block explorer.
+          ? "Updated since launch; the launch version above is permanent."
+          : "Unchanged since launch."}{" "}
+        A dated change-by-change timeline needs indexing; until then, each MetadataUpdated event is readable on the
+        explorer.
       </p>
     </section>
   );
@@ -370,8 +368,8 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
           <Meander className="mb-4 max-w-[100px] opacity-60" />
           <p className="max-w-sm text-sm text-text-muted">
             {data?.reason === "not-indexed"
-              ? "No trades yet. The feed fills in once the pool trades — price and backing above are already live from the chain."
-              : "GeckoTerminal is unreachable right now, so the trade feed is shown as unavailable rather than a stale list."}
+              ? "No trades yet — the feed fills in once the pool trades. Price and backing above are already chain-live."
+              : "GeckoTerminal is unreachable, so the trade feed shows unavailable rather than stale."}
           </p>
         </div>
       ) : (
@@ -432,9 +430,9 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
           </ul>
 
           <p className="mt-4 text-[11px] text-text-faint">
-            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. These are the most
-            recent trades — a live sample, not the full 24h history, so the buys/sells split above is for this sample.
-            The 24h volume shown elsewhere is GeckoTerminal&apos;s aggregate over the whole window.
+            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. A live sample of
+            recent trades, not the full 24h — so the split above covers this sample only; 24h volume elsewhere is the
+            full-window aggregate.
           </p>
         </>
       )}

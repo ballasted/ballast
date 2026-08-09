@@ -26,13 +26,13 @@ export default function PortfolioPage() {
   } = usePortfolio();
 
   if (!isConfigured) {
-    return <Notice title="Not configured yet" body="Deploy the core contracts and set the factory + lens addresses to read your holdings." />;
+    return <Notice title="Not configured yet" body="Set the factory + lens addresses (after deploy) to read your holdings." />;
   }
   if (!isConnected) {
     return (
       <div className="card p-8 text-center">
         <h1 className="font-semibold text-text-primary">Connect your wallet</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Your holdings, backing exposure, and launches are read live from your wallet.</p>
+        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Holdings, exposure, and launches read live from your wallet.</p>
         <div className="mt-4 flex justify-center"><ConnectButton /></div>
       </div>
     );
@@ -120,7 +120,7 @@ export default function PortfolioPage() {
           holdings.length === 0 ? (
             <Notice
               title="You hold nothing yet"
-              body="No BALLAST tokens in this wallet on this network. Once you hold some, the backed-versus-unbacked exposure bar above fills in with your real split."
+              body="No BALLAST tokens in this wallet on this network. Buy some and the exposure bar above fills with your real split."
               action={
                 <Link href="/app/discover" className="btn-primary inline-block px-5">
                   Find a project on Discover
@@ -135,7 +135,7 @@ export default function PortfolioPage() {
         ) : myLaunches.length === 0 ? (
           <Notice
             title="No launches yet"
-            body="You haven't launched a project from this wallet. When you do, it appears here with its live treasury value."
+            body="No launches from this wallet yet. New ones appear here with live treasury value."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch

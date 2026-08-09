@@ -162,14 +162,14 @@ export default function DiscoverPage() {
         {!isConfigured ? (
           <EmptyState
             title="Not configured yet"
-            body="The factory and BackingLens addresses aren't set. Deploy the core contracts and set NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS, and Discover reads the registry live."
+            body="The core contracts (factory + lens) aren't set."
           />
         ) : isLoading ? (
           <SkeletonGrid />
         ) : !hasLaunches ? (
           <EmptyState
             title="Nothing has launched yet"
-            body="The first projects appear here the moment a launch confirms on-chain. Ballasted — the default order — ranks them by verified treasury value locked forever, so a project's backing is the default, not an afterthought."
+            body="The first projects appear here as they launch."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
@@ -211,12 +211,12 @@ export default function DiscoverPage() {
           category !== "all" ? (
             <EmptyState
               title={`No ${category} projects yet`}
-              body="No launched project carries this category. Clear the filter to see everything."
+              body="Clear the filter to see all."
             />
           ) : (
             <EmptyState
               title="Only the protocol token so far"
-              body="No other projects have launched yet. The next launch appears here — ranked by backing on Ballasted, by launch time on Newest and Oldest."
+              body="No other projects have launched yet."
               action={
                 <Link href="/app/create" className="btn-primary inline-block px-5">
                   Create a launch
@@ -333,11 +333,11 @@ function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
         {reason === "unreachable"
-          ? "GeckoTerminal, the trade-data source, didn't respond. Rather than show a stale or made-up order, trending is paused until it's reachable again."
-          : "Trending ranks by unique buyers plus 24h volume, so two wallets trading with each other can't buy the top spot. There aren't enough real trades across launches yet to rank without it being noise — so we won't pretend."}
+          ? "GeckoTerminal didn't respond, so trending is paused rather than faked."
+          : "Not enough real trades to rank yet — so we won't fake an order."}
       </p>
       <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        Meanwhile, Ballasted ranks by verified locked backing, and Newest by launch time — both live from the chain.
+        Ballasted and Newest still work — live from the chain.
       </p>
     </div>
   );
@@ -352,11 +352,10 @@ function SourceUnavailableNotice({ metric, source }: { metric: string; source: s
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric} right now</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {source} didn’t respond, so this order can’t be computed. Rather than quietly fall back to another sort, it’s
-        paused until {source} is reachable again.
+        {source} didn’t respond, so this order is paused rather than faked.
       </p>
       <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        The on-chain orders — Ballasted, Newest, Oldest, Market cap, Backing ratio — work regardless.
+        The on-chain orders still work.
       </p>
     </div>
   );

@@ -27,8 +27,8 @@ export function AnalyticsView() {
         <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
         <h2 className="font-serif font-semibold text-bone">Not configured yet</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-          The factory and BackingLens addresses aren&apos;t set. Deploy the core contracts and set
-          NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS, and these figures read the registry live.
+          Factory and BackingLens addresses aren&apos;t set. Deploy the core contracts and set
+          NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS to read the registry live.
         </p>
       </Panel>
     );
@@ -40,9 +40,8 @@ export function AnalyticsView() {
         <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
         <h2 className="font-serif font-semibold text-bone">Nothing to measure yet</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-          No projects have launched on this network, so there are no protocol figures to show — not zeros, just
-          nothing yet. The moment the first launch confirms, its treasury shows up here and in Discover with the same
-          numbers.
+          No launches on this network yet — nothing to measure, not zeros. The first launch shows up here and in
+          Discover the moment it confirms.
         </p>
       </Panel>
     );
@@ -278,8 +277,8 @@ function ChartCard({
             <p className="text-sm text-warning">{series.available ? "No activity in this window yet" : degradeLabel(series)}</p>
             <p className="mt-1 max-w-xs text-xs text-text-faint">
               {series.available
-                ? "Bars appear here as pools trade — drawn from GeckoTerminal daily OHLCV, never a fabricated series."
-                : "GeckoTerminal didn't respond. The series fills in once it's reachable again; totals above are read live from the chain."}
+                ? "Bars appear as pools trade — from GeckoTerminal daily OHLCV, never fabricated."
+                : "GeckoTerminal didn't respond; the series fills in once it's reachable. Totals above are chain-live."}
             </p>
           </div>
         )}

@@ -58,8 +58,7 @@ export function TerminalTreasuryPanel({ backing, now }: { backing?: ProjectBacki
         <h2 className="section-label">Treasury</h2>
         <p className="mt-2 text-sm text-text-secondary">This token holds no treasury.</p>
         <p className="mt-1 text-xs text-text-faint">
-          It launched without ballast, so there&apos;s nothing to compose here — a fact about the token, not a figure
-          missing.
+          Launched without ballast — nothing to compose here. A fact about the token, not a missing figure.
         </p>
       </section>
     );

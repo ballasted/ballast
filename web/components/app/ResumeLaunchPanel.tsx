@@ -118,8 +118,8 @@ export function ResumeLaunchPanel({ token, symbol, factory }: { token: Address; 
     <section className="card border-accent p-5">
       <h2 className="font-serif text-lg font-semibold text-bone">Launch incomplete — pool not seeded</h2>
       <p className="mt-1 text-sm text-text-secondary">
-        ${symbol || "This token"} deployed, but its liquidity pool was never seeded, so it has no market price yet.
-        Seeding is permissionless — anyone can finish it. This locks the LP permanently and cannot be undone.
+        ${symbol || "This token"} deployed but its pool was never seeded, so it has no price yet. Seeding is
+        permissionless and locks the LP permanently — anyone can finish it.
       </p>
 
       {phase === "done" ? (

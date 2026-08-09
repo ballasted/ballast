@@ -160,8 +160,8 @@ function LeaveInterstitial({ item, onClose }: { item: Item | null; onClose: () =
       <div className="card w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-semibold text-text-primary">Leaving BALLAST</h2>
         <p className="mt-1 text-sm text-text-muted">
-          This link was provided by the project and is <span className="text-text-secondary">not verified</span> by
-          BALLAST. Check the destination before you continue.
+          Project-provided link, <span className="text-text-secondary">not verified</span> by BALLAST. Check the
+          destination before continuing.
         </p>
         <div className="mt-4 rounded-input border border-border bg-bg p-3">
           <div className="eyebrow">Destination</div>

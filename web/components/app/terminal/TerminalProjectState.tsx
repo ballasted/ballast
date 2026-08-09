@@ -60,23 +60,23 @@ export function TerminalProjectState({
         <div className="mt-3 rounded-input border border-warning-border bg-warning-bg px-3 py-2 text-xs">
           <div className="font-medium text-warning">Withdrawal announced</div>
           <p className="mt-1 text-text-secondary">
-            The creator has announced a withdrawal of creator-deposited assets.{" "}
+            Creator withdrawal announced.{" "}
             {secsToUnlock !== undefined && secsToUnlock > 0
-              ? `It can execute in ${formatDuration(secsToUnlock)}.`
-              : "The notice period has elapsed; it can execute now."}{" "}
-            Only what the creator deposited can be withdrawn — third-party deposits are locked forever.
+              ? `Executable in ${formatDuration(secsToUnlock)}.`
+              : "Notice elapsed — executable now."}{" "}
+            Only creator-deposited assets can leave; third-party deposits are locked forever.
           </p>
         </div>
       ) : (
         <p className="mt-3 text-xs text-text-faint">
-          No withdrawal announced. The creator can only ever withdraw what they themselves deposited, and only after the
-          immutable notice period above.
+          No withdrawal announced. The creator can withdraw only their own deposits, and only after the fixed notice
+          period above.
         </p>
       )}
 
       <p className="mt-2 text-[11px] text-text-faint">
-        Creator holding is 0% on every BALLAST token — no presale, no team allocation, no vesting. The notice period is
-        fixed at deploy and cannot be changed.
+        Creator holding is 0% on every BALLAST token — no presale, allocation, or vesting. Notice period is fixed at
+        deploy.
       </p>
     </section>
   );

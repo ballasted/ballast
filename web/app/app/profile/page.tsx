@@ -14,13 +14,13 @@ export default function ProfilePage() {
   const { projects, isLoading, isConfigured } = useProjects();
 
   if (!isConfigured) {
-    return <Notice title="Not configured yet" body="Deploy the core contracts and set the factory address to read a track record." />;
+    return <Notice title="Not configured yet" body="Set the factory address (after deploy) to read a track record." />;
   }
   if (!isConnected || !account) {
     return (
       <div className="card p-8 text-center">
         <h1 className="font-semibold text-text-primary">Connect your wallet</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Your creator track record is read live from the launches this wallet has created.</p>
+        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Your track record reads live from this wallet&apos;s launches.</p>
         <div className="mt-4 flex justify-center"><ConnectButton /></div>
       </div>
     );
@@ -56,7 +56,7 @@ export default function ProfilePage() {
           </section>
 
           {mine.length === 0 ? (
-            <Notice title="No launches yet" body="This wallet hasn't launched a project. When it does, its track record builds here — publicly, from the chain." />
+            <Notice title="No launches yet" body="No launches from this wallet yet. Its track record will build here, publicly from chain." />
           ) : (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-text-primary">Launches</h2>

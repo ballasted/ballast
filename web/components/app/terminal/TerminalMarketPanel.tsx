@@ -41,8 +41,7 @@ export function TerminalMarketPanel({
         />
       </dl>
       <p className="mt-3 text-xs text-text-faint">
-        Market cap is price × total supply, computed live. The pool liquidity is seeded and permanently locked, and the
-        supply is fixed at launch — there is no mint function.
+        Market cap = price × supply, live. Pool liquidity is permanently locked and supply is fixed — no mint function.
       </p>
     </section>
   );
