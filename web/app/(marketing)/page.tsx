@@ -40,45 +40,64 @@ function Hero({ stats }: { stats: HeroStats }) {
     <section className="relative overflow-hidden border-b border-border">
       {/* Brand watermark bleeding off the corner — desktop only, ~2.5% opacity. */}
       <MeanderWatermark />
-      <Container className="py-20 sm:py-28">
-        {/* Hero entrance — staggered, once on load. transform + opacity only. */}
-        <h1 className="anim-enter max-w-3xl font-serif text-4xl font-semibold tracking-tight text-bone sm:text-6xl">
-          Launch with something underneath.
-        </h1>
-        <p className="anim-enter anim-d1 mt-6 max-w-2xl text-lg text-text-secondary">
-          A launchpad on Robinhood Chain. Projects hold a treasury of tokenized
-          real-world assets — and anyone can see how much backs each token, live.
-        </p>
-        <div className="anim-enter anim-d2 mt-8 flex flex-wrap gap-3">
-          <Link
-            href="/app/discover"
-            className="rounded-button bg-green px-5 py-3 font-semibold text-bg transition-opacity hover:opacity-90"
-          >
-            Explore ballasted projects
-          </Link>
-          <Link
-            href="/app/create"
-            className="rounded-button border border-border px-5 py-3 font-semibold text-text-primary transition-colors hover:border-text-muted"
-          >
-            Launch a project
-          </Link>
-        </div>
+      <Container className="py-16 sm:py-24">
+        {/* Two columns on desktop: message + live figures on the left, the hull-at-
+            waterline brand illustration on the right (the literal "something
+            underneath"). Stacks on mobile, illustration last so the message leads. */}
+        <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+          <div>
+            {/* Hero entrance — staggered, once on load. transform + opacity only. */}
+            <h1 className="anim-enter max-w-2xl font-serif text-4xl font-semibold tracking-tight text-bone sm:text-6xl">
+              Launch with something underneath.
+            </h1>
+            <p className="anim-enter anim-d1 mt-6 max-w-xl text-lg text-text-secondary">
+              A launchpad on Robinhood Chain. Projects hold a treasury of tokenized
+              real-world assets — and anyone can see how much backs each token, live.
+            </p>
+            <div className="anim-enter anim-d2 mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/app/discover"
+                className="rounded-button bg-green px-5 py-3 font-semibold text-bg transition-opacity hover:opacity-90"
+              >
+                Explore ballasted projects
+              </Link>
+              <Link
+                href="/app/create"
+                className="rounded-button border border-border px-5 py-3 font-semibold text-text-primary transition-colors hover:border-text-muted"
+              >
+                Launch a project
+              </Link>
+            </div>
 
-        {/* Hero stat strip — LIVE, read server-side from the chain (same source as
-            Discover, so they reconcile). Small real numbers, never a guess; on a
-            read failure the dashes stay with a quiet "unavailable" below. The whole
-            strip fades in with the hero — the figures never count up. */}
-        <dl className="anim-enter anim-d3 mt-14 grid max-w-2xl grid-cols-1 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3">
-          <Stat label="Ballasted projects" value={ballasted} />
-          <Stat label="Total ballast" value={total} />
-          <Stat label="Launches this week" value={week} />
-        </dl>
-        {!stats.available && (
-          <p className="anim-enter anim-d3 mt-2 max-w-2xl text-xs text-text-faint">
-            Live figures unavailable right now — reading from the chain failed. They&apos;ll fill in once it&apos;s
-            reachable.
-          </p>
-        )}
+            {/* Hero stat strip — LIVE, read server-side from the chain (same source
+                as Discover, so they reconcile). Small real numbers, never a guess; on
+                a read failure the dashes stay with a quiet "unavailable" below. Fades
+                in with the hero — the figures never count up. */}
+            <dl className="anim-enter anim-d3 mt-12 grid max-w-xl grid-cols-3 gap-px overflow-hidden rounded-card border border-border bg-border">
+              <Stat label="Ballasted projects" value={ballasted} />
+              <Stat label="Total ballast" value={total} />
+              <Stat label="Launches this week" value={week} />
+            </dl>
+            {!stats.available && (
+              <p className="anim-enter anim-d3 mt-2 max-w-xl text-xs text-text-faint">
+                Live figures unavailable right now — reading from the chain failed. They&apos;ll fill in once it&apos;s
+                reachable.
+              </p>
+            )}
+          </div>
+
+          {/* Hull at the waterline, ballast weighting its base — the brand mark for
+              "something underneath". Decorative, self-framed; hidden from a11y tree. */}
+          <div className="anim-enter anim-d2 relative order-first lg:order-none">
+            <img
+              src="/brand/w2-waterline.png"
+              alt=""
+              aria-hidden
+              className="mx-auto w-full max-w-[420px] select-none rounded-card lg:max-w-none"
+              draggable={false}
+            />
+          </div>
+        </div>
       </Container>
     </section>
   );
@@ -148,16 +167,19 @@ function HowItWorks() {
       n: "1",
       title: "Ballast your launch",
       body: "Deposit allowlisted assets — tokenized T-bills, equities — into your treasury. Set a withdrawal notice period: 7, 30, or 90 days.",
+      img: "/brand/w3-sealed.png",
     },
     {
       n: "2",
       title: "It becomes public",
       body: "Treasury contents, backing per token, and notice period show on your project page from launch — including that you can withdraw, and how long it takes.",
+      img: "/brand/w5-supply.png",
     },
     {
       n: "3",
       title: "Withdrawals are announced first",
       body: "You can always take back what you put in — but announcing is mandatory and the delay is fixed at deploy. Everyone sees the countdown before an asset moves.",
+      img: "/brand/w4-notice.png",
     },
   ];
   return (
@@ -165,12 +187,23 @@ function HowItWorks() {
       <SectionHeading>How it works</SectionHeading>
       <div className="mt-8 grid gap-5 md:grid-cols-3">
         {steps.map((s) => (
-          <div key={s.n} className="card p-6">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-bg font-semibold text-green">
-              {s.n}
+          <div key={s.n} className="card overflow-hidden">
+            {/* Schematic illustration — the same visual language as the brand
+                (hull, sealed treasury, notice beam). Decorative; hidden from a11y. */}
+            <img
+              src={s.img}
+              alt=""
+              aria-hidden
+              draggable={false}
+              className="aspect-[16/10] w-full select-none border-b border-border object-cover opacity-90"
+            />
+            <div className="p-6">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-bg font-semibold text-green">
+                {s.n}
+              </div>
+              <h3 className="mt-4 font-semibold text-text-primary">{s.title}</h3>
+              <p className="mt-2 text-sm text-text-secondary">{s.body}</p>
             </div>
-            <h3 className="mt-4 font-semibold text-text-primary">{s.title}</h3>
-            <p className="mt-2 text-sm text-text-secondary">{s.body}</p>
           </div>
         ))}
       </div>
