@@ -12,12 +12,11 @@ export function ConfigGuard() {
       <div className="mx-auto max-w-content px-5 py-3 text-sm">
         <span className="font-semibold text-negative">Configuration error.</span>{" "}
         <span className="text-text-secondary">
-          These required contract addresses are unset or zero, so launches and
-          trades are disabled:{" "}
+          These required addresses are unset, so launches and trades are disabled:{" "}
         </span>
         <span className="text-text-primary">{missingContracts.join(", ")}</span>
         <span className="text-text-secondary">
-          . Set them in the environment after deploying the core contracts.
+          . Set them after deploying the core contracts.
         </span>
       </div>
     </div>

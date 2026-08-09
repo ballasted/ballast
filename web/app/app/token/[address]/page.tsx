@@ -161,11 +161,10 @@ export default function TokenDetailPage() {
           <h2 className="font-serif text-lg font-semibold text-bone">Project metadata withheld</h2>
           <div className="mt-2 space-y-2 text-sm text-text-secondary">
             <p>
-              BALLAST is not rendering this project&apos;s self-declared name, logo, description, or links.
-              {denyReason ? <> Reason: <span className="text-text-primary">{denyReason}</span>.</> : null} The token is
-              otherwise untouched — its price, backing, holders and trades are shown as normal, and nothing on-chain has
-              changed. See our <a className="text-green underline underline-offset-2" href="/docs/content-policy">content policy</a> for
-              what this is and is not used for.
+              BALLAST is withholding this project&apos;s self-declared name, logo, description, and links.
+              {denyReason ? <> Reason: <span className="text-text-primary">{denyReason}</span>.</> : null} Price,
+              backing, holders, and trades are unchanged. See our{" "}
+              <a className="text-green underline underline-offset-2" href="/docs/content-policy">content policy</a>.
             </p>
             <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-faint">
               {ipfsToGateway(metadataURI) && (

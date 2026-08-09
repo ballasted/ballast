@@ -71,15 +71,14 @@ export function SwapPanel({
   if (!isSwapConfigured) {
     return (
       <div className="card p-5 text-sm text-text-muted">
-        Trading needs the pool addresses (hook, router, state view). Set them after deploy to enable Buy/Sell.
+        Trading needs the pool addresses (hook, router, state view) — set them after deploy to enable Buy/Sell.
       </div>
     );
   }
   if (!hasPool) {
     return (
       <div className="card p-5 text-sm text-text-muted">
-        No pool yet — this token hasn&apos;t graduated, so there&apos;s nothing to trade against. Buy/Sell activate the
-        moment its pool is seeded.
+        No pool yet — nothing to trade against until it graduates. Buy/Sell activate the moment the pool is seeded.
       </div>
     );
   }
@@ -222,8 +221,8 @@ export function SwapPanel({
             let anyone try to pin the received amount and hit a raw revert. */}
         {side === "sell" && (
           <p className="mt-1 text-[11px] text-text-faint">
-            Estimated. Sells are exact-input, so the received amount can&apos;t be fixed — the least you&apos;ll
-            accept is the slippage-based minimum below.
+            Estimated. Sells are exact-input, so the output isn&apos;t fixed — the least you&apos;ll accept is the
+            slippage minimum below.
           </p>
         )}
       </div>
@@ -269,8 +268,8 @@ export function SwapPanel({
         {(slipWarn || slipBlocked) && (
           <p className={cn("mt-1.5 text-xs", slipBlocked ? "text-negative" : "text-warning")}>
             {slipBlocked
-              ? "Over 15% is blocked. Pools here are thin, so a large order can move the price a long way — this size would hand too much of the trade to that movement. Split it smaller."
-              : "Above 5%. Thin pools are the normal case on BALLAST, not an edge case — a modest order can still move the price, so you may receive noticeably less than quoted."}
+              ? "Over 15% is blocked. Pools here are thin — this size gives too much to price movement. Split it smaller."
+              : "Above 5%. Pools here are thin, so even a modest order can move the price — you may get noticeably less than quoted."}
           </p>
         )}
       </div>
@@ -293,18 +292,18 @@ export function SwapPanel({
           />
           <DetailRow
             label="Network fee"
-            hint="Estimated gas, paid in ETH. Your wallet shows the exact amount at signing; priority fees do nothing on this chain."
+            hint="Estimated gas in ETH; wallet shows the exact amount at signing. Priority fees do nothing here."
             value={feeWei !== undefined ? `≈ ${fmt(feeWei, 6)} ETH` : "shown at signing"}
           />
           <DetailRow
             label="Route"
-            hint="The venue this trades through, and how ETH is handled inside the single swap call"
+            hint="The venue, and how ETH is wrapped inside the swap."
             value={side === "buy" ? "Uniswap v4 · ETH wrapped in-route" : "Uniswap v4 · unwrapped to ETH"}
           />
           {highImpact && (
             <p className="pt-1 text-xs text-warning">
-              Your own order moves the price by {priceImpactPct!.toFixed(1)}%. Liquidity here is thin by design, so
-              this is expected on larger sizes — a smaller order, or splitting it, keeps more of the quote.
+              Your order moves the price {priceImpactPct!.toFixed(1)}%. Liquidity is thin by design; a smaller order, or
+              splitting it, keeps more of the quote.
             </p>
           )}
         </div>
@@ -433,8 +432,7 @@ function SellSteps({ phase, symbol }: { phase: SwapPhase; symbol: string }) {
     <div className="mt-3 rounded-input border border-border bg-bg px-3 py-2">
       {idle ? (
         <p className="text-xs text-text-faint">
-          Selling grants a one-time Permit2 approval for {symbol}, then swaps — the WETH output is unwrapped to ETH for
-          you.
+          Sell = a one-time Permit2 approval, then the swap. WETH output is unwrapped to ETH for you.
         </p>
       ) : (
         <ol className="space-y-1.5">

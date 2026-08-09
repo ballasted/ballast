@@ -18,8 +18,7 @@ export function NetworkGuard() {
         <div className="text-sm text-warning">
           <span className="font-semibold">Wrong network.</span>{" "}
           <span className="text-text-secondary">
-            BALLAST runs only on {targetChain.name}. Switch to continue —
-            transactions are disabled until you do.
+            BALLAST runs only on {targetChain.name} — switch to enable transactions.
           </span>
           {error && <span className="mt-1 block text-negative">{error}</span>}
         </div>

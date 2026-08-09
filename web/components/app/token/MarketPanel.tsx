@@ -37,7 +37,7 @@ export function MarketPanel({
         <p className="mt-3 text-sm text-warning">{notIndexed ? "Not on GeckoTerminal yet" : "Market data unreachable"}</p>
         <p className="mt-1 max-w-md text-xs text-text-faint">
           {notIndexed
-            ? "GeckoTerminal lists a pool once it crosses roughly $1,000 of liquidity. Until then there's no external venue list — backing and price above are read live from the chain regardless."
+            ? "GeckoTerminal lists a pool once it clears ~$1,000 liquidity. Until then there's no venue list — backing and price above are chain-read regardless."
             : "GeckoTerminal didn't respond. Venues will appear when it's reachable again; backing and price above are unaffected (chain-read)."}
         </p>
       </section>
@@ -54,8 +54,8 @@ export function MarketPanel({
 
       {disagree && (
         <p className="mt-3 rounded-input border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning">
-          GeckoTerminal shows {smallUsd(gt!)} — it disagrees with the on-chain price by more than 1%. The on-chain
-          figure governs; treat the external one as indicative.
+          GeckoTerminal shows {smallUsd(gt!)}, off the on-chain price by &gt;1%. On-chain governs; treat this as
+          indicative.
         </p>
       )}
 
@@ -84,7 +84,7 @@ export function MarketPanel({
 
       <p className="mt-4 text-[11px] text-text-faint">
         Venues via GeckoTerminal{market.fetchedAt ? ` · updated ${formatEt(market.fetchedAt)}` : ""}. Backing and price
-        are read live from the chain and are independent of this.
+        are chain-read, independent of this.
       </p>
     </section>
   );
