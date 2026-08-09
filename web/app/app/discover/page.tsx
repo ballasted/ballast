@@ -376,22 +376,23 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 // cards resolve (the biggest perceived-quality win for slow chain reads).
 function SkeletonGrid() {
   return (
-    <div className="grid gap-3 sm:grid-cols-2" aria-hidden>
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-surface-raised" />
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="card overflow-hidden">
+          {/* Media band — matches the card's aspect so the grid doesn't reflow. */}
+          <div className="aspect-[16/10] w-full animate-pulse bg-surface-raised" />
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-3">
               <div className="space-y-1.5">
                 <div className="h-4 w-24 animate-pulse rounded bg-surface-raised" />
                 <div className="h-3 w-32 animate-pulse rounded bg-surface-raised" />
               </div>
+              <div className="h-5 w-14 animate-pulse rounded bg-surface-raised" />
             </div>
-            <div className="h-6 w-12 animate-pulse rounded bg-surface-raised" />
-          </div>
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="h-4 w-40 animate-pulse rounded bg-surface-raised" />
-            <div className="mt-1.5 h-3 w-28 animate-pulse rounded bg-surface-raised" />
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="h-4 w-40 animate-pulse rounded bg-surface-raised" />
+              <div className="mt-1.5 h-3 w-28 animate-pulse rounded bg-surface-raised" />
+            </div>
           </div>
         </div>
       ))}

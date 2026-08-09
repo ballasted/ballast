@@ -116,13 +116,15 @@
     transform: none;
   }
 
-  /* Card hover — background + border only, never scale. */
+  /* Card hover — background + border, plus a small settle-up lift so a card reads
+     as interactive (launchpad feel) without ever scaling. */
   .card-hover {
-    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out;
   }
   .card-hover:hover {
     background-color: theme("colors.surface-hover");
     border-color: theme("colors.text.faint");
+    transform: translateY(-2px);
   }
 
   /* Proportion bars grow from 0 to their width on first paint only. */
@@ -145,6 +147,7 @@
   }
   html { scroll-behavior: auto !important; }
   .reveal { opacity: 1; transform: none; }
+  .card-hover:hover { transform: none; }
 }
 
 @layer components {
