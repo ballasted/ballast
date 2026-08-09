@@ -46,9 +46,8 @@ function Hero({ stats }: { stats: HeroStats }) {
           Launch with something underneath.
         </h1>
         <p className="anim-enter anim-d1 mt-6 max-w-2xl text-lg text-text-secondary">
-          BALLAST is a launchpad on Robinhood Chain where projects can hold a
-          treasury of tokenized real-world assets — and anyone can see exactly how
-          much, per token, live.
+          A launchpad on Robinhood Chain. Projects hold a treasury of tokenized
+          real-world assets — and anyone can see how much backs each token, live.
         </p>
         <div className="anim-enter anim-d2 mt-8 flex flex-wrap gap-3">
           <Link
@@ -100,15 +99,13 @@ function Problem() {
       <SectionHeading>Every token is worth whatever the next buyer pays.</SectionHeading>
       <Prose>
         <p>
-          That is the whole model. Bonding curves exist because there is nothing
-          underneath to price against — so the market invents a price out of
-          attention alone.
+          That&apos;s the whole model. Bonding curves exist because there&apos;s
+          nothing underneath — so price is invented out of attention alone.
         </p>
         <p>
           It works until attention leaves. In July, the largest launchpad on
-          Robinhood Chain collected roughly $12 million in fees, stopped launching
-          tokens, and went quiet two days later. Nobody could see it coming, because
-          there was nothing to see.
+          Robinhood Chain took roughly $12 million in fees, stopped launching, and
+          went quiet two days later. Nobody saw it coming — there was nothing to see.
         </p>
       </Prose>
       <PullQuote>You cannot audit a vibe.</PullQuote>
@@ -125,8 +122,8 @@ function Difference() {
       </SectionHeading>
       <Prose>
         <p>
-          Tokenized equities and Chainlink price feeds are native here. That makes
-          one number possible that no other launchpad can produce:
+          Tokenized equities and Chainlink feeds are native here — which makes one
+          number possible that no other launchpad can produce:
         </p>
       </Prose>
       <pre className="my-6 max-w-xl overflow-x-auto rounded-card border border-border bg-bg p-5 text-sm text-text-primary">
@@ -134,13 +131,11 @@ function Difference() {
       </pre>
       <Prose>
         <p>
-          Projects deposit real tokenized assets into a treasury contract. BALLAST
-          reads it, prices it, and shows it on every card, every chart, every
-          portfolio row.
+          Projects deposit assets into a treasury contract. BALLAST reads it, prices
+          it, and shows it — every card, every chart, every portfolio row.
         </p>
         <p>
-          This is not curation, a rating, or a seal of approval. It is arithmetic on
-          public data.
+          Not curation, a rating, or a seal of approval. Arithmetic on public data.
         </p>
       </Prose>
     </Section>
@@ -152,17 +147,17 @@ function HowItWorks() {
     {
       n: "1",
       title: "Ballast your launch",
-      body: "Deposit tokenized T-bills, equities, or other allowlisted assets into your project treasury. Choose your withdrawal notice period: 7, 30, or 90 days.",
+      body: "Deposit allowlisted assets — tokenized T-bills, equities — into your treasury. Set a withdrawal notice period: 7, 30, or 90 days.",
     },
     {
       n: "2",
       title: "It becomes public",
-      body: "Your treasury contents, backing per token, and notice period appear on your project page from the moment you launch. So does the fact that you can withdraw, and how long that would take.",
+      body: "Treasury contents, backing per token, and notice period show on your project page from launch — including that you can withdraw, and how long it takes.",
     },
     {
       n: "3",
       title: "Withdrawals are announced first",
-      body: "You can always take back what you put in. But announcing is mandatory and the delay is fixed at deploy time. Everyone sees the countdown before a single asset moves.",
+      body: "You can always take back what you put in — but announcing is mandatory and the delay is fixed at deploy. Everyone sees the countdown before an asset moves.",
     },
   ];
   return (
@@ -246,13 +241,12 @@ function NotEveryProject() {
       <SectionHeading>Not every project needs ballast.</SectionHeading>
       <Prose>
         <p>
-          Memes launch here too, with an empty treasury and a label that says so.
-          That is not a warning — it is a fact, stated plainly, the same way a full
-          treasury is.
+          Memes launch here too — empty treasury, labelled as such. Not a warning,
+          just a fact, stated the same way a full treasury is.
         </p>
         <p>
-          A token with no ballast is not a worse token. It is a different bet, and you
-          should be able to tell which one you are making before you buy.
+          A token with no ballast isn&apos;t a worse token — it&apos;s a different
+          bet. You should know which one you&apos;re making before you buy.
         </p>
       </Prose>
     </Section>
@@ -266,9 +260,9 @@ function Audiences() {
         <div className="card p-8">
           <h2 className="font-serif text-xl font-semibold text-bone">Show your work.</h2>
           <p className="mt-4 text-sm text-text-secondary">
-            If you have raised, if you hold a treasury, if you are building something
-            with assets behind it — most launchpads give you no way to prove it. You
-            end up sounding exactly like the project that raised nothing.
+            If you hold a treasury or built something with assets behind it, most
+            launchpads give you no way to prove it — you sound exactly like the
+            project that raised nothing.
           </p>
           <p className="mt-4 text-sm text-text-secondary">
             Ballast is how you show the difference without asking anyone to trust you.
@@ -285,14 +279,13 @@ function Audiences() {
             Know what you are holding.
           </h2>
           <p className="mt-4 text-sm text-text-secondary">
-            Every project page shows backing per token, how much is locked
-            permanently, how much the creator can withdraw and after how long, the
-            creator&apos;s history across previous launches, and how much of past
-            deposits they still hold.
+            Every project page shows backing per token, what&apos;s locked
+            permanently, what the creator can withdraw and after how long, and their
+            track record across past launches — including deposits they still hold.
           </p>
           <p className="mt-4 text-sm text-text-secondary">
             Your portfolio shows what share of your holdings sits on a verified
-            treasury and what share does not.
+            treasury, and what share doesn&apos;t.
           </p>
           <Link
             href="/app/discover"
@@ -313,15 +306,15 @@ const FAQ = [
   },
   {
     q: "Can a creator drain the treasury?",
-    a: "A creator can withdraw only what they deposited themselves, and only after publicly announcing it and waiting out the notice period fixed when the project launched. Assets deposited by anyone else are locked permanently and cannot be withdrawn by anyone.",
+    a: "A creator can withdraw only what they deposited, and only after announcing it publicly and waiting out the notice period fixed at launch. Anything deposited by anyone else is locked permanently.",
   },
   {
     q: "What if I deposit ballast to a project?",
-    a: "It is permanent. You cannot withdraw it, you receive nothing in return, and the project may still fail. Read the confirmation screen carefully — it is deliberately blunt.",
+    a: "It's permanent. You can't withdraw it, you get nothing in return, and the project may still fail. Read the confirmation screen — it's deliberately blunt.",
   },
   {
     q: "Why does the equity value sometimes stop updating?",
-    a: "Tokenized equity feeds run 24/5 — regular, pre-market, post-market and overnight sessions — so weekday nights are covered. They rest on weekends, market holidays, and thin overnight windows, holding the last published price. When a feed is resting we show that last price with its timestamp, clearly marked, and never estimate, smooth, or forward-project a price we do not have.",
+    a: "Tokenized equity feeds run 24/5, so weekday nights are covered. They rest on weekends, holidays, and thin overnight windows, holding the last published price. When a feed is resting we show that last price with its timestamp, clearly marked — and never estimate, smooth, or forward-project a price we don't have.",
   },
   {
     q: "Can the notice period be changed after launch?",
@@ -329,7 +322,7 @@ const FAQ = [
   },
   {
     q: "Is a high backing ratio good?",
-    a: "It is a number, not a verdict. A token trading at 5× its backing may be overvalued or may reflect real expectations about the project. We show the figure and the 30-day average. The judgement is yours.",
+    a: "It's a number, not a verdict. A token at 5× its backing may be overvalued, or may reflect real expectations. We show the figure and the 30-day average; the judgement is yours.",
   },
   {
     q: "Are you affiliated with Robinhood?",
