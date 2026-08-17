@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "depth_band": 1,
+    "light_shafts": 1,
+    "particles": 6,
+    "seabed": false,
+    "bytes": 2458
+  },
+  {
+    "id": 2,
+    "depth_band": 1,
+    "light_shafts": 3,
+    "particles": 6,
+    "seabed": false,
+    "bytes": 2611
+  },
+  {
+    "id": 60,
+    "depth_band": 1,
+    "light_shafts": 1,
+    "particles": 7,
+    "seabed": false,
+    "bytes": 2526
+  },
+  {
+    "id": 180,
+    "depth_band": 2,
+    "light_shafts": 2,
+    "particles": 10,
+    "seabed": false,
+    "bytes": 2797
+  },
+  {
+    "id": 340,
+    "depth_band": 4,
+    "light_shafts": 3,
+    "particles": 14,
+    "seabed": false,
+    "bytes": 3139
+  },
+  {
+    "id": 500,
+    "depth_band": 5,
+    "light_shafts": 1,
+    "particles": 18,
+    "seabed": false,
+    "bytes": 3232
+  },
+  {
+    "id": 680,
+    "depth_band": 7,
+    "light_shafts": 0,
+    "particles": 23,
+    "seabed": false,
+    "bytes": 3212
+  },
+  {
+    "id": 840,
+    "depth_band": 9,
+    "light_shafts": 0,
+    "particles": 27,
+    "seabed": true,
+    "bytes": 3778
+  },
+  {
+    "id": 950,
+    "depth_band": 10,
+    "light_shafts": 0,
+    "particles": 30,
+    "seabed": true,
+    "bytes": 3983
+  },
+  {
+    "id": 1000,
+    "depth_band": 10,
+    "light_shafts": 0,
+    "particles": 32,
+    "seabed": true,
+    "bytes": 4113
+  }
+]

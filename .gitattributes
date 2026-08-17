@@ -1,0 +1,6 @@
+# Manatee mint: the byte-for-byte SVG reference fixtures MUST stay LF. The Foundry
+# test (test/ManateeRenderer.t.sol) reads these with vm.readLine and compares them
+# against the contract's output, which contains no carriage returns. If autocrlf
+# rewrote them to CRLF on checkout, every comparison would fail on a trailing \r.
+docs/manatee-svgs-ref/all-1000.txt text eol=lf
+docs/manatee-svgs-ref/*.svg text eol=lf
