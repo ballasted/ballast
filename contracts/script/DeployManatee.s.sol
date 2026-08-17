@@ -15,13 +15,29 @@ import {BallastManatee} from "../src/manatee/BallastManatee.sol";
 /// Required env:
 ///   DEPLOYER_PRIVATE_KEY — funded deployer (also becomes owner + royalty payee)
 ///
+/// First load the repo-root .env into the shell (forge only auto-reads a .env in
+/// the Foundry root, i.e. contracts/):  set -a; source ../.env; set +a
+///
 /// Dry run (simulate, show args + predicted addresses, NO broadcast):
 ///   forge script script/DeployManatee.s.sol:DeployManatee --rpc-url robinhood_mainnet
 ///
-/// Broadcast + verify:
+/// Broadcast + verify. Blockscout needs BOTH --verifier and --verifier-url — bare
+/// `--verifier blockscout` errors with "No verifier URL specified":
 ///   forge script script/DeployManatee.s.sol:DeployManatee \
 ///     --rpc-url robinhood_mainnet --broadcast \
-///     --verify --verifier blockscout --chain-id 4663
+///     --verify --verifier blockscout \
+///     --verifier-url https://robinhoodchain.blockscout.com/api/
+///
+/// If verification is skipped or fails at deploy time, verify the two contracts
+/// after the fact (paths are relative to contracts/, so use src/... NOT
+/// contracts/src/...):
+///   forge verify-contract <RENDERER_ADDR> src/manatee/ManateeRenderer.sol:ManateeRenderer \
+///     --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/ \
+///     --compiler-version 0.8.28 --watch
+///   forge verify-contract <NFT_ADDR> src/manatee/BallastManatee.sol:BallastManatee \
+///     --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/ \
+///     --compiler-version 0.8.28 --watch \
+///     --constructor-args $(cast abi-encode "constructor(address)" <RENDERER_ADDR>)
 contract DeployManatee is Script {
     function run() external returns (ManateeRenderer renderer, BallastManatee nft) {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
