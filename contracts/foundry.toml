@@ -17,6 +17,8 @@ remappings = [
     "@uniswap/v4-core/=lib/v4-core/",
     "v4-periphery/=lib/v4-periphery/",
 ]
+# Allow the manatee test to read the Python reference SVGs for byte diffing.
+fs_permissions = [{ access = "read", path = "../docs/manatee-svgs-ref" }]
 
 # Robinhood Chain — mainnet 4663, testnet 46630. Verify with blockscout.
 # See docs/robinhood-chain-research.md for RPCs and the sequencer/oracle gotchas.

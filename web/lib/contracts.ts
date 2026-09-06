@@ -33,6 +33,13 @@ export const METADATA_DENYLIST_ADDRESS = asAddress(
 export const BUYBACK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_ADDRESS);
 export const isBuybackConfigured = Boolean(BUYBACK_ADDRESS);
 
+// BallastManatee — the standalone 1,000-piece on-chain NFT mint (/app/mint). A
+// separate product: no protocol contract is touched. Unset = the mint page shows
+// an honest "not live yet" state. The art is computed on-chain by an immutable
+// renderer the NFT points at, so only the collection address is needed here.
+export const MANATEE_ADDRESS = asAddress(process.env.NEXT_PUBLIC_MANATEE_ADDRESS);
+export const isManateeConfigured = Boolean(MANATEE_ADDRESS);
+
 // ── Pre-existing chain infrastructure (verified, docs/robinhood-chain-research) ─
 export const WETH_ADDRESS = asAddress(process.env.NEXT_PUBLIC_WETH_ADDRESS);
 export const POOL_MANAGER_ADDRESS = asAddress(
