@@ -245,6 +245,18 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "int24" }],
   },
   {
+    // Declares only the first 3 fields on PURPOSE, even though the newer contract
+    // source has a 4th (quoteAsset, appended last). Decoding FEWER fields than a
+    // return actually contains is safe (the trailing word is simply ignored) —
+    // decoding MORE than it contains is NOT (throws "buffer overrun while
+    // deserializing"), which is exactly what broke every launches() read, for
+    // EVERY factory, once this was briefly widened to 4 before any factory with
+    // a 4th field existed on-chain. FACTORY_ADDRESSES is a union of factories
+    // deployed at different times (see lib/contracts.ts) — the prior ones will
+    // NEVER have quoteAsset, so this shared ABI must stay the conservative
+    // (smallest-common) shape forever. Nothing today reads a 4th field; if that
+    // changes, read it via a SEPARATE call that tolerates failure per-factory
+    // (allowFailure), never by widening this one.
     type: "function",
     name: "launches",
     stateMutability: "view",
@@ -253,10 +265,6 @@ export const ballastFactoryAbi = [
       { name: "token", type: "address" },
       { name: "treasury", type: "address" },
       { name: "creator", type: "address" },
-      // Appended last, matching the on-chain struct — existing tuple-destructuring
-      // readers (useProjects.ts et al.) that only read the first 3 fields keep
-      // working unchanged.
-      { name: "quoteAsset", type: "address" },
     ],
   },
   {
@@ -276,6 +284,17 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "uint256" }],
   },
   {
+    // Matches the CURRENTLY DEPLOYED factory's function selector exactly (4 args,
+    // no quoteAsset_) — every write always targets FACTORY_ADDRESS (see
+    // lib/contracts.ts), never a prior one, so there is exactly one live shape to
+    // match at any time, not "both". The contract source has a newer 5-arg version
+    // (quoteAsset_) ready for the NEXT factory deploy — when that ships and
+    // FACTORY_ADDRESS is repointed to it, widen this to 5 args AND the
+    // useLaunchRunner.ts call site TOGETHER, in the same change as the redeploy.
+    // Widening one without the other reverts every launch with no revert reason
+    // (wrong selector) — this is exactly the bug this comment exists to prevent
+    // recurring (2026-09-16: Discover/create both broke this way after the ABI was
+    // updated ahead of a deploy that hadn't happened yet).
     type: "function",
     name: "launch",
     stateMutability: "nonpayable",
@@ -284,10 +303,6 @@ export const ballastFactoryAbi = [
       { name: "symbol_", type: "string" },
       { name: "noticePeriod", type: "uint256" },
       { name: "metadataURI", type: "string" },
-      // Restricted to WETH on-chain for now (QuoteAssetNotSupportedYet otherwise) —
-      // exposed as a real parameter already so this signature doesn't change again
-      // once other quote assets are actually supported.
-      { name: "quoteAsset_", type: "address" },
     ],
     outputs: [
       { name: "id", type: "uint256" },

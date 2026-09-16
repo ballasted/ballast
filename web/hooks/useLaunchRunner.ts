@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useWriteContract, usePublicClient, useAccount } from "wagmi";
 import { decodeEventLog, type Address } from "viem";
 import { ballastFactoryAbi, erc20Abi, projectTreasuryWriteAbi } from "@/lib/abis";
-import { FACTORY_ADDRESS, WETH_ADDRESS } from "@/lib/contracts";
+import { FACTORY_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt } from "@/lib/waitForReceipt";
@@ -130,17 +130,15 @@ export function useLaunchRunner() {
         if (token && treasury) {
           patch("launch", { status: "success" });
         } else {
-          // quoteAsset_ is always WETH today — the contract rejects anything else
-          // (QuoteAssetNotSupportedYet) until Seeder/Hook gain ordering support for
-          // other quote assets. No UI choice to make yet.
-          const weth = WETH_ADDRESS;
-          if (!weth) throw new Error("WETH address not configured");
+          // 4 args — matches the CURRENTLY DEPLOYED factory's launch() exactly (no
+          // quoteAsset_ param yet; it only ever supports WETH). See the comment on
+          // ballastFactoryAbi's `launch` entry in lib/abis.ts before widening this.
           const receipt = await send("launch", () =>
             writeContractAsync({
               address: factory,
               abi: ballastFactoryAbi,
               functionName: "launch",
-              args: [params.name, params.symbol, params.noticePeriod, params.metadataURI, weth],
+              args: [params.name, params.symbol, params.noticePeriod, params.metadataURI],
               chainId: CHAIN_ID,
             }),
           );
