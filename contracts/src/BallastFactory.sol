@@ -65,6 +65,12 @@ contract BallastFactory {
         address token;
         address treasury;
         address creator;
+        /// @notice The asset this launch's pool is (or will be) paired against.
+        ///         Restricted to `weth` for now — see QuoteAssetNotSupportedYet.
+        ///         Appended last so existing tuple-destructuring readers of
+        ///         `launches(id)` (web/lib/abis.ts callers reading only the first
+        ///         three fields) keep working unchanged.
+        address quoteAsset;
     }
 
     Launch[] public launches;
@@ -89,12 +95,20 @@ contract BallastFactory {
     error NotLaunchToken();
     error AlreadyGraduated();
     /// @notice A backed launch's feed was stale beyond its outer bound at graduation
-    ///         (treasury feed: past AssetRegistry.staleAfter; ETH/USD: past
-    ///         ethUsdStaleWindow), so P0 would be set from a dead price permanently.
-    ///         This is the coarse backstop — the off-chain create flow additionally
-    ///         gates on market hours, so in practice this only trips on a genuinely
-    ///         broken feed, not on an expected weekend/holiday rest.
+    ///         (treasury asset: past AssetRegistry.staleAfter; the quote asset
+    ///         itself, WETH or otherwise: past ethUsdStaleWindow for WETH, or its
+    ///         own AssetRegistry.staleAfter for anything else), so P0 would be set
+    ///         from a dead price permanently. This is the coarse backstop — the
+    ///         off-chain create flow additionally gates on market hours, so in
+    ///         practice this only trips on a genuinely broken feed, not on an
+    ///         expected weekend/holiday rest.
     error FeedStaleAtLaunch(address asset);
+    /// @notice quoteAsset_ must be `weth` for now. Pairing against USDC or a
+    ///         stock/ETF asset needs the ordering helper + one-sided-liquidity
+    ///         support that BallastSeeder/BallastHook don't have yet (queued as
+    ///         separate work) — accepting the choice here before those land would
+    ///         let a launch claim a pairing that graduation can't actually honor.
+    error QuoteAssetNotSupportedYet();
 
     constructor(
         address registry_,
@@ -124,23 +138,54 @@ contract BallastFactory {
         if (graduated[token]) revert AlreadyGraduated();
         graduated[token] = true;
 
-        address treasury = launches[idPlus1 - 1].treasury;
-        (int24 tickLower, uint256 backingUsd) = _p0Tick(treasury);
+        Launch memory l = launches[idPlus1 - 1];
+        (int24 tickLower, uint256 backingUsd) = _p0Tick(l.treasury, l.quoteAsset);
 
         uint256 supply = IERC20(token).balanceOf(address(this));
         IERC20(token).transfer(address(seeder), supply);
         seeder.seed(token, tickLower);
 
-        emit Graduated(token, treasury, tickLower, backingUsd);
+        emit Graduated(token, l.treasury, tickLower, backingUsd);
     }
 
-    /// @dev P0 tick + backing USD. Reverts if any held treasury feed is stale beyond
-    ///      its per-asset outer bound (AssetRegistry.staleAfter), or the ETH/USD leg
-    ///      beyond ethUsdStaleWindow. Age is NOT a proxy for inaccuracy on a
-    ///      deviation-threshold feed — a quiet-but-recent SGOV price is correct — so
-    ///      this bound is the asset's real cadence (e.g. 120h SGOV / 96h equities),
-    ///      not a blunt trading-hours window.
-    function _p0Tick(address treasury) internal view returns (int24 tickLower, uint256 backingUsd1e18) {
+    /// @dev The quote asset's own USD price + decimals, for P0 conversion. WETH
+    ///      isn't in AssetRegistry (it's not a treasury asset), so it keeps using
+    ///      the immutable ethUsdFeed/ethUsdStaleWindow exactly as before; any other
+    ///      quote asset resolves through AssetRegistry — the SAME feed + staleAfter
+    ///      already trusted for treasury valuation of that asset. Reverts (never
+    ///      returns a price from a dead feed) if the quote asset's feed is stale
+    ///      beyond its outer bound — a stale price at seed time would set a wrong
+    ///      opening price PERMANENTLY, and that's unrecoverable.
+    function _quotePrice(address quoteAsset) internal view returns (uint256 price1e18, uint8 decimals) {
+        if (quoteAsset == weth) {
+            (, int256 e,, uint256 eUpd,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
+            require(e > 0, "invalid quote price");
+            if (block.timestamp - eUpd > ethUsdStaleWindow) revert FeedStaleAtLaunch(quoteAsset);
+            price1e18 = FullMath.mulDiv(uint256(e), 1e18, 10 ** AggregatorV3Interface(ethUsdFeed).decimals());
+            decimals = 18;
+            return (price1e18, decimals);
+        }
+        address feed = IAssetRegistry(registry).feedOf(quoteAsset);
+        (, int256 ans,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
+        require(ans > 0, "invalid quote price");
+        if (block.timestamp - updatedAt > IAssetRegistry(registry).staleAfter(quoteAsset)) {
+            revert FeedStaleAtLaunch(quoteAsset);
+        }
+        price1e18 = FullMath.mulDiv(uint256(ans), 1e18, 10 ** AggregatorV3Interface(feed).decimals());
+        decimals = IERC20Metadata(quoteAsset).decimals();
+    }
+
+    /// @dev P0 tick + backing USD. Reverts if any held treasury feed, or the quote
+    ///      asset's own feed, is stale beyond its outer bound (see _quotePrice).
+    ///      Age is NOT a proxy for inaccuracy on a deviation-threshold feed — a
+    ///      quiet-but-recent SGOV price is correct — so this bound is the asset's
+    ///      real cadence (e.g. 120h SGOV / 96h equities), not a blunt trading-hours
+    ///      window.
+    function _p0Tick(address treasury, address quoteAsset)
+        internal
+        view
+        returns (int24 tickLower, uint256 backingUsd1e18)
+    {
         address[] memory assets = ProjectTreasury(treasury).assets();
         bool backed;
         for (uint256 i = 0; i < assets.length; i++) {
@@ -158,12 +203,9 @@ contract BallastFactory {
         }
         if (!backed) return (UNBACKED_TICK, 0);
 
-        (, int256 e,, uint256 eUpd,) = AggregatorV3Interface(ethUsdFeed).latestRoundData();
-        require(e > 0, "invalid eth price");
-        if (block.timestamp - eUpd > ethUsdStaleWindow) revert FeedStaleAtLaunch(ethUsdFeed);
-        uint256 ethUsd = FullMath.mulDiv(uint256(e), 1e18, 10 ** AggregatorV3Interface(ethUsdFeed).decimals());
+        (uint256 quotePrice1e18, uint8 quoteDecimals) = _quotePrice(quoteAsset);
         // Permanent-effect P0 math, isolated + fuzzed in BackingMath.
-        tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, ethUsd, TICK_SPACING);
+        tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING);
     }
 
     /// @dev CREATE2 address of `initHash` deployed by this factory with `salt`.
@@ -188,13 +230,22 @@ contract BallastFactory {
     /// @param metadataURI ipfs://CID of the pinned project metadata JSON (name,
     ///        description, category, logo, website, x). Stored on the token as the
     ///        permanent launch identity + the initial (updatable) current URI.
-    function launch(string calldata name_, string calldata symbol_, uint256 noticePeriod, string calldata metadataURI)
-        external
-        returns (uint256 id, address token, address treasury)
-    {
+    /// @param quoteAsset_ The asset this launch's pool will be paired against at
+    ///        graduation. Must be `weth` for now (see QuoteAssetNotSupportedYet) —
+    ///        exposed as a real parameter already, rather than added later, so this
+    ///        function's signature doesn't need to change again once USDC/stock
+    ///        quote assets are actually supported.
+    function launch(
+        string calldata name_,
+        string calldata symbol_,
+        uint256 noticePeriod,
+        string calldata metadataURI,
+        address quoteAsset_
+    ) external returns (uint256 id, address token, address treasury) {
         if (!(noticePeriod == 7 days || noticePeriod == 30 days || noticePeriod == 90 days)) {
             revert BadNoticePeriod();
         }
+        if (quoteAsset_ != weth) revert QuoteAssetNotSupportedYet();
 
         // 1. Token — CREATE2-mined so its address sorts BELOW weth (currency0).
         //    Full supply minted to the factory for one-sided pool seeding. Mining is
@@ -219,7 +270,7 @@ contract BallastFactory {
         // 4. Register.
         token = address(t);
         treasury = address(tr);
-        launches.push(Launch({token: token, treasury: treasury, creator: msg.sender}));
+        launches.push(Launch({token: token, treasury: treasury, creator: msg.sender, quoteAsset: quoteAsset_}));
         id = launches.length - 1;
         launchIdOf[token] = id + 1;
 

@@ -56,7 +56,7 @@ export async function listLaunches(): Promise<LaunchRow[]> {
     const out: LaunchRow[] = [];
     rows.forEach((r) => {
       if (r.status !== "success") return;
-      const [token, treasury, creator] = r.result as readonly [Address, Address, Address];
+      const [token, treasury, creator] = r.result as readonly [Address, Address, Address, Address];
       const key = token.toLowerCase();
       if (seen.has(key)) return;
       seen.add(key);

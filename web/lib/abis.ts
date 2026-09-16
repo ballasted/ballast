@@ -253,6 +253,10 @@ export const ballastFactoryAbi = [
       { name: "token", type: "address" },
       { name: "treasury", type: "address" },
       { name: "creator", type: "address" },
+      // Appended last, matching the on-chain struct — existing tuple-destructuring
+      // readers (useProjects.ts et al.) that only read the first 3 fields keep
+      // working unchanged.
+      { name: "quoteAsset", type: "address" },
     ],
   },
   {
@@ -280,6 +284,10 @@ export const ballastFactoryAbi = [
       { name: "symbol_", type: "string" },
       { name: "noticePeriod", type: "uint256" },
       { name: "metadataURI", type: "string" },
+      // Restricted to WETH on-chain for now (QuoteAssetNotSupportedYet otherwise) —
+      // exposed as a real parameter already so this signature doesn't change again
+      // once other quote assets are actually supported.
+      { name: "quoteAsset_", type: "address" },
     ],
     outputs: [
       { name: "id", type: "uint256" },

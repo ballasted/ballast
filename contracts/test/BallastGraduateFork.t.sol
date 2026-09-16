@@ -86,7 +86,7 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj");
+        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj", WETH);
         // Deposit 1000 stock ($100k backing) as creator (msg.sender == this).
         stock.mint(address(this), 1000e18);
         stock.approve(treasury, type(uint256).max);
@@ -126,7 +126,7 @@ contract BallastGraduateForkTest is Test {
 
     function test_unbackedLaunch_constantP0_endToEnd() public {
         if (!forked) return;
-        (, address token,) = factory.launch("Meme", "MEME", 7 days, "");
+        (, address token,) = factory.launch("Meme", "MEME", 7 days, "", WETH);
         factory.graduate(token); // no treasury assets -> UNBACKED_TICK
 
         PoolKey memory key = PoolKey({
@@ -181,7 +181,7 @@ contract BallastGraduateForkTest is Test {
         ethUsd = bound(ethUsd, 200e8, 10_000e8); // ETH/USD at 8 dec
         ethFeed.setAnswer(int256(ethUsd), block.timestamp);
 
-        (, address token, address treasury) = factory.launch("F", "F", 30 days, "");
+        (, address token, address treasury) = factory.launch("F", "F", 30 days, "", WETH);
         _addBackedAsset(treasury, feedDec, 100 * (10 ** feedDec), amount, 0); // $100 asset
         factory.graduate(token);
 
@@ -197,11 +197,11 @@ contract BallastGraduateForkTest is Test {
         if (!forked) return;
         // Two identical launches; one asset has uiMultiplier 3x. Backing (hence P0)
         // must be IDENTICAL — the feed price already embeds the multiplier (rule 7).
-        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "");
+        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "", WETH);
         _addBackedAsset(trA, 8, 100e8, 1000e18, 1e18); // uiMultiplier 1.0
         factory.graduate(tokA);
 
-        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "");
+        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "", WETH);
         _addBackedAsset(trB, 8, 100e8, 1000e18, 3e18); // uiMultiplier 3.0
         factory.graduate(tokB);
 
@@ -213,7 +213,7 @@ contract BallastGraduateForkTest is Test {
 
     function test_mixedAssets_sumBacking() public {
         if (!forked) return;
-        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "");
+        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "", WETH);
         _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
         _addBackedAsset(treasury, 18, 2e18, 10_000e18, 0); // $20k (2 USD, 18-dec feed)
         factory.graduate(token);
@@ -232,7 +232,7 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 4 days); // > 3d staleAfter
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "");
+        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -251,7 +251,7 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 2 hours); // quiet, < 3d bound
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "");
+        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -268,13 +268,17 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp); // treasury feed fresh
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "");
+        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
 
         ethFeed.setAnswer(3000e8, block.timestamp - 25 hours); // ETH feed > 24h window
-        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, address(ethFeed)));
+        // Reports the QUOTE ASSET (WETH), not its feed — matches the treasury-asset
+        // stale check's convention (which has always reported the asset, not the
+        // feed); the old ETH-specific branch was the inconsistent one, fixed here
+        // as part of generalizing this check to any quote asset.
+        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, WETH));
         factory.graduate(token);
     }
 }

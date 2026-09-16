@@ -39,7 +39,7 @@ contract BallastFactoryTest is Test {
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
         vm.prank(creator);
-        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj");
+        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj", WETH);
         return (BallastToken(token), ProjectTreasury(treasury));
     }
 
@@ -148,17 +148,35 @@ contract BallastFactoryTest is Test {
         uint256[3] memory ok = [uint256(7 days), 30 days, 90 days];
         for (uint256 i = 0; i < ok.length; i++) {
             vm.prank(creator);
-            factory.launch("P", "P", ok[i], "");
+            factory.launch("P", "P", ok[i], "", WETH);
         }
         assertEq(factory.launchCount(), 3);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 5 days, "");
+        factory.launch("P", "P", 5 days, "", WETH);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 0, "");
+        factory.launch("P", "P", 0, "", WETH);
+    }
+
+    // ===================================================================== //
+    //  Quote asset: WETH-only for now, but a real per-launch field          //
+    // ===================================================================== //
+
+    function test_quoteAsset_storedPerLaunch() public {
+        vm.prank(creator);
+        (, address token,) = factory.launch("P", "P", 30 days, "", WETH);
+        (,,, address storedQuoteAsset) = factory.launches(factory.launchIdOf(token) - 1);
+        assertEq(storedQuoteAsset, WETH);
+    }
+
+    function test_quoteAsset_nonWeth_reverts() public {
+        address notWeth = makeAddr("notWeth");
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
+        factory.launch("P", "P", 30 days, "", notWeth);
     }
 
     // ===================================================================== //
@@ -189,16 +207,17 @@ contract BallastFactoryTest is Test {
 
     function test_twoLaunches_distinctAddressesAndIds() public {
         vm.prank(creator);
-        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "");
+        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "", WETH);
         vm.prank(alice);
-        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "");
+        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "", WETH);
 
         assertEq(id0, 0);
         assertEq(id1, 1);
         assertTrue(tok0 != tok1 && tre0 != tre1);
         assertEq(factory.launchIdOf(tok1), 2); // id 1 + 1
-        (address tokenAt1,, address creatorAt1) = factory.launches(1);
+        (address tokenAt1,, address creatorAt1, address quoteAssetAt1) = factory.launches(1);
         assertEq(tokenAt1, tok1);
         assertEq(creatorAt1, alice);
+        assertEq(quoteAssetAt1, WETH);
     }
 }
