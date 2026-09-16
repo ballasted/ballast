@@ -41,9 +41,9 @@ function PrimaryCard() {
           </Link>
         </div>
 
-        <div className="relative mx-auto h-44 w-44 shrink-0 sm:h-52 sm:w-52" aria-hidden>
+        <div className="relative mx-auto h-44 w-44 shrink-0 sm:h-52 sm:w-52 lg:h-64 lg:w-64" aria-hidden>
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised lg:h-16 lg:w-16">
               <KeelMark size={26} />
             </div>
           </div>
