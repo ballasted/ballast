@@ -11,6 +11,7 @@ import { marketCapUsd, marketCapSupply, formatCompactUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
 
 const MAX_RESULTS = 8;
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
 // ⌘K / Ctrl+K command search (spec §4, App shell). Tokens only — searched
 // client-side against the SAME useProjects registry Discover/Terminal use, so
@@ -28,15 +29,26 @@ export function CommandSearch() {
   const { projects, isLoading, isConfigured } = useProjects();
   const metaByToken = useProjectsMeta(projects);
 
+  const trimmed = q.trim();
+  const isAddr = ADDRESS_RE.test(trimmed);
+
+  // A pasted address is the most common entry path (someone shared a CA) — it
+  // ALWAYS gets a direct-open row, pinned first, even if it isn't (yet) in the
+  // enumerated launch list: /app/token/[address] itself resolves any address
+  // directly from chain state, the same way the Terminal picker's "Open"
+  // button does, rather than depending on client-side registry enumeration.
   const results = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = trimmed.toLowerCase();
     const scored = (s ? projects.filter((p) => matches(p, s)) : projects).map((p) => ({
       project: p,
       rank: s ? rankOf(p, s) : 0,
     }));
     scored.sort((a, b) => a.rank - b.rank);
-    return scored.slice(0, MAX_RESULTS).map((r) => r.project);
-  }, [projects, q]);
+    return scored
+      .filter((r) => !(isAddr && r.project.token.toLowerCase() === s))
+      .slice(0, MAX_RESULTS)
+      .map((r) => r.project);
+  }, [projects, trimmed, isAddr]);
 
   useEffect(() => setActiveIndex(0), [q, open]);
 
@@ -51,6 +63,25 @@ export function CommandSearch() {
       router.push(`/app/token/${p.token}`);
     },
     [close, router],
+  );
+
+  const goToAddress = useCallback(() => {
+    close();
+    router.push(`/app/token/${trimmed}`);
+  }, [close, router, trimmed]);
+
+  // Unified row list for keyboard nav: the address row (if any) is always index 0.
+  const rowCount = (isAddr ? 1 : 0) + results.length;
+  const activate = useCallback(
+    (i: number) => {
+      if (isAddr && i === 0) {
+        goToAddress();
+        return;
+      }
+      const p = results[isAddr ? i - 1 : i];
+      if (p) go(p);
+    },
+    [isAddr, results, goToAddress, go],
   );
 
   // Global hotkey: Cmd/Ctrl+K opens from anywhere; Escape closes while open.
@@ -108,14 +139,13 @@ export function CommandSearch() {
                 onKeyDown={(e) => {
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
-                    setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+                    setActiveIndex((i) => Math.min(i + 1, rowCount - 1));
                   } else if (e.key === "ArrowUp") {
                     e.preventDefault();
                     setActiveIndex((i) => Math.max(i - 1, 0));
                   } else if (e.key === "Enter") {
                     e.preventDefault();
-                    const picked = results[activeIndex];
-                    if (picked) go(picked);
+                    if (rowCount > 0) activate(activeIndex);
                   }
                 }}
               />
@@ -123,23 +153,34 @@ export function CommandSearch() {
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto p-2">
+              {isAddr && (
+                <AddressRow
+                  address={trimmed}
+                  active={activeIndex === 0}
+                  onMouseEnter={() => setActiveIndex(0)}
+                  onClick={goToAddress}
+                />
+              )}
               {!isConfigured ? (
                 <EmptyRow text="Not configured yet — no launches to search." />
               ) : isLoading ? (
                 <EmptyRow text="Loading launches…" />
               ) : results.length === 0 ? (
-                <EmptyRow text={q.trim() ? `No tokens match “${q.trim()}”.` : "No launches yet."} />
+                !isAddr && <EmptyRow text={trimmed ? `No tokens match “${trimmed}”.` : "No launches yet."} />
               ) : (
-                results.map((p, i) => (
-                  <ResultRow
-                    key={p.token}
-                    p={p}
-                    logo={ipfsToGateway(metaByToken.get(p.token.toLowerCase())?.logo)}
-                    active={i === activeIndex}
-                    onMouseEnter={() => setActiveIndex(i)}
-                    onClick={() => go(p)}
-                  />
-                ))
+                results.map((p, i) => {
+                  const rowIndex = isAddr ? i + 1 : i;
+                  return (
+                    <ResultRow
+                      key={p.token}
+                      p={p}
+                      logo={ipfsToGateway(metaByToken.get(p.token.toLowerCase())?.logo)}
+                      active={rowIndex === activeIndex}
+                      onMouseEnter={() => setActiveIndex(rowIndex)}
+                      onClick={() => go(p)}
+                    />
+                  );
+                })
               )}
             </div>
           </div>
@@ -166,6 +207,38 @@ function rankOf(p: Project, s: string): number {
   if (symbol.includes(s)) return 2;
   if ((p.name ?? "").toLowerCase().includes(s)) return 3;
   return 4;
+}
+
+function AddressRow({
+  address,
+  active,
+  onMouseEnter,
+  onClick,
+}: {
+  address: string;
+  active: boolean;
+  onMouseEnter: () => void;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      className={cn(
+        "mb-1 flex w-full items-center gap-3 rounded-input border border-border p-2.5 text-left transition-colors",
+        active ? "bg-surface-hover" : "hover:bg-surface-raised",
+      )}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-bg text-green">
+        <IconSearch />
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="block text-text-primary">Open token</span>
+        <span className="block truncate font-mono text-xs text-text-muted">{address}</span>
+      </div>
+      <span className="shrink-0 text-xs text-text-faint">Enter</span>
+    </button>
+  );
 }
 
 function ResultRow({
