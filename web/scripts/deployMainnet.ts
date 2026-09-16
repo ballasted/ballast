@@ -13,7 +13,7 @@
  *   4. BallastHook(poolManager, feeConfig, weth) // CREATE2 via the Arachnid proxy,
  *                                                //   salt mined for flags 0xCC
  *   5. BallastSeeder(poolManager, weth, hook)
- *   6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow)
+ *   6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow, greenQuoteAssets)
  *
  * It reads the COMPILED creation bytecode + ABI straight from Foundry's build output
  * (contracts/out/<C>.sol/<C>.json). If those artifacts are missing you must first
@@ -122,6 +122,16 @@ const FLAG_MASK = (1n << 14n) - 1n; // Hooks.ALL_HOOK_MASK = 0x3FFF
 const MAX_MINE_ITERS = 2_000_000; // ~16k expected; generous cap (Solidity uses 160_444)
 
 const DEFAULT_ETH_USD_STALE_WINDOW = 24n * 60n * 60n; // 24h, matching the Solidity default
+
+// GREEN quote assets per docs/exit-liquidity-table.md (2026-09-17) — the only
+// non-WETH quoteAsset_ values BallastFactory.launch() will accept. Matches
+// contracts/script/DeployMainnet.s.sol exactly; re-run that table before
+// adding to this list on any future deploy.
+const GREEN_QUOTE_ASSETS: Address[] = [
+  "0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5", // SGOV
+  "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC", // NVDA
+  "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C", // SPY
+];
 
 const CONTRACTS_OUT = resolve(__dirname, "../../contracts/out");
 
@@ -304,7 +314,7 @@ async function main() {
 
   // 5. BallastSeeder(poolManager, weth, hook)
   addr.BallastSeeder = account ? getContractAddress({ from: account.address, nonce: BigInt(nonce++) }) : ("0x?" as Address);
-  // 6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow)
+  // 6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow, greenQuoteAssets)
   addr.BallastFactory = account ? getContractAddress({ from: account.address, nonce: BigInt(nonce++) }) : ("0x?" as Address);
 
   // ── print the plan ──
@@ -317,7 +327,7 @@ async function main() {
     {
       step: "BallastFactory",
       action: "deploy",
-      args: [addr.AssetRegistry, weth, addr.BallastSeeder, ethUsdFeed, ethUsdStaleWindow.toString()],
+      args: [addr.AssetRegistry, weth, addr.BallastSeeder, ethUsdFeed, ethUsdStaleWindow.toString(), GREEN_QUOTE_ASSETS],
       predicted: addr.BallastFactory,
     },
   ];
@@ -400,6 +410,7 @@ async function main() {
     deployed.BallastSeeder,
     ethUsdFeed,
     ethUsdStaleWindow,
+    GREEN_QUOTE_ASSETS,
   ]);
 
   // ── report ── (ready to paste into web/.env.local)
