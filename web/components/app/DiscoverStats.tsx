@@ -2,20 +2,23 @@
 
 import type { Project } from "@/hooks/useProjects";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
-import { useProtocolHolders } from "@/hooks/useProtocolHolders";
+import { useBuyback } from "@/hooks/useBuyback";
 import { useNow } from "@/hooks/useNow";
 import { formatUsd, timeAgo } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-// The four headline figures above the Discover board (Phase 3). Total ballast leads
-// — backing is our story, and no other launchpad on this chain can show it.
+// The four headline figures above the Discover board (spec §5.2: reserve value
+// locked, 24h volume, tokens launched, total burned). Locked and burned are the
+// two figures that say what Ballast actually is — a holders-count card doesn't,
+// so it isn't here even though it was in an earlier revision.
 //
-// Reconciliation by construction: total ballast and tokens-launched are derived from
-// the SAME `projects` array Discover renders below (passed in as a prop, not a
-// separate counter), so they can never drift from the list. 24h volume and holders
-// come from GeckoTerminal / Blockscout over that same token set. Each card states
-// its source and freshness; an unreachable source shows an em dash + "unavailable",
-// never a zero — and a genuinely small number (even $0 total ballast) is shown as-is.
+// Reconciliation by construction: locked value and tokens-launched are derived
+// from the SAME `projects` array Discover renders below (passed in as a prop, not
+// a separate counter), so they can never drift from the list. 24h volume comes
+// from GeckoTerminal; total burned from BuybackBurner's own dead-address balance
+// (useBuyback — independently verifiable, not the contract's self-reported
+// counter). Each card states its source and freshness; an unreachable source
+// shows an em dash + "unavailable", never a zero.
 export function DiscoverStats({
   projects,
   count,
@@ -27,30 +30,25 @@ export function DiscoverStats({
 }) {
   const now = useNow();
   const series = useAnalyticsSeries();
-  const tokens = projects.map((p) => p.token);
-  const { data: holders, isLoading: holdersLoading } = useProtocolHolders(tokens);
+  const buyback = useBuyback();
 
-  // Total ballast = Σ verified treasury value across the same projects listed below.
-  let totalBallastUsd = 0n;
-  for (const p of projects) if (p.backing) totalBallastUsd += p.backing.totalValueUsd;
+  // Locked = Σ the portion of each treasury that can never leave (the figure that
+  // actually backs the token), not total treasury value (which includes what a
+  // creator could still withdraw).
+  let lockedUsd = 0n;
+  for (const p of projects) if (p.backing) lockedUsd += p.backing.lockedValueUsd;
 
   const volumeOk = series.available && series.volume24hUsd !== undefined;
-  const holdersOk = holders.available && holders.uniqueHolders !== undefined;
+  const burnedOk = buyback.configured && buyback.totalBurned !== undefined;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
-        label="Total ballast"
-        value={isLoading ? undefined : formatUsd(totalBallastUsd, { compact: true })}
+        label="Reserve value locked"
+        value={isLoading ? undefined : formatUsd(lockedUsd, { compact: true })}
         sub="Live · on-chain"
         loading={isLoading}
         accent
-      />
-      <StatCard
-        label="Tokens launched"
-        value={isLoading ? undefined : String(count)}
-        sub="Live · on-chain"
-        loading={isLoading}
       />
       <StatCard
         label="24h volume"
@@ -59,13 +57,30 @@ export function DiscoverStats({
         loading={Boolean(series.isLoading) && !series.fetchedAt}
       />
       <StatCard
-        label="Holders"
-        value={holdersOk ? `${holders.exact === false ? "≥" : ""}${holders.uniqueHolders!.toLocaleString("en")}` : null}
-        sub={holdersOk ? freshLabel("Blockscout", holders.fetchedAt, now) : "Blockscout · unavailable"}
-        loading={holdersLoading && !holders.fetchedAt}
+        label="Tokens launched"
+        value={isLoading ? undefined : String(count)}
+        sub="Live · on-chain"
+        loading={isLoading}
+      />
+      <StatCard
+        label="Total burned"
+        value={burnedOk ? formatUsdBurned(buyback.totalBurned!, buyback.totalSupply) : null}
+        sub={buyback.configured ? "Live · on-chain (dead-address balance)" : "Not deployed yet"}
+        loading={buyback.isLoading}
       />
     </div>
   );
+}
+
+// $BALLAST has no USD price feed of its own for burned-supply purposes — show the
+// burned share of supply (a real, on-chain-verifiable ratio) rather than inventing
+// a USD figure from a market price that can move independently of what's burned.
+function formatUsdBurned(totalBurned: bigint, totalSupply: bigint | undefined): string {
+  const tokens = Number(totalBurned) / 1e18;
+  const tokenLabel = Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(tokens);
+  if (!totalSupply || totalSupply === 0n) return `${tokenLabel} $BALLAST`;
+  const pct = (Number(totalBurned) / Number(totalSupply)) * 100;
+  return `${tokenLabel} (${pct.toFixed(2)}%)`;
 }
 
 // value: a string to show, `null` for an unreachable source (em dash + the sub-line

@@ -14,9 +14,10 @@ import {
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
   METADATA_DENYLIST_ADDRESS,
+  WETH_ADDRESS,
   isDenylistConfigured,
 } from "@/lib/contracts";
-import { candidatePoolKeys, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, tokenIsCurrency0, tokenPriceInQuote } from "@/lib/pool";
 
 // Server-side read of the handful of figures a token's link-preview card needs:
 // ticker, name, live price, and backing per token (or "not ballasted"). This runs
@@ -130,8 +131,8 @@ async function readPriceUsd(
 ): Promise<bigint | undefined> {
   const stateView = STATE_VIEW_ADDRESS;
   const ethFeed = ETH_USD_FEED_ADDRESS;
-  if (!stateView || !ethFeed) return undefined;
-  const candidates = candidatePoolKeys(token);
+  if (!stateView || !ethFeed || !WETH_ADDRESS) return undefined;
+  const candidates = candidatePoolKeys(token, WETH_ADDRESS);
   if (candidates.length === 0) return undefined;
   try {
     const poolContracts: ContractFunctionParameters[] = candidates.flatMap((c) => [
@@ -146,7 +147,7 @@ async function readPriceUsd(
       if (liq?.status === "success" && (liq.result as bigint) > 0n && slot0?.status === "success") {
         const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
         if (sqrtPriceX96 > 0n) {
-          priceWeth = priceFromSqrtX96(sqrtPriceX96);
+          priceWeth = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, WETH_ADDRESS), 18);
           break;
         }
       }

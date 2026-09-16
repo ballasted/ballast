@@ -5,6 +5,7 @@
   "description": "BALLAST — marketing site + app (ballasted.xyz). Marketing at root, app under /app.",
   "scripts": {
     "dev": "next dev",
+    "prebuild": "tsx scripts/checkTickerLogos.ts",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -35,6 +36,7 @@
     "postcss": "^8.5.1",
     "solc": "^0.8.36",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   }

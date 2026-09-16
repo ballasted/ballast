@@ -8,22 +8,22 @@ import {
   ballastFactoryAbi,
   ballastTokenAbi,
   stateViewAbi,
-  aggregatorV3Abi,
 } from "@/lib/abis";
 import {
   LENS_ADDRESS,
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
-  ETH_USD_FEED_ADDRESS,
+  WETH_ADDRESS,
   hookForFactory,
   isLensConfigured,
   isFactoryConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, poolKeyForToken, poolId, tokenIsCurrency0, tokenPriceInQuote } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
 import { liveQuery } from "@/lib/refresh";
+import { useEthUsd } from "./useEthUsd";
 
 const CHAIN_ID = activeChain.id;
 
@@ -172,14 +172,18 @@ export function useProjects() {
   // deployed hook per token — this is what keeps the Discover read O(tokens), not
   // O(tokens × hooks). Fallback to probing all hooks only if a factory has no paired
   // hook (config slip), so it degrades rather than breaks. cands[i] aligns with rows.
+  // Every launch's quote asset is WETH today (BallastFactory rejects anything
+  // else) — hardcoded here as the one place that's still true everywhere,
+  // rather than threaded through from each launch's own (currently-always-WETH)
+  // quoteAsset field, since nothing downstream varies yet either.
   const cands = sorted.map((e) => {
-    if (!isSwapConfigured) return [];
+    if (!isSwapConfigured || !WETH_ADDRESS) return [];
     const hook = hookForFactory(factories[e.factoryIndex]);
     if (hook) {
-      const key = poolKeyForToken(e.row[0], hook);
+      const key = poolKeyForToken(e.row[0], WETH_ADDRESS, hook);
       return key ? [{ hook, key, id: poolId(key) }] : [];
     }
-    return candidatePoolKeys(e.row[0]);
+    return candidatePoolKeys(e.row[0], WETH_ADDRESS);
   });
   const poolRes = useReadContracts({
     allowFailure: true,
@@ -193,21 +197,7 @@ export function useProjects() {
     ),
     query: liveQuery(isSwapConfigured && cands.some((cs) => cs.length > 0)),
   });
-  const ethRes = useReadContracts({
-    allowFailure: true,
-    contracts: ETH_USD_FEED_ADDRESS
-      ? [
-          { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "latestRoundData", chainId: CHAIN_ID },
-          { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals", chainId: CHAIN_ID },
-        ]
-      : [],
-    query: liveQuery(Boolean(ETH_USD_FEED_ADDRESS)),
-  });
-  let ethUsd1e18: bigint | undefined;
-  if (ethRes.data?.[0]?.status === "success" && ethRes.data?.[1]?.status === "success") {
-    const answer = (ethRes.data[0].result as unknown as [bigint, bigint, bigint, bigint, bigint])[1];
-    if (answer > 0n) ethUsd1e18 = (answer * 10n ** 18n) / 10n ** BigInt(ethRes.data[1].result as number);
-  }
+  const { ethUsd1e18 } = useEthUsd();
 
   const projects: Project[] = [];
   let cursor = 0;
@@ -238,10 +228,10 @@ export function useProjects() {
         if (liq?.status === "success" && (liq.result as bigint) > 0n) {
           hasPool = true;
           const liquidity = liq.result as bigint;
-          if (slot0?.status === "success") {
+          if (slot0?.status === "success" && WETH_ADDRESS) {
             const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
             if (sqrtPriceX96 > 0n) {
-              marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+              marketPriceWeth = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, WETH_ADDRESS), 18);
               depthToDoubleUsd = usdToDoublePrice(liquidity, sqrtPriceX96, ethUsd1e18);
             }
           }

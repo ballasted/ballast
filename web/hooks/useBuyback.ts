@@ -17,6 +17,22 @@ const CHAIN_ID = activeChain.id;
 // contracts/src/BuybackBurner.sol.
 export const buybackBurnerAbi = [
   { type: "function", name: "ballast", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  // Public struct getter — Solidity returns a PoolKey's members as separate
+  // named outputs, not one tuple. Used by useBallastMarket to price $BALLAST
+  // the same way useProjects prices every other token (live StateView read).
+  {
+    type: "function",
+    name: "poolKey",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "currency0", type: "address" },
+      { name: "currency1", type: "address" },
+      { name: "fee", type: "uint24" },
+      { name: "tickSpacing", type: "int24" },
+      { name: "hooks", type: "address" },
+    ],
+  },
   { type: "function", name: "totalBallastBurned", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "totalWethSpent", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   { type: "function", name: "buybackCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },

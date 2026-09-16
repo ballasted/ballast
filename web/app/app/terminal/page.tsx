@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import type { Address } from "viem";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useProjectsMeta } from "@/hooks/useProjectMeta";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { formatBackingPerToken, shortAddress } from "@/lib/format";
 import { Meander } from "@/components/Meander";
@@ -108,7 +108,7 @@ function TokenRow({ p, logo }: { p: Project; logo?: string }) {
   const price = p.marketPriceUsd !== undefined ? formatBackingPerToken(p.marketPriceUsd) : "—";
   return (
     <Link href={`/app/terminal/${p.token}`} className="card card-hover flex items-center gap-3 p-3">
-      <Logo src={logo} symbol={p.symbol} size={40} />
+      <AssetDisc src={logo} symbol={p.symbol} size={40} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-semibold text-text-primary">{p.symbol ?? shortAddress(p.token)}</span>

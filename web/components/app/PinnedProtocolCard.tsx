@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { Meander } from "@/components/Meander";
 import { formatSmallUsd } from "@/lib/market";
 import { shortAddress } from "@/lib/format";
@@ -37,7 +37,7 @@ export function PinnedProtocolCard({ project }: { project: Project }) {
 
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={56} />
+          <AssetDisc src={ipfsToGateway(meta?.logo)} symbol={symbol} size={56} />
           <div className="min-w-0">
             <div className="truncate font-serif text-xl font-semibold text-bone">{symbol ?? shortAddress(token)}</div>
             <p className="truncate text-sm text-text-muted">{name ?? "BALLASTED"}</p>

@@ -9,6 +9,12 @@ import { cn } from "@/lib/cn";
 // seamlessly at any width; the internal hook is the key motif. Rendered in bone at
 // low opacity so it reads as a quiet rule, never decoration competing with data.
 export function Meander({ className }: { className?: string }) {
+  return <MeanderRule className={className} />;
+}
+
+// Alias matching the spec's naming (`<MeanderRule>`, spec §3 "Surface style").
+// Same component, kept under one implementation rather than duplicating it.
+export function MeanderRule({ className }: { className?: string }) {
   return (
     <div className={cn("h-4 w-full text-bone/20", className)} aria-hidden>
       <svg width="100%" height="16" role="presentation" className="block">

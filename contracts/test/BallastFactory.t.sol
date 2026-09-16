@@ -32,14 +32,24 @@ contract BallastFactoryTest is Test {
         factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours);
     }
 
-    function test_tokenMinedBelowWeth_currency0() public {
+    // Salt mining is gone (step c of the quote-asset workstream): a token's
+    // address is now plain-CREATE, nonce-based, and genuinely unconstrained
+    // relative to WETH — it can land on either side. This test used to assert
+    // the mined ordering; now it only asserts launch() itself doesn't depend on
+    // ordering at all (deploy succeeds regardless of which side the address
+    // happens to fall on). Whether a SPECIFIC token can graduate is a separate,
+    // later question — BallastSeeder still only supports token-as-currency0
+    // pools until its mirrored one-sided-liquidity math ships.
+    function test_launch_succeedsRegardlessOfTokenAddressOrdering() public {
         (BallastToken t,) = _launch();
-        assertLt(uint160(address(t)), uint160(WETH), "token must sort below WETH (currency0)");
+        assertTrue(address(t) != address(0), "token must deploy");
+        // No assertion on address(t) vs WETH — that relationship is no longer
+        // guaranteed, by design.
     }
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
         vm.prank(creator);
-        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj");
+        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj", WETH);
         return (BallastToken(token), ProjectTreasury(treasury));
     }
 
@@ -148,17 +158,35 @@ contract BallastFactoryTest is Test {
         uint256[3] memory ok = [uint256(7 days), 30 days, 90 days];
         for (uint256 i = 0; i < ok.length; i++) {
             vm.prank(creator);
-            factory.launch("P", "P", ok[i], "");
+            factory.launch("P", "P", ok[i], "", WETH);
         }
         assertEq(factory.launchCount(), 3);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 5 days, "");
+        factory.launch("P", "P", 5 days, "", WETH);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 0, "");
+        factory.launch("P", "P", 0, "", WETH);
+    }
+
+    // ===================================================================== //
+    //  Quote asset: WETH-only for now, but a real per-launch field          //
+    // ===================================================================== //
+
+    function test_quoteAsset_storedPerLaunch() public {
+        vm.prank(creator);
+        (, address token,) = factory.launch("P", "P", 30 days, "", WETH);
+        (,,, address storedQuoteAsset) = factory.launches(factory.launchIdOf(token) - 1);
+        assertEq(storedQuoteAsset, WETH);
+    }
+
+    function test_quoteAsset_nonWeth_reverts() public {
+        address notWeth = makeAddr("notWeth");
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
+        factory.launch("P", "P", 30 days, "", notWeth);
     }
 
     // ===================================================================== //
@@ -189,16 +217,17 @@ contract BallastFactoryTest is Test {
 
     function test_twoLaunches_distinctAddressesAndIds() public {
         vm.prank(creator);
-        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "");
+        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "", WETH);
         vm.prank(alice);
-        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "");
+        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "", WETH);
 
         assertEq(id0, 0);
         assertEq(id1, 1);
         assertTrue(tok0 != tok1 && tre0 != tre1);
         assertEq(factory.launchIdOf(tok1), 2); // id 1 + 1
-        (address tokenAt1,, address creatorAt1) = factory.launches(1);
+        (address tokenAt1,, address creatorAt1, address quoteAssetAt1) = factory.launches(1);
         assertEq(tokenAt1, tok1);
         assertEq(creatorAt1, alice);
+        assertEq(quoteAssetAt1, WETH);
     }
 }

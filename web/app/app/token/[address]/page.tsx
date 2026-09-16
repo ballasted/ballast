@@ -28,7 +28,7 @@ import { TerminalChart } from "@/components/app/terminal/TerminalChart";
 import { useOhlcv } from "@/hooks/useOhlcv";
 import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
 import { useHolders } from "@/hooks/useHolders";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
@@ -106,7 +106,7 @@ export default function TokenDetailPage() {
         <header className="card p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Logo src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={48} />
+              <AssetDisc src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={48} />
               <div className="min-w-0">
                 <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
                 <p className="truncate text-sm text-text-muted">

@@ -79,7 +79,7 @@ export async function getHeroStats(): Promise<HeroStats> {
     const treasuries: Address[] = [];
     rows.forEach((r) => {
       if (r.status !== "success") return;
-      const [token, treasury] = r.result as readonly [Address, Address, Address];
+      const [token, treasury] = r.result as readonly [Address, Address, Address, Address];
       const key = token.toLowerCase();
       if (seen.has(key)) return;
       seen.add(key);

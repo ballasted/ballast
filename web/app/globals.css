@@ -5,6 +5,10 @@
 @layer base {
   :root {
     color-scheme: dark;
+    /* Table/list row height — comfortable default. Compact density (terminal
+       view) overrides this to 32px via a class on a scoped ancestor; tables
+       must read this variable rather than branching JSX (Foundation §4). */
+    --row-height: 44px;
   }
 
   html {
@@ -20,7 +24,7 @@
   }
 
   ::selection {
-    background: rgba(0, 200, 5, 0.25);
+    background: rgba(34, 201, 58, 0.25);
   }
 
   /* Ambient depth (density §1). A fixed layer behind /app content: a faint patina
@@ -34,8 +38,23 @@
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(120% 58% at 50% 0%, rgba(0, 200, 5, 0.035), rgba(0, 200, 5, 0) 60%),
-      radial-gradient(80% 50% at 100% 100%, rgba(221, 216, 202, 0.02), rgba(221, 216, 202, 0) 55%);
+      radial-gradient(120% 58% at 50% 0%, rgba(34, 201, 58, 0.035), rgba(34, 201, 58, 0) 60%),
+      radial-gradient(80% 50% at 100% 100%, rgba(245, 243, 236, 0.02), rgba(245, 243, 236, 0) 55%);
+  }
+  /* 80px grid, masked so it fades toward the edges rather than reading as a
+     discrete rule (spec §3, "Surface style"). A separate pseudo-element rather
+     than folded into the `background` shorthand above, since `mask-image` only
+     needs to apply to the grid layer, not the radial glows. */
+  .ambient-bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(34, 201, 58, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 201, 58, 0.05) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(60% 60% at 50% 30%, black, transparent 75%);
+    -webkit-mask-image: radial-gradient(60% 60% at 50% 30%, black, transparent 75%);
   }
   .ambient-bg::after {
     content: "";
@@ -55,8 +74,19 @@
     z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(90% 55% at 50% -6%, rgba(0, 200, 5, 0.05), rgba(0, 200, 5, 0) 55%),
-      radial-gradient(70% 50% at 8% 96%, rgba(221, 216, 202, 0.02), rgba(221, 216, 202, 0) 55%);
+      radial-gradient(90% 55% at 50% -6%, rgba(34, 201, 58, 0.05), rgba(34, 201, 58, 0) 55%),
+      radial-gradient(70% 50% at 8% 96%, rgba(245, 243, 236, 0.02), rgba(245, 243, 236, 0) 55%);
+  }
+  .ambient-bg-marketing::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(34, 201, 58, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 201, 58, 0.06) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(70% 65% at 50% 10%, black, transparent 78%);
+    -webkit-mask-image: radial-gradient(70% 65% at 50% 10%, black, transparent 78%);
   }
   .ambient-bg-marketing::after {
     content: "";
@@ -68,6 +98,21 @@
 
   a {
     @apply transition-colors duration-150;
+  }
+
+  /* Density (spec §3) — compact rows for the terminal view. Comfortable is the
+     :root default (44px); this only overrides it when toggled. */
+  body[data-density="compact"] {
+    --row-height: 32px;
+  }
+
+  /* Blur balances (spec §4, App shell) — applies to every element carrying
+     data-balance, app-wide, and survives reloads via useBlurBalances. */
+  [data-balance] {
+    transition: filter 150ms ease-out;
+  }
+  body[data-blur-balances="true"] [data-balance] {
+    filter: blur(6px);
   }
 
   /* Visible keyboard focus everywhere — never removed, only styled. */
@@ -127,6 +172,39 @@
     transform: translateY(-2px);
   }
 
+  /* Discover hero (spec §5.1) — a slow orbit of reserve-asset discs around the
+     keel mark. Two paired animations: the outer wrapper per disc rotates full
+     circle, an inner wrapper counter-rotates at the same rate so the disc
+     artwork itself stays upright throughout. Both complete a full 360°, so
+     freezing after one (near-instant) reduced-motion iteration lands back on
+     the same static arrangement the animation started from — no separate
+     reduced-motion override needed here. */
+  .orbit-ring {
+    animation: ballast-orbit 40s linear infinite;
+  }
+  .orbit-counter {
+    animation: ballast-orbit-counter 40s linear infinite;
+  }
+  @keyframes ballast-orbit {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes ballast-orbit-counter {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+  }
+
+  /* Bottom ticker bar (spec §4) — a continuous leftward scroll. The track's
+     content is rendered twice back-to-back and travels exactly -50%, so the
+     loop is seamless regardless of how wide the content ends up being. */
+  .ticker-track {
+    animation: ballast-ticker-scroll 32s linear infinite;
+  }
+  @keyframes ballast-ticker-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
   /* Proportion bars grow from 0 to their width on first paint only. */
   .bar-grow {
     animation: ballast-bar-grow 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -164,11 +242,16 @@
      bodies and stat values everywhere. .section-label is the standard <h2> section
      title (sm, semibold); .eyebrow is the smaller micro-caption over a value or
      stat tile. Add font-semibold to an .eyebrow for the few semibold micro-labels. */
+  /* Uppercase labels are patina, not neutral grey — a label reads as "the
+     system labeling this", distinct from body/muted text. Patina, not
+     patina-dim: at 12px uppercase (the hardest contrast case on this surface)
+     patina-dim only clears ~4.2:1 against panel, under the 4.5:1 minimum.
+     Patina clears ~8:1. Patina-dim stays reserved for rules/borders/decoration. */
   .section-label {
-    @apply text-sm font-semibold uppercase tracking-wide text-text-faint;
+    @apply text-ui-xs font-semibold uppercase tracking-[0.18em] text-green;
   }
   .eyebrow {
-    @apply text-xs uppercase tracking-wide text-text-faint;
+    @apply text-ui-xs uppercase tracking-[0.18em] text-green;
   }
 
   .card {

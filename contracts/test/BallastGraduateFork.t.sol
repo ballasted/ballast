@@ -73,6 +73,37 @@ contract BallastGraduateForkTest is Test {
         IERC20(WETH).approve(address(swap), type(uint256).max);
     }
 
+    /// @dev Salt mining is gone from BallastFactory (step c of the quote-asset
+    ///      workstream) — a launched token's address is now plain-CREATE,
+    ///      nonce-based, and genuinely unconstrained relative to WETH.
+    ///      BallastSeeder now mirrors its one-sided-liquidity math for either
+    ///      ordering (step d) and there's a dedicated end-to-end test below
+    ///      (test_backedLaunch_currency1_opensAt1xBacking) proving that. Every
+    ///      OTHER test in this file is about graduation PRICE math, not
+    ///      ordering, so they force currency0 deliberately — it isolates what
+    ///      they're actually testing from which side of WETH the token's
+    ///      nonce-based address happens to land on. vm.setNonce forces the
+    ///      factory's next `new BallastToken(...)` to land at a chosen address
+    ///      deterministically, the same outcome mining used to guarantee,
+    ///      without pretending mining still exists.
+    function _forceNextLaunchCurrency0() internal {
+        uint64 nonce = uint64(vm.getNonce(address(factory)));
+        while (vm.computeCreateAddress(address(factory), nonce) >= WETH) {
+            nonce++;
+        }
+        vm.setNonce(address(factory), nonce);
+    }
+
+    /// @dev The mirror of _forceNextLaunchCurrency0 — forces the next launch's
+    ///      token address ABOVE WETH, for the dedicated currency1 end-to-end test.
+    function _forceNextLaunchCurrency1() internal {
+        uint64 nonce = uint64(vm.getNonce(address(factory)));
+        while (vm.computeCreateAddress(address(factory), nonce) <= WETH) {
+            nonce++;
+        }
+        vm.setNonce(address(factory), nonce);
+    }
+
     function _poolPrice1e18(PoolKey memory key) internal view returns (uint256) {
         (uint160 sp,,,) = MANAGER.getSlot0(key.toId());
         // price = (sp/2^96)^2, currency1/currency0 = WETH/token. Return 1e18-scaled.
@@ -86,7 +117,8 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj", WETH);
         // Deposit 1000 stock ($100k backing) as creator (msg.sender == this).
         stock.mint(address(this), 1000e18);
         stock.approve(treasury, type(uint256).max);
@@ -124,9 +156,68 @@ contract BallastGraduateForkTest is Test {
         assertApproxEqRel(claimed, 0.005 ether, 0.02e18, "creator gets 50% of the 1% fee");
     }
 
+    /// @dev Full factory.launch -> graduate pipeline for a token that sorts as
+    ///      currency1 (token > WETH) — the exact ordering CREATE2 mining no
+    ///      longer prevents in production. Proves the real entry point, not
+    ///      just BallastSeeder in isolation (see BallastSeederFork.t.sol for
+    ///      that lower-level proof).
+    function test_backedLaunch_currency1_opensAt1xBacking() public {
+        if (!forked) return;
+        MockStockToken stock = new MockStockToken("Mock NVDA", "MNVDA", 18);
+        MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
+        registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
+
+        _forceNextLaunchCurrency1();
+        (, address token, address treasury) = factory.launch("Proj1", "PRJ1", 30 days, "ipfs://proj", WETH);
+        assertGt(uint160(token), uint160(WETH), "token must sort as currency1 for this test");
+        stock.mint(address(this), 1000e18);
+        stock.approve(treasury, type(uint256).max);
+        ProjectTreasury(treasury).deposit(address(stock), 1000e18);
+
+        factory.graduate(token);
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(WETH),
+            currency1: Currency.wrap(token),
+            fee: 0,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        (uint160 sp,,,) = MANAGER.getSlot0(key.toId());
+        // raw ratio = currency1/currency0 = token/WETH, 1e18-fixed; invert to
+        // get the real price (WETH/token) the product actually quotes.
+        uint256 rawRatio = FullMath.mulDiv(uint256(sp) * uint256(sp), 1e18, 1 << 192);
+        uint256 poolP0 = FullMath.mulDiv(1e18, 1e18, rawRatio);
+        // backing/token = $100k / 1e9 = $0.0001; /$3000 = 3.333e-8 WETH/token.
+        uint256 expectedP0 = FullMath.mulDiv(0.0001e18, 1e18, 3000e18);
+        assertApproxEqRel(poolP0, expectedP0, 0.02e18, "currency1 pool must open at ~1x backing");
+        // NOT checked at rest: MANAGER.getLiquidity(key.toId()). This ordering's
+        // one-sided-below-backing range puts its coincident boundary at
+        // tickUpper (exclusive under Uniswap's half-open tick convention), so it
+        // reads 0 immediately after seeding even though the position holds real
+        // committed liquidity — see BallastSeederFork.t.sol's identical case for
+        // the full explanation. The buy below crosses that boundary and is the
+        // real proof; asserted active afterward too.
+
+        // Buy = WETH(c0) -> token(c1) = zeroForOne TRUE here (flipped vs the
+        // currency0 case), then creator claims the WETH fee same as before.
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1 ether, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+        assertGt(MANAGER.getLiquidity(key.toId()), 0, "position active after crossing into range");
+        uint256 before = IERC20(WETH).balanceOf(address(this));
+        hook.claim();
+        uint256 claimed = IERC20(WETH).balanceOf(address(this)) - before;
+        assertApproxEqRel(claimed, 0.005 ether, 0.02e18, "creator gets 50% of the 1% fee (currency1)");
+    }
+
     function test_unbackedLaunch_constantP0_endToEnd() public {
         if (!forked) return;
-        (, address token,) = factory.launch("Meme", "MEME", 7 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token,) = factory.launch("Meme", "MEME", 7 days, "", WETH);
         factory.graduate(token); // no treasury assets -> UNBACKED_TICK
 
         PoolKey memory key = PoolKey({
@@ -181,7 +272,8 @@ contract BallastGraduateForkTest is Test {
         ethUsd = bound(ethUsd, 200e8, 10_000e8); // ETH/USD at 8 dec
         ethFeed.setAnswer(int256(ethUsd), block.timestamp);
 
-        (, address token, address treasury) = factory.launch("F", "F", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("F", "F", 30 days, "", WETH);
         _addBackedAsset(treasury, feedDec, 100 * (10 ** feedDec), amount, 0); // $100 asset
         factory.graduate(token);
 
@@ -197,11 +289,13 @@ contract BallastGraduateForkTest is Test {
         if (!forked) return;
         // Two identical launches; one asset has uiMultiplier 3x. Backing (hence P0)
         // must be IDENTICAL — the feed price already embeds the multiplier (rule 7).
-        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "", WETH);
         _addBackedAsset(trA, 8, 100e8, 1000e18, 1e18); // uiMultiplier 1.0
         factory.graduate(tokA);
 
-        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "", WETH);
         _addBackedAsset(trB, 8, 100e8, 1000e18, 3e18); // uiMultiplier 3.0
         factory.graduate(tokB);
 
@@ -213,7 +307,8 @@ contract BallastGraduateForkTest is Test {
 
     function test_mixedAssets_sumBacking() public {
         if (!forked) return;
-        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "", WETH);
         _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
         _addBackedAsset(treasury, 18, 2e18, 10_000e18, 0); // $20k (2 USD, 18-dec feed)
         factory.graduate(token);
@@ -232,7 +327,8 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 4 days); // > 3d staleAfter
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -251,7 +347,8 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 2 hours); // quiet, < 3d bound
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -268,13 +365,18 @@ contract BallastGraduateForkTest is Test {
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp); // treasury feed fresh
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
-        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "");
+        _forceNextLaunchCurrency0();
+        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "", WETH);
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
 
         ethFeed.setAnswer(3000e8, block.timestamp - 25 hours); // ETH feed > 24h window
-        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, address(ethFeed)));
+        // Reports the QUOTE ASSET (WETH), not its feed — matches the treasury-asset
+        // stale check's convention (which has always reported the asset, not the
+        // feed); the old ETH-specific branch was the inconsistent one, fixed here
+        // as part of generalizing this check to any quote asset.
+        vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, WETH));
         factory.graduate(token);
     }
 }

@@ -1,6 +1,6 @@
 import type { TrendingData, TrendingItem } from "@/lib/market";
 import { listLaunches } from "@/lib/serverChain";
-import { resolveTopPool, fetchPoolTrades } from "@/lib/geckoServer";
+import { fetchTopPool, fetchPoolTrades } from "@/lib/geckoServer";
 
 // Trending, built HONESTLY from 24h trade data — ranked by unique buyers first,
 // then 24h volume, so two wallets wash-trading with each other can't buy the top
@@ -35,16 +35,23 @@ export async function GET() {
     const items = await Promise.all(
       list.map(async (l): Promise<TrendingItem> => {
         const token = l.token.toLowerCase();
-        const pool = await resolveTopPool(token);
-        if (!pool) return { token, uniqueBuyers: 0, volume24hUsd: 0, trades24h: 0 };
-        const trades = (await fetchPoolTrades(pool, token)).filter((t) => t.ts >= cutoff);
+        const top = await fetchTopPool(token);
+        if (!top) return { token, uniqueBuyers: 0, volume24hUsd: 0, trades24h: 0, priceUsd: null, change24hPct: null };
+        const trades = (await fetchPoolTrades(top.pool, token)).filter((t) => t.ts >= cutoff);
         const buyers = new Set<string>();
         let volume = 0;
         for (const t of trades) {
           volume += t.volumeUsd;
           if (t.kind === "buy" && t.wallet) buyers.add(t.wallet);
         }
-        return { token, uniqueBuyers: buyers.size, volume24hUsd: volume, trades24h: trades.length };
+        return {
+          token,
+          uniqueBuyers: buyers.size,
+          volume24hUsd: volume,
+          trades24h: trades.length,
+          priceUsd: top.priceUsd,
+          change24hPct: top.change24hPct,
+        };
       }),
     );
 

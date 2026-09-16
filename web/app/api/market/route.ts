@@ -33,6 +33,15 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+// For change24hPct specifically: a present-but-unparseable value (GeckoTerminal
+// sends something malformed) must NOT fall back to num()'s 0 — a real 0% and
+// "no real value" must never look the same (ticker bar / MarketPanel render
+// null as "unavailable", not as a flat 0% that looks fresh).
+function numOrNull(v: unknown): number | null {
+  const n = typeof v === "string" ? parseFloat(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token")?.toLowerCase();
   if (!token || !/^0x[0-9a-f]{40}$/.test(token)) {
@@ -72,7 +81,7 @@ export async function GET(req: NextRequest) {
         dexId: p.relationships?.dex?.data?.id ?? "unknown",
         volume24hUsd: num(p.attributes?.volume_usd?.h24),
         reserveUsd: num(p.attributes?.reserve_in_usd),
-        change24hPct: p.attributes?.price_change_percentage?.h24 !== undefined ? num(p.attributes.price_change_percentage.h24) : null,
+        change24hPct: numOrNull(p.attributes?.price_change_percentage?.h24),
       }))
       .filter((p) => p.address)
       .sort((a, b) => b.volume24hUsd - a.volume24hUsd)

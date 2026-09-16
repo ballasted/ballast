@@ -80,6 +80,12 @@ export type TrendingItem = {
   uniqueBuyers: number;
   volume24hUsd: number;
   trades24h: number;
+  // Free from the same per-token pool fetch trending already makes — used for
+  // "top movers" (sorted by |change24hPct|), not for the trending ranking
+  // itself (which stays unique-buyers-first). null when GeckoTerminal doesn't
+  // have it, never a fabricated 0.
+  priceUsd: number | null;
+  change24hPct: number | null;
 };
 
 export type TrendingData = {

@@ -18,9 +18,24 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+type GtTopPool = {
+  attributes?: { address?: string; price_change_percentage?: { h24?: string }; base_token_price_usd?: string };
+};
+
 // Deepest/most-relevant pool address for a token, or null if GeckoTerminal hasn't
 // indexed one yet. GeckoTerminal returns pools already ordered by relevance.
 export async function resolveTopPool(token: string): Promise<string | null> {
+  const top = await fetchTopPool(token);
+  return top?.pool ?? null;
+}
+
+// Same call as resolveTopPool, but also surfaces price + 24h% from the SAME
+// response — free (no extra request) for callers that need "top movers" style
+// data (e.g. /api/trending). A present-but-unparseable change% degrades to
+// null, never a fabricated 0% (mirrors /api/market's numOrNull).
+export async function fetchTopPool(
+  token: string,
+): Promise<{ pool: string; priceUsd: number | null; change24hPct: number | null } | null> {
   const { signal, done } = withTimeout();
   try {
     const res = await fetch(`${GT}/networks/${GT_NETWORK}/tokens/${token}/pools`, {
@@ -29,13 +44,25 @@ export async function resolveTopPool(token: string): Promise<string | null> {
       next: { revalidate: 60 },
     });
     if (!res.ok) return null;
-    const json = (await res.json()) as { data?: Array<{ attributes?: { address?: string } }> };
-    return json.data?.[0]?.attributes?.address ?? null;
+    const json = (await res.json()) as { data?: GtTopPool[] };
+    const top = json.data?.[0];
+    const pool = top?.attributes?.address;
+    if (!pool) return null;
+    return {
+      pool,
+      priceUsd: numOrNull(top?.attributes?.base_token_price_usd),
+      change24hPct: numOrNull(top?.attributes?.price_change_percentage?.h24),
+    };
   } catch {
     return null;
   } finally {
     done();
   }
+}
+
+function numOrNull(v: unknown): number | null {
+  const n = typeof v === "string" ? parseFloat(v) : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : null;
 }
 
 type GtTrade = {

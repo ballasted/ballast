@@ -1,6 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, JetBrains_Mono, Playfair_Display } from "next/font/google";
 import { SAME_AS, X_HANDLE } from "@/lib/links";
 import "./globals.css";
+
+// Self-hosted at build time by next/font (no runtime request to Google Fonts,
+// so this doesn't reopen the "marketing bundle stays offline-safe" concern the
+// previous system-font stack was chosen for — see tailwind.config.ts).
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
+const serif = Playfair_Display({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 // ROOT LAYOUT — html/body only. Deliberately contains NO web3 providers.
 // Wallet providers must wrap ONLY the /app segment (app/app/layout.tsx), so a
@@ -36,7 +44,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0C0B",
+  themeColor: "#050A06",
   width: "device-width",
   initialScale: 1,
   // Let content extend under the notch/home-indicator so env(safe-area-inset-*)
@@ -59,7 +67,7 @@ export default function RootLayout({
     sameAs: SAME_AS,
   };
   return (
-    <html lang="en">
+    <html lang="en" className={`${sans.variable} ${serif.variable} ${mono.variable}`}>
       <body>
         <script
           type="application/ld+json"

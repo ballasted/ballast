@@ -1,3 +1,4 @@
+import { Ambience } from "@/components/app/Ambience";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Meander } from "@/components/Meander";
@@ -13,8 +14,8 @@ export default function MarketingLayout({
   return (
     <div className="flex min-h-screen flex-col">
       {/* Ambient depth so the landing page reads as a lit surface, not flat black
-          (density §1, landing variant). Fixed, pure CSS, behind all content. */}
-      <div className="ambient-bg-marketing" aria-hidden />
+          (spec §3, "Surface style", hero variant). Fixed, behind all content. */}
+      <Ambience variant="hero" />
       <Header />
       <main className="flex-1">{children}</main>
       {/* Meander section rule tying the app to the brand lockup — above the footer. */}
