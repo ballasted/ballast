@@ -54,9 +54,35 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   const [error, setError] = useState<string | undefined>();
 
   const inputCurrency = side === "buy" ? WETH_ADDRESS : token;
+
+  // Decimals read LIVE from whatever `inputCurrency` actually is, never
+  // hardcoded. Today that's always WETH (buy) or this launch's own token
+  // (sell) — both genuinely 18-decimal, so this changes nothing yet. But a
+  // hardcoded `parseUnits(amountStr, 18)` would silently mis-scale a typed
+  // amount by up to 10^12 the moment `inputCurrency` on a buy becomes a
+  // per-launch quote asset that isn't 18-decimal (e.g. USDC) — a signing-path
+  // bug, not a display one. Fixed ahead of that change landing, not after.
+  const [inputDecimals, setInputDecimals] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setInputDecimals(undefined);
+    if (!publicClient || !inputCurrency) return;
+    publicClient
+      .readContract({ address: inputCurrency, abi: erc20Abi, functionName: "decimals" })
+      .then((d) => {
+        if (!cancelled) setInputDecimals(Number(d));
+      })
+      .catch(() => {
+        if (!cancelled) setInputDecimals(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, inputCurrency]);
+
   let amountIn = 0n;
   try {
-    amountIn = amountStr ? parseUnits(amountStr, 18) : 0n; // WETH + token both 18-dec
+    amountIn = amountStr && inputDecimals !== undefined ? parseUnits(amountStr, inputDecimals) : 0n;
   } catch {
     amountIn = 0n;
   }
