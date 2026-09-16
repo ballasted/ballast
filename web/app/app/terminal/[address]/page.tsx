@@ -19,6 +19,7 @@ import { TerminalProjectState } from "@/components/app/terminal/TerminalProjectS
 import { TerminalTabs } from "@/components/app/terminal/TerminalTabs";
 import { TerminalStatusBar } from "@/components/app/terminal/TerminalStatusBar";
 import { SwapPanel } from "@/components/app/SwapPanel";
+import { VerificationPanel } from "@/components/app/VerificationPanel";
 import { Meander } from "@/components/Meander";
 import { DEFAULT_TIMEFRAME, marketCapSupply, type Timeframe } from "@/lib/market";
 import { ipfsToGateway } from "@/lib/ipfs";
@@ -132,6 +133,7 @@ export default function TerminalPage() {
               pending={b.pending}
               now={now}
             />
+            <VerificationPanel token={token} />
           </div>
         </div>
 

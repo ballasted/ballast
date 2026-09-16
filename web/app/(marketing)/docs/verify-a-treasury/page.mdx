@@ -68,3 +68,47 @@ countdown you see is the real one.
 The [`BackingLens`](/docs/contract-addresses) contract does all of the above in a
 single batched call, and its source is verified on the explorer. You can call it
 directly, or copy its logic — it is the same math described here.
+
+## Verify the launch itself
+
+Every token page also shows a live verification panel — one row per check, no
+narrative. Here is what each row actually means and how to reproduce it.
+
+**Source verified** — is the contract's source code published and matching its
+bytecode on the block explorer, for both the token and its treasury? Read via
+Blockscout's public API (`/api/v2/smart-contracts/{address}`, `is_verified`).
+
+**Mint authority** — `BallastToken.sol` has no `mint()` function anywhere in its
+source. Every Ballast launch shares the same creation bytecode, so this is a
+structural fact, not a per-token guess — confirmed by checking the token is a
+genuine `BallastFactory` launch (`launchIdOf(token) > 0`) rather than trusting
+it in isolation.
+
+**Mutable params** — the only value a creator can change after launch is the
+project metadata (name, logo, links) via `setMetadataURI`, and every change is
+logged in a `MetadataUpdated` event forever. `noticePeriod`, the treasury
+pointer, and the creator address are all immutable.
+
+**Liquidity locked** — once graduated, `BallastSeeder` holds the pool position
+permanently; it has no function that could remove it. Checked live by reading
+the pool's liquidity via `StateView.getLiquidity(poolId)` — zero would mean
+something is wrong, not that the lock failed.
+
+**Creator allocation** — `BallastToken`'s full supply mints to the factory at
+launch, never the creator, so the launch itself grants 0%. A nonzero live
+balance just means the creator later bought on the open market like anyone
+else — worth showing, not worth treating as a red flag.
+
+**Backing assets** — each asset the treasury actually holds, checked against
+the same on-chain `AssetRegistry` the create flow itself reads, by address —
+never by ticker. An address that isn't registered renders as unrecognized; an
+address that isn't registered but claims a ticker that collides with a real
+asset's renders as hostile. See [why ticker matching alone isn't
+safe](/docs/what-ballast-is-not) — a real impostor pool with a fabricated
+multi-billion-dollar reserve exists on this chain today under a different
+address than the real asset it impersonates.
+
+**Sell simulation** — a real `V4Quoter.quoteExactInputSingle` call through the
+token's actual pool and hook, for a small test amount, run at request time. A
+nonzero quote is live proof a sell path exists right now — not a cached
+assumption from whenever the pool graduated.
