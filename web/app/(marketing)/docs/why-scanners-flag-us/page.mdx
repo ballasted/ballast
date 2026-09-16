@@ -54,6 +54,13 @@ cannot execute and it reports **unknown** rather than a pass. This is an inabili
 to simulate — not evidence that you cannot sell. Sells work through the app and
 directly through the pool.
 
+This is also why standard-SDK calldata **fails at the buy step**, before a sell
+is ever attempted — so anyone building against Ballast with an unmodified
+Uniswap SDK (an aggregator, a bot, an exchange's integration) hits the same
+wall a scanner does. If that's you: [**how to encode a swap here**](/integrate)
+— the exact struct shape, worked examples, and a runnable repro that forks the
+chain and shows both calldata shapes succeeding and failing for real.
+
 ## "Verified ✗" — verified, but not where GMGN looks
 
 GMGN's "verified" mirrors an **Etherscan-family** explorer on the major chains it
