@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 // 1px inner ring, and a patina-tinted outer glow. Falls back to deterministic
 // ticker initials on a neutral surface when there's no image or it fails to
 // load, so a broken/unpinned CID never shows a broken image. Canonical sizes
-// are 24 / 32 / 48 / 64 / 96 (see /styleguide) but `size` accepts any pixel
+// are 24 / 32 / 48 / 64 / 96 (see /app/styleguide) but `size` accepts any pixel
 // value so existing call sites keep their exact density.
 export function AssetDisc({
   src,

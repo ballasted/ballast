@@ -100,6 +100,21 @@
     @apply transition-colors duration-150;
   }
 
+  /* Density (spec §3) — compact rows for the terminal view. Comfortable is the
+     :root default (44px); this only overrides it when toggled. */
+  body[data-density="compact"] {
+    --row-height: 32px;
+  }
+
+  /* Blur balances (spec §4, App shell) — applies to every element carrying
+     data-balance, app-wide, and survives reloads via useBlurBalances. */
+  [data-balance] {
+    transition: filter 150ms ease-out;
+  }
+  body[data-blur-balances="true"] [data-balance] {
+    filter: blur(6px);
+  }
+
   /* Visible keyboard focus everywhere — never removed, only styled. */
   :focus-visible {
     outline: 2px solid theme("colors.green.DEFAULT");
@@ -155,6 +170,17 @@
     background-color: theme("colors.surface-hover");
     border-color: theme("colors.text.faint");
     transform: translateY(-2px);
+  }
+
+  /* Bottom ticker bar (spec §4) — a continuous leftward scroll. The track's
+     content is rendered twice back-to-back and travels exactly -50%, so the
+     loop is seamless regardless of how wide the content ends up being. */
+  .ticker-track {
+    animation: ballast-ticker-scroll 32s linear infinite;
+  }
+  @keyframes ballast-ticker-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
   }
 
   /* Proportion bars grow from 0 to their width on first paint only. */

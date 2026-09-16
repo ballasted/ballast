@@ -3,10 +3,18 @@ import { Container } from "@/components/Container";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { Ambience } from "@/components/app/Ambience";
 import { MeanderRule } from "@/components/Meander";
+import { CommandSearch } from "@/components/app/CommandSearch";
+import { NetworkChip } from "@/components/app/NetworkChip";
+import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
+import { AvatarMenu } from "@/components/app/AvatarMenu";
+import { ConnectButton } from "@/components/app/ConnectButton";
 
-// Living reference for every design-system primitive (spec §13, milestone 1).
-// Not a marketing page — keep it out of search and update it alongside every
-// later milestone as new primitives (ReserveBadge, density toggle, etc.) land.
+// Living reference for every design-system primitive (spec §13). Lives under
+// /app (not the marketing segment) since Milestone 2's shell primitives
+// (CommandSearch, NetworkChip, PortfolioValueChip, AvatarMenu) all read wagmi
+// state and need a WagmiProvider — the marketing segment deliberately has
+// none (CLAUDE.md: wallet providers wrap ONLY /app). Not a product page — keep
+// it out of search and out of the nav; reachable only by direct URL.
 export const metadata: Metadata = {
   title: "Styleguide",
   description: "Internal design-system reference — not for public indexing.",
@@ -157,6 +165,35 @@ export default function StyleguidePage() {
           <div className="note note-warning">Reserve syncing — trading paused.</div>
           <div className="note note-positive">Pool seeded.</div>
           <div className="note note-neutral">No data yet.</div>
+        </div>
+      </Section>
+
+      <Section title="Shell">
+        <p className="mb-4 text-sm text-text-muted">
+          Live components, not mockups — connect a wallet to see the connected
+          states (network chip, portfolio value, avatar menu). The bottom
+          ticker bar is the real one framing this page (lg+ only).
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <CommandSearch />
+          <NetworkChip />
+          <PortfolioValueChip />
+          <AvatarMenu />
+          <ConnectButton />
+        </div>
+        <p className="mt-3 text-ui-xs text-text-faint">
+          NetworkChip/PortfolioValueChip/AvatarMenu render nothing while
+          disconnected — that&apos;s ConnectButton&apos;s slot, shown here side
+          by side rather than swapped, so both states are visible at once.
+        </p>
+        <div className="mt-4 flex items-center gap-2 text-sm">
+          <span className="text-text-secondary">Blur-balances demo value:</span>
+          <span data-balance className="font-mono tabular-nums text-text-primary">
+            $12,480.55
+          </span>
+          <span className="text-ui-xs text-text-faint">
+            (toggle it from the avatar menu above)
+          </span>
         </div>
       </Section>
 

@@ -8,13 +8,11 @@ import {
   ballastFactoryAbi,
   ballastTokenAbi,
   stateViewAbi,
-  aggregatorV3Abi,
 } from "@/lib/abis";
 import {
   LENS_ADDRESS,
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
-  ETH_USD_FEED_ADDRESS,
   hookForFactory,
   isLensConfigured,
   isFactoryConfigured,
@@ -24,6 +22,7 @@ import { activeChain } from "@/lib/chain";
 import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
 import { liveQuery } from "@/lib/refresh";
+import { useEthUsd } from "./useEthUsd";
 
 const CHAIN_ID = activeChain.id;
 
@@ -193,21 +192,7 @@ export function useProjects() {
     ),
     query: liveQuery(isSwapConfigured && cands.some((cs) => cs.length > 0)),
   });
-  const ethRes = useReadContracts({
-    allowFailure: true,
-    contracts: ETH_USD_FEED_ADDRESS
-      ? [
-          { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "latestRoundData", chainId: CHAIN_ID },
-          { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals", chainId: CHAIN_ID },
-        ]
-      : [],
-    query: liveQuery(Boolean(ETH_USD_FEED_ADDRESS)),
-  });
-  let ethUsd1e18: bigint | undefined;
-  if (ethRes.data?.[0]?.status === "success" && ethRes.data?.[1]?.status === "success") {
-    const answer = (ethRes.data[0].result as unknown as [bigint, bigint, bigint, bigint, bigint])[1];
-    if (answer > 0n) ethUsd1e18 = (answer * 10n ** 18n) / 10n ** BigInt(ethRes.data[1].result as number);
-  }
+  const { ethUsd1e18 } = useEthUsd();
 
   const projects: Project[] = [];
   let cursor = 0;

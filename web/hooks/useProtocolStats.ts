@@ -17,6 +17,8 @@ export type ProtocolStats = {
   totalBallastUsd: bigint; // 1e18-scaled sum of every project's totalValueUsd
   lockedBallastUsd: bigint; // the portion that can never leave the treasuries
   medianBackingRatio: number | null; // null → needs a market-price source (see below)
+  totalMarketCapUsd: bigint; // 1e18-scaled sum of marketPriceUsd × totalSupply, live-pool tokens only
+  pricedCount: number; // how many tokens contributed to totalMarketCapUsd (for an honest "of N" label)
 };
 
 export function useProtocolStats(): ProtocolStats {
@@ -25,6 +27,8 @@ export function useProtocolStats(): ProtocolStats {
   let totalBallastUsd = 0n;
   let lockedBallastUsd = 0n;
   let ballastedCount = 0;
+  let totalMarketCapUsd = 0n;
+  let pricedCount = 0;
   // Per-project backing ratio = market price ÷ backing per token (both 1e18 USD),
   // for every ballasted project that has a live on-chain pool price. Collected here
   // to take the median below.
@@ -37,6 +41,10 @@ export function useProtocolStats(): ProtocolStats {
     if (p.ballasted) ballastedCount++;
     if (p.marketPriceUsd !== undefined && p.backing && p.backing.backingPerToken > 0n) {
       ratios.push(Number((p.marketPriceUsd * 10n ** 18n) / p.backing.backingPerToken) / 1e18);
+    }
+    if (p.marketPriceUsd !== undefined && p.backing && p.backing.totalSupply > 0n) {
+      totalMarketCapUsd += (p.marketPriceUsd * p.backing.totalSupply) / 10n ** 18n;
+      pricedCount++;
     }
   }
 
@@ -59,5 +67,7 @@ export function useProtocolStats(): ProtocolStats {
     totalBallastUsd,
     lockedBallastUsd,
     medianBackingRatio,
+    totalMarketCapUsd,
+    pricedCount,
   };
 }
