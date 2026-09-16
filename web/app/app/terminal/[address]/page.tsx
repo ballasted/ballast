@@ -39,6 +39,7 @@ export default function TerminalPage() {
 
   const now = useNow();
   const [tf, setTf] = useState<Timeframe>(DEFAULT_TIMEFRAME);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const b = useBacking(token);
   const { meta } = useProjectMeta(b.metadataURI);
@@ -66,7 +67,7 @@ export default function TerminalPage() {
     // and needs the width to run a real 62/38 split. overflow-x-clip keeps the 100vw
     // block from introducing a horizontal scrollbar.
     <div className="relative left-1/2 w-screen max-w-[100vw] -translate-x-1/2 overflow-x-clip">
-      <div className="mx-auto max-w-[1600px] space-y-3 px-4 xl:px-6">
+      <div className="mx-auto max-w-[1600px] space-y-3 px-4 pb-24 sm:pb-0 xl:px-6">
         <TerminalStatStrip
           token={token!}
           symbol={b.symbol}
@@ -105,9 +106,14 @@ export default function TerminalPage() {
             />
           </div>
 
-          {/* Right rail: swap · market · backing · treasury · project state. */}
+          {/* Right rail: swap · market · backing · treasury · project state. Below
+              sm the swap panel isn't rendered inline — the floating Buy/Sell
+              button + bottom sheet below take over so trading doesn't require
+              scrolling past chart + tabs + every other panel on a small phone. */}
           <div className="space-y-3">
-            <SwapPanel dense token={token!} symbol={b.symbol ?? "TOKEN"} hasPool={b.hasPool} spotPriceWeth={b.marketPriceWeth} />
+            <div className="hidden sm:block">
+              <SwapPanel dense token={token!} symbol={b.symbol ?? "TOKEN"} hasPool={b.hasPool} spotPriceWeth={b.marketPriceWeth} />
+            </div>
             <TerminalMarketPanel
               marketPriceUsd={b.marketPriceUsd}
               supply={supply}
@@ -132,6 +138,43 @@ export default function TerminalPage() {
         <TerminalStatusBar now={now} />
 
         <Meander className="opacity-40" />
+      </div>
+
+      {/* Below sm: a floating trigger opening the swap panel as a bottom sheet,
+          instead of leaving it buried below every other panel on a short screen. */}
+      <div className="sm:hidden">
+        {/* Offset to clear BottomNav (fixed, ~72px tall including its own
+            safe-area padding) rather than sit behind it. */}
+        <button
+          onClick={() => setSheetOpen(true)}
+          className="btn-primary fixed inset-x-4 bottom-[calc(84px+env(safe-area-inset-bottom))] z-40 shadow-lg"
+        >
+          Buy / Sell {b.symbol ?? ""}
+        </button>
+
+        {sheetOpen && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60"
+            onClick={() => setSheetOpen(false)}
+          >
+            <div
+              className="max-h-[85dvh] overflow-y-auto rounded-t-card border-t border-border bg-card p-4 pb-[calc(16px+env(safe-area-inset-bottom))]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="section-label">Trade</span>
+                <button
+                  onClick={() => setSheetOpen(false)}
+                  aria-label="Close"
+                  className="flex min-h-[44px] min-w-[44px] items-center justify-center text-text-muted hover:text-text-secondary"
+                >
+                  ✕
+                </button>
+              </div>
+              <SwapPanel dense token={token!} symbol={b.symbol ?? "TOKEN"} hasPool={b.hasPool} spotPriceWeth={b.marketPriceWeth} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

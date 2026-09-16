@@ -118,13 +118,18 @@ export function CommandSearch() {
 
       {open && (
         <div
-          className="fixed inset-0 z-[70] flex items-start justify-center bg-black/70 p-4 pt-[12vh]"
+          className="fixed inset-0 z-[70] bg-black/70 sm:flex sm:items-start sm:justify-center sm:p-4 sm:pt-[12vh]"
           role="dialog"
           aria-modal="true"
           aria-label="Search tokens"
           onClick={close}
         >
-          <div className="card-raised w-full max-w-lg p-0" onClick={(e) => e.stopPropagation()}>
+          {/* Full-screen sheet below sm (no room for a floating centered dialog on
+              a phone); a centered card at sm+. */}
+          <div
+            className="card-raised flex h-full w-full flex-col p-0 sm:h-auto sm:max-w-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-2 border-b border-border px-4 py-3">
               <IconSearch className="text-text-faint" />
               <input
@@ -152,7 +157,7 @@ export function CommandSearch() {
               <kbd className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-text-faint">Esc</kbd>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto p-2">
+            <div className="flex-1 overflow-y-auto p-2 sm:max-h-[60vh] sm:flex-none">
               {isAddr && (
                 <AddressRow
                   address={trimmed}

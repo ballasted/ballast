@@ -12,7 +12,7 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       {/* Ambient depth so the landing page reads as a lit surface, not flat black
           (spec §3, "Surface style", hero variant). Fixed, behind all content. */}
       <Ambience variant="hero" />

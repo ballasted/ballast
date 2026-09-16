@@ -31,7 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
       <Ambience variant="page" />
       {hasRail && <SideNav />}
-      <div className={cn("flex min-h-screen flex-col", hasRail && "lg:pl-60")}>
+      <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
         <TopBar hasRail={hasRail} />
         <ConfigGuard />
         <NetworkGuard />

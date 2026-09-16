@@ -386,7 +386,7 @@ function CardGrid({
           ? "mx-auto max-w-xl grid-cols-1"
           : projects.length === 2
             ? "sm:grid-cols-2"
-            : "sm:grid-cols-2 lg:grid-cols-3",
+            : "sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4",
       )}
     >
       {projects.map((p, i) => (
@@ -511,7 +511,7 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 // cards resolve (the biggest perceived-quality win for slow chain reads).
 function SkeletonGrid() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-hidden>
       {[0, 1, 2, 3, 4, 5].map((i) => (
         <div key={i} className="card overflow-hidden">
           {/* Media band — matches the card's aspect so the grid doesn't reflow. */}
