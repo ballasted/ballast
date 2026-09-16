@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { useTrending } from "@/hooks/useTrending";
@@ -11,7 +12,10 @@ import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { FeaturedStrip } from "@/components/app/FeaturedStrip";
 import { MotionSection } from "@/components/app/MotionSection";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
-import { SortRail, type SortId } from "@/components/app/SortRail";
+import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/SortRail";
+import { DiscoverHero } from "@/components/app/DiscoverHero";
+import { LiveRail } from "@/components/app/LiveRail";
+import { TopMovers } from "@/components/app/TopMovers";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
@@ -29,11 +33,46 @@ const CATEGORIES: { id: Category; label: string }[] = [
 ];
 
 const WAD = 10n ** 18n;
+const PAGE_SIZE = 20;
 
 export default function DiscoverPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [sort, setSort] = useState<SortId>("ballasted");
   const [trendingView, setTrendingView] = useState(false);
   const [category, setCategory] = useState<Category>("all");
+  const [graduatedFilter, setGraduatedFilter] = useState<GraduatedFilter>("all");
+
+  // Plain useState + a read-on-mount effect rather than useSearchParams, which
+  // would force this statically-prerendered page into a Suspense boundary —
+  // this page is already fully client-rendered, so there's nothing SSR needs
+  // to see here.
+  const [page, setPageState] = useState(1);
+  useEffect(() => {
+    const p = parseInt(new URLSearchParams(window.location.search).get("page") ?? "1", 10);
+    if (Number.isFinite(p) && p > 1) setPageState(p);
+  }, []);
+  const setPage = (p: number) => {
+    setPageState(p);
+    const params = new URLSearchParams(window.location.search);
+    if (p <= 1) params.delete("page");
+    else params.set("page", String(p));
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+  // Any filter/sort/view change invalidates the current page — a stale page
+  // number could point past the end of the new, shorter list. Skips the
+  // mount-time run, which would otherwise stomp a deep-linked ?page= before
+  // the read-on-mount effect above even gets a chance to apply it.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, category, graduatedFilter, trendingView]);
   const { projects, count, isLoading, isConfigured, hasLaunches } = useProjects();
   const trending = useTrending();
 
@@ -60,19 +99,23 @@ export default function DiscoverPage() {
   // it for the whole board so the category filter works; a project is simply not
   // matched until its metadata lands.
   const metaByToken = useProjectsMeta(projects);
+  const matchesGraduated = (p: Project) =>
+    graduatedFilter === "all" || (graduatedFilter === "graduated" ? p.hasPool : !p.hasPool);
+
   const ranked = useMemo(
     () =>
       sortProjects(
         projects.filter(
           (p) =>
             !isProtocolToken(p.token) &&
+            matchesGraduated(p) &&
             (category === "all" ||
               (metaByToken.get(p.token.toLowerCase())?.category ?? "").toLowerCase() === category),
         ),
         sort,
         { volumeByToken, holdersByToken },
       ),
-    [projects, sort, volumeByToken, holdersByToken, category, metaByToken],
+    [projects, sort, volumeByToken, holdersByToken, category, metaByToken, graduatedFilter],
   );
 
   // Trending order comes from the /api/trending aggregation (unique buyers + 24h
@@ -86,10 +129,11 @@ export default function DiscoverPage() {
         (p): p is Project =>
           Boolean(p) &&
           !isProtocolToken(p!.token) &&
+          matchesGraduated(p!) &&
           (category === "all" ||
             (metaByToken.get(p!.token.toLowerCase())?.category ?? "").toLowerCase() === category),
       );
-  }, [trending.data, projects, category, metaByToken]);
+  }, [trending.data, projects, category, metaByToken, graduatedFilter]);
 
   // A wallet is "known" once it has launched before. First-time creators get an
   // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
@@ -108,7 +152,15 @@ export default function DiscoverPage() {
   return (
     <div className="relative overflow-hidden">
       <MeanderWatermark />
+
+      <DiscoverHero />
+
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
+
+      {/* Live rail (spec §5.6) sits at xl+ only, beside the main column — a narrower
+          viewport has no room for a third column alongside a 2/3-col card grid. */}
+      <div className="xl:grid xl:grid-cols-[1fr_320px] xl:items-start xl:gap-6">
+      <div className="min-w-0">
 
       {/* Stats row — four headline figures, Total ballast first. Derived from the
           SAME projects listed below, so the totals reconcile by construction. Hidden
@@ -139,7 +191,14 @@ export default function DiscoverPage() {
           separate Trending state. The rule beneath the rail states how the current
           order is computed and from which source. */}
       <div className="mt-6">
-        <SortRail sort={sort} onSort={setSort} trending={trendingView} onTrending={setTrendingView} />
+        <SortRail
+          sort={sort}
+          onSort={setSort}
+          trending={trendingView}
+          onTrending={setTrendingView}
+          graduatedFilter={graduatedFilter}
+          onGraduatedFilter={setGraduatedFilter}
+        />
       </div>
 
       {/* Category chips — a distinct SECOND row (leading label + pills) so a filter is
@@ -208,9 +267,13 @@ export default function DiscoverPage() {
         ) : sort === "holders" && !holdersAgg.data.available ? (
           <SourceUnavailableNotice metric="holders" source="Blockscout" />
         ) : ranked.length === 0 ? (
-          category !== "all" ? (
+          category !== "all" || graduatedFilter !== "all" ? (
             <EmptyState
-              title={`No ${category} projects yet`}
+              title={
+                graduatedFilter !== "all"
+                  ? `Nothing ${graduatedFilter === "graduated" ? "graduated" : "on the curve"} yet${category !== "all" ? ` in ${category}` : ""}`
+                  : `No ${category} projects yet`
+              }
               body="Clear the filter to see all."
             />
           ) : (
@@ -225,10 +288,82 @@ export default function DiscoverPage() {
             />
           )
         ) : (
-          <CardGrid projects={ranked} priorLaunches={priorLaunches} hideSparkline={chainTimeSort} />
+          <>
+            <CardGrid
+              projects={ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)}
+              priorLaunches={priorLaunches}
+              hideSparkline={chainTimeSort}
+            />
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(ranked.length / PAGE_SIZE)}
+              onPage={setPage}
+            />
+          </>
         )}
       </div>
+
+      </div>
+
+      {isConfigured && (
+        <aside className="mt-6 hidden space-y-4 xl:sticky xl:top-20 xl:mt-0 xl:block">
+          <LiveRail projects={projects} />
+          <TopMovers projects={projects} />
+        </aside>
+      )}
+      </div>
     </div>
+  );
+}
+
+// Page numbers, URL-synced (spec §5.4, "1 2 … N"). Collapses to a short window
+// around the current page plus the first/last, so a 40-page list doesn't
+// render 40 buttons.
+function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
+  if (totalPages <= 1) return null;
+  const keep = new Set<number>([1, totalPages, page, page - 1, page + 1].filter((p) => p >= 1 && p <= totalPages));
+  const pages = [...keep].sort((a, b) => a - b);
+
+  const items: React.ReactNode[] = [];
+  let prev = 0;
+  for (const p of pages) {
+    if (prev && p - prev > 1) items.push(<span key={`gap-${p}`} className="px-1 text-text-faint">…</span>);
+    items.push(
+      <button
+        key={p}
+        onClick={() => onPage(p)}
+        aria-current={p === page ? "page" : undefined}
+        className={cn(
+          "h-8 min-w-8 rounded-input px-2 text-sm tabular-nums transition-colors",
+          p === page ? "bg-green text-bg font-semibold" : "text-text-muted hover:bg-surface-raised hover:text-text-secondary",
+        )}
+      >
+        {p}
+      </button>,
+    );
+    prev = p;
+  }
+
+  return (
+    <nav aria-label="Discover pages" className="mt-6 flex items-center justify-center gap-1">
+      <button
+        onClick={() => onPage(Math.max(1, page - 1))}
+        disabled={page <= 1}
+        aria-label="Previous page"
+        className="h-8 rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30"
+      >
+        ‹
+      </button>
+      {items}
+      <button
+        onClick={() => onPage(Math.min(totalPages, page + 1))}
+        disabled={page >= totalPages}
+        aria-label="Next page"
+        className="h-8 rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30"
+      >
+        ›
+      </button>
+    </nav>
   );
 }
 

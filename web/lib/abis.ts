@@ -306,6 +306,37 @@ export const ballastFactoryAbi = [
       { name: "metadataURI", type: "string", indexed: false },
     ],
   },
+  {
+    type: "event",
+    name: "Graduated",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "treasury", type: "address", indexed: false },
+      { name: "tickLower", type: "int24", indexed: false },
+      { name: "backingUsd1e18", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+// v4 PoolManager — the singleton every pool lives in. Only the Swap event, used
+// by the live rail's "large buys" feed: ONE watch/backfill covers every pool on
+// the chain (ours and anyone else's), filtered client-side to our known pool ids
+// (contracts/src, v4-core's IPoolManager.sol).
+export const poolManagerAbi = [
+  {
+    type: "event",
+    name: "Swap",
+    inputs: [
+      { name: "id", type: "bytes32", indexed: true },
+      { name: "sender", type: "address", indexed: true },
+      { name: "amount0", type: "int128", indexed: false },
+      { name: "amount1", type: "int128", indexed: false },
+      { name: "sqrtPriceX96", type: "uint160", indexed: false },
+      { name: "liquidity", type: "uint128", indexed: false },
+      { name: "tick", type: "int24", indexed: false },
+      { name: "fee", type: "uint24", indexed: false },
+    ],
+  },
 ] as const;
 
 // ── FeeConfig ─────────────────────────────────────────────────────────────────

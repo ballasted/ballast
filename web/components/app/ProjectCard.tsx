@@ -51,6 +51,7 @@ export function ProjectCard({
         logo={logo}
         symbol={symbol}
         ballasted={ballasted}
+        hasPool={hasPool}
         aspect={featured ? "aspect-[16/9]" : "aspect-[16/10]"}
       />
 
@@ -118,11 +119,13 @@ function CardMedia({
   logo,
   symbol,
   ballasted,
+  hasPool,
   aspect,
 }: {
   logo?: string;
   symbol?: string;
   ballasted: boolean;
+  hasPool: boolean;
   aspect: string;
 }) {
   const [failed, setFailed] = useState(false);
@@ -154,6 +157,17 @@ function CardMedia({
           <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden /> Ballasted
         </span>
       )}
+      {/* Binary state, not a progress bar — there's no on-chain graduation
+          threshold to show a % toward (Milestone 1 decision). hasPool alone
+          says whether this token trades in the AMM pool or is still pre-pool. */}
+      <span
+        className={cn(
+          "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium backdrop-blur",
+          hasPool ? "bg-bg/85 text-green" : "bg-bg/85 text-text-muted",
+        )}
+      >
+        {hasPool ? "Graduated" : "On curve"}
+      </span>
     </div>
   );
 }

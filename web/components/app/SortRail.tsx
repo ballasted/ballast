@@ -19,16 +19,22 @@ export const SORTS: { id: SortId; label: string; rule: string; source: SortSourc
   { id: "holders", label: "Holders", rule: "Unique holders, descending", source: "Blockscout" },
 ];
 
+export type GraduatedFilter = "all" | "graduated" | "curve";
+
 export function SortRail({
   sort,
   onSort,
   trending,
   onTrending,
+  graduatedFilter,
+  onGraduatedFilter,
 }: {
   sort: SortId;
   onSort: (s: SortId) => void;
   trending: boolean;
   onTrending: (v: boolean) => void;
+  graduatedFilter: GraduatedFilter;
+  onGraduatedFilter: (v: GraduatedFilter) => void;
 }) {
   const current = SORTS.find((s) => s.id === sort);
   return (
@@ -49,6 +55,21 @@ export function SortRail({
               </button>
             );
           })}
+        </div>
+
+        {/* Graduated/On curve — a FILTER (binary chain state, hasPool), not a sort or
+            a value judgement. Click again to clear back to All. */}
+        <div className="flex shrink-0 items-center gap-1.5 border-l border-border pl-2">
+          {(["graduated", "curve"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => onGraduatedFilter(graduatedFilter === f ? "all" : f)}
+              aria-pressed={graduatedFilter === f}
+              className={cn("tab shrink-0", graduatedFilter === f ? "tab-active" : "tab-idle")}
+            >
+              {f === "graduated" ? "Graduated" : "On curve"}
+            </button>
+          ))}
         </div>
 
         {/* Trending — set apart from the rail (dashed, divider) because it is its own

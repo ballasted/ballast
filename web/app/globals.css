@@ -172,6 +172,28 @@
     transform: translateY(-2px);
   }
 
+  /* Discover hero (spec §5.1) — a slow orbit of reserve-asset discs around the
+     keel mark. Two paired animations: the outer wrapper per disc rotates full
+     circle, an inner wrapper counter-rotates at the same rate so the disc
+     artwork itself stays upright throughout. Both complete a full 360°, so
+     freezing after one (near-instant) reduced-motion iteration lands back on
+     the same static arrangement the animation started from — no separate
+     reduced-motion override needed here. */
+  .orbit-ring {
+    animation: ballast-orbit 40s linear infinite;
+  }
+  .orbit-counter {
+    animation: ballast-orbit-counter 40s linear infinite;
+  }
+  @keyframes ballast-orbit {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes ballast-orbit-counter {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(-360deg); }
+  }
+
   /* Bottom ticker bar (spec §4) — a continuous leftward scroll. The track's
      content is rendered twice back-to-back and travels exactly -50%, so the
      loop is seamless regardless of how wide the content ends up being. */
