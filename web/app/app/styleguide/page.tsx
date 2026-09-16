@@ -8,6 +8,7 @@ import { NetworkChip } from "@/components/app/NetworkChip";
 import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
 import { AvatarMenu } from "@/components/app/AvatarMenu";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { TICKER_LOGOS } from "@/lib/tickerLogos";
 
 // Living reference for every design-system primitive (spec §13). Lives under
 // /app (not the marketing segment) since Milestone 2's shell primitives
@@ -33,6 +34,8 @@ const SWATCHES: Array<{ label: string; className: string; note: string }> = [
 ];
 
 const ASSET_DISC_SIZES = [24, 32, 48, 64, 96];
+const RESERVE_LOGO_SIZES = [24, 32, 48, 96];
+const RESERVE_TICKERS = Object.keys(TICKER_LOGOS).sort();
 
 function Section({
   title,
@@ -108,6 +111,50 @@ export default function StyleguidePage() {
             <span className="font-mono text-ui-xs text-text-muted">broken src</span>
           </div>
         </div>
+      </Section>
+
+      <Section title="Reserve asset logos">
+        <p className="mb-4 max-w-prose text-sm text-text-muted">
+          Every AssetRegistry-allowlisted asset plus the quote-asset candidates,
+          rendered via <code className="font-mono text-ui-xs">reserveAsset</code> — the
+          real local file, never the monogram, except where noted. These are
+          third-party trademarks: no recolor, no patina tint, no implied
+          endorsement. SPY/QQQ are wordmarks that read busier at small sizes,
+          so below 32px they intentionally fall back to the monogram instead
+          of a squashed logo — visible in the 24px column below.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-border text-ui-xs text-text-faint">
+                <th className="py-2 pr-4 font-normal">Ticker</th>
+                {RESERVE_LOGO_SIZES.map((size) => (
+                  <th key={size} className="py-2 pr-4 font-mono font-normal">
+                    {size}px
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {RESERVE_TICKERS.map((ticker) => (
+                <tr key={ticker} className="border-b border-border/60">
+                  <td className="py-3 pr-4 font-mono text-ui-xs text-text-primary">{ticker}</td>
+                  {RESERVE_LOGO_SIZES.map((size) => (
+                    <td key={size} className="py-3 pr-4">
+                      <AssetDisc symbol={ticker} size={size} reserveAsset />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-4 text-ui-xs text-text-faint">
+          SGOV has no official public mark — the icon shown is a custom
+          treasury-bill glyph, kept consistent everywhere SGOV appears. AAPL is
+          white-on-transparent: correct only on this dark UI; a light-mode
+          build would need a black variant.
+        </p>
       </Section>
 
       <Section title="Ambience">

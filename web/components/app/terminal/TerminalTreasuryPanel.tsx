@@ -9,6 +9,7 @@ import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
 import { classifyFreshness, formatEt, type FreshnessTier } from "@/lib/marketHours";
 import { cn } from "@/lib/cn";
+import { AssetDisc } from "@/components/app/AssetDisc";
 
 // The per-asset breakdown that BackingLens returns for a treasury. Rules 8 & 9 are
 // satisfied at the SOURCE: the lens reads decimals() per feed (never assumes 8) and
@@ -82,9 +83,10 @@ export function TerminalTreasuryPanel({ backing, now }: { backing?: ProjectBacki
                   href={`${activeChain.blockExplorers.default.url}/token/${a.asset}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-text-primary hover:text-green"
+                  className="flex items-center gap-2 font-semibold text-text-primary hover:text-green"
                   title={a.asset}
                 >
+                  <AssetDisc symbol={ticker} size={22} reserveAsset />
                   {ticker ?? shortAddress(a.asset)}
                 </a>
                 <span className="figure-primary tabular-nums text-sm">

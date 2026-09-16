@@ -56,7 +56,7 @@ function PrimaryCard() {
               >
                 <div className="absolute left-1/2 top-0 -translate-x-1/2">
                   <div className="orbit-counter">
-                    <AssetDisc symbol={symbol} size={36} />
+                    <AssetDisc symbol={symbol} size={36} reserveAsset />
                   </div>
                 </div>
               </div>

@@ -716,7 +716,8 @@ function PreviewCard(p: {
         {p.backed && (
           <PreviewRow label="Treasury">
             {p.selected && p.amount ? (
-              <span>
+              <span className="inline-flex items-center gap-1.5">
+                <AssetDisc symbol={p.selected.symbol} size={18} reserveAsset />
                 {p.amount} {p.selected.symbol}
                 {p.preview ? <span className="text-text-muted"> · {formatUsd(p.preview.usd, { compact: true })}</span> : null}
               </span>
@@ -1147,10 +1148,13 @@ function AssetPickerOption({
         selected ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
       )}
     >
-      <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
-        <span className="metric-secondary">
-          {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
+      <span className="flex min-w-0 items-center gap-2.5">
+        <AssetDisc symbol={a.symbol} size={28} reserveAsset />
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
+          <span className="metric-secondary">
+            {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
+          </span>
         </span>
       </span>
       <span className="shrink-0 text-right">
