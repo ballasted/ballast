@@ -31,6 +31,13 @@ import {BallastSeeder} from "../src/BallastSeeder.sol";
 contract DeployMainnet is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
+    // GREEN quote assets per docs/exit-liquidity-table.md (2026-09-17) — the only
+    // non-WETH quoteAsset_ values BallastFactory.launch() will accept. Re-run
+    // that table before adding to this list on any future deploy.
+    address constant SGOV = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
+    address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+    address constant SPY = 0x117cc2133c37B721F49dE2A7a74833232B3B4C0C;
+
     struct Env {
         address owner;
         address vault;
@@ -69,9 +76,13 @@ contract DeployMainnet is Script {
         // ETH/USD leg outer staleness bound (coarse backstop). 24h given observed
         // gaps up to ~2.8h; owner can't retune an immutable, so it's set once here.
         uint256 ethUsdStaleWindow = vm.envOr("ETH_USD_STALE_WINDOW", uint256(24 hours));
+        address[] memory greenQuoteAssets = new address[](3);
+        greenQuoteAssets[0] = SGOV;
+        greenQuoteAssets[1] = NVDA;
+        greenQuoteAssets[2] = SPY;
         console2.log(
             "BallastFactory: ",
-            address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed, ethUsdStaleWindow))
+            address(new BallastFactory(registry, e.weth, seeder, e.ethUsdFeed, ethUsdStaleWindow, greenQuoteAssets))
         );
         vm.stopBroadcast();
         console2.log("sequencer feed (0x0 = Unknown, none on 4663):", e.sequencer);

@@ -10,6 +10,8 @@ import { formatSmallUsd } from "@/lib/market";
 import { classifyFreshness, formatEt, type FreshnessTier } from "@/lib/marketHours";
 import { cn } from "@/lib/cn";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { useAssets } from "@/hooks/useAssets";
+import { resolveAssetIdentity } from "@/lib/assetIdentity";
 
 // The per-asset breakdown that BackingLens returns for a treasury. Rules 8 & 9 are
 // satisfied at the SOURCE: the lens reads decimals() per feed (never assumes 8) and
@@ -53,6 +55,13 @@ export function TerminalTreasuryPanel({ backing, now }: { backing?: ProjectBacki
   });
   const symbolAt = (i: number) => (symRes.data?.[i]?.status === "success" ? (symRes.data[i].result as string) : undefined);
 
+  // ProjectTreasury.deposit() already rejects any non-AssetRegistry address
+  // on-chain, so every a.asset here is real by construction — but resolve
+  // through the SAME live registry anyway (not the address's own self-reported
+  // symbol() alone) so a delisted asset degrades to "unrecognized" instead of
+  // silently keeping a stale ticker/logo. See lib/assetIdentity.ts.
+  const { assets: registryAssets, isLoading: registryLoading } = useAssets();
+
   if (!backing || backing.totalValueUsd === 0n || assets.length === 0) {
     return (
       <section className="card p-4">
@@ -76,6 +85,7 @@ export function TerminalTreasuryPanel({ backing, now }: { backing?: ProjectBacki
           const fresh =
             a.priced && now > 0 ? classifyFreshness(Number(a.updatedAt), a.marketHours, a.stale, now) : undefined;
           const ticker = symbolAt(i);
+          const identity = resolveAssetIdentity(a.asset, ticker, registryAssets, !registryLoading);
           return (
             <li key={a.asset} className="border-t border-border pt-3 first:border-0 first:pt-0">
               <div className="flex items-center justify-between gap-2">
@@ -86,7 +96,7 @@ export function TerminalTreasuryPanel({ backing, now }: { backing?: ProjectBacki
                   className="flex items-center gap-2 font-semibold text-text-primary hover:text-green"
                   title={a.asset}
                 >
-                  <AssetDisc symbol={ticker} size={22} reserveAsset />
+                  <AssetDisc symbol={ticker} size={22} identity={identity} />
                   {ticker ?? shortAddress(a.asset)}
                 </a>
                 <span className="figure-primary tabular-nums text-sm">

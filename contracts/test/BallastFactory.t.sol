@@ -23,13 +23,16 @@ contract BallastFactoryTest is Test {
 
     uint256 constant SUPPLY = 1_000_000_000e18;
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
+    address greenAsset = makeAddr("greenAsset");
 
     function setUp() public {
         registry = new AssetRegistry(owner);
         // Seeder + ethUsdFeed are only exercised by graduate() (fork-tested
         // separately); dummies here keep the launch/wiring unit tests pure.
         BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), WETH, address(2));
-        factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours);
+        address[] memory green = new address[](1);
+        green[0] = greenAsset;
+        factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours, green);
     }
 
     // Salt mining is gone (step c of the quote-asset workstream): a token's
@@ -187,6 +190,26 @@ contract BallastFactoryTest is Test {
         vm.prank(creator);
         vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
         factory.launch("P", "P", 30 days, "", notWeth);
+    }
+
+    // A GREEN asset (per docs/exit-liquidity-table.md), fixed at deploy, is
+    // accepted exactly like WETH — the gate is an external-liquidity check, not
+    // a WETH-specific capability gap.
+    function test_quoteAsset_green_accepted() public {
+        vm.prank(creator);
+        (, address token,) = factory.launch("P", "P", 30 days, "", greenAsset);
+        (,,, address storedQuoteAsset) = factory.launches(factory.launchIdOf(token) - 1);
+        assertEq(storedQuoteAsset, greenAsset);
+    }
+
+    // An asset NOT on the green list, and not WETH, still reverts — even if it's
+    // a real AssetRegistry treasury asset. Promoting one is a deploy-time
+    // decision (re-running the exit-liquidity table), never implicit.
+    function test_quoteAsset_amberTreasuryAsset_stillReverts() public {
+        MockStockToken amberAsset = new MockStockToken("Amber", "AMB", 18);
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
+        factory.launch("P", "P", 30 days, "", address(amberAsset));
     }
 
     // ===================================================================== //

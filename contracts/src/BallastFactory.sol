@@ -32,11 +32,20 @@ contract BallastFactory {
     /// @notice Global asset allowlist every launched treasury reads from.
     address public immutable registry;
 
-    /// @notice WETH — still the only supported quoteAsset_ (QuoteAssetNotSupportedYet
-    ///         otherwise) and the ETH/USD-feed identity used by _quotePrice. No
-    ///         longer an address the token is mined against — see the ordering
-    ///         note on OrderingLib below.
+    /// @notice WETH — always a supported quoteAsset_, and the ETH/USD-feed identity
+    ///         used by _quotePrice. No longer an address the token is mined
+    ///         against — see the ordering note on OrderingLib below.
     address public immutable weth;
+
+    /// @notice The ONLY other quoteAsset_ values launch() accepts, beyond weth.
+    ///         Fixed at deploy from docs/exit-liquidity-table.md's GREEN
+    ///         classification (external DEX liquidity deep enough that a holder
+    ///         can actually exit to WETH without excessive slippage) — NOT
+    ///         owner-settable, because promoting an asset here is re-running that
+    ///         external liquidity judgment, not a quick admin toggle. Anything
+    ///         AMBER/RED on that table (or added to AssetRegistry after this
+    ///         deploy) stays rejected until the next factory deploy re-evaluates.
+    mapping(address => bool) public isGreenQuoteAsset;
 
     /// @notice One-sided liquidity seeder (shared singleton).
     BallastSeeder public immutable seeder;
@@ -103,11 +112,10 @@ contract BallastFactory {
     ///         practice this only trips on a genuinely broken feed, not on an
     ///         expected weekend/holiday rest.
     error FeedStaleAtLaunch(address asset);
-    /// @notice quoteAsset_ must be `weth` for now. BallastSeeder now handles
-    ///         either ordering, but BallastHook's fee ledger is still WETH-only
-    ///         (queued as separate work) — accepting a non-WETH quote here before
-    ///         that lands would let a launch claim a pairing that its own pool's
-    ///         hook can't actually honor.
+    /// @notice quoteAsset_ must be `weth` or one of the GREEN assets fixed at
+    ///         deploy (isGreenQuoteAsset). Seeder and Hook both handle any
+    ///         ordering/currency now, so this is purely an external-liquidity
+    ///         gate, not a capability gap — see docs/exit-liquidity-table.md.
     error QuoteAssetNotSupportedYet();
 
     constructor(
@@ -115,7 +123,8 @@ contract BallastFactory {
         address weth_,
         BallastSeeder seeder_,
         address ethUsdFeed_,
-        uint256 ethUsdStaleWindow_
+        uint256 ethUsdStaleWindow_,
+        address[] memory greenQuoteAssets_
     ) {
         if (registry_ == address(0) || weth_ == address(0) || address(seeder_) == address(0) || ethUsdFeed_ == address(0)) {
             revert ZeroAddress();
@@ -126,6 +135,10 @@ contract BallastFactory {
         seeder = seeder_;
         ethUsdFeed = ethUsdFeed_;
         ethUsdStaleWindow = ethUsdStaleWindow_;
+        for (uint256 i = 0; i < greenQuoteAssets_.length; i++) {
+            if (greenQuoteAssets_[i] == address(0)) revert ZeroAddress();
+            isGreenQuoteAsset[greenQuoteAssets_[i]] = true;
+        }
     }
 
     /// @notice Seed the token/WETH pool at P0 and lock LP. Backed launches derive P0
@@ -225,10 +238,9 @@ contract BallastFactory {
     ///        description, category, logo, website, x). Stored on the token as the
     ///        permanent launch identity + the initial (updatable) current URI.
     /// @param quoteAsset_ The asset this launch's pool will be paired against at
-    ///        graduation. Must be `weth` for now (see QuoteAssetNotSupportedYet) —
-    ///        exposed as a real parameter already, rather than added later, so this
-    ///        function's signature doesn't need to change again once USDC/stock
-    ///        quote assets are actually supported.
+    ///        graduation. Must be `weth` or one of the deploy-time GREEN assets
+    ///        (isGreenQuoteAsset) — see QuoteAssetNotSupportedYet and
+    ///        docs/exit-liquidity-table.md.
     function launch(
         string calldata name_,
         string calldata symbol_,
@@ -239,7 +251,7 @@ contract BallastFactory {
         if (!(noticePeriod == 7 days || noticePeriod == 30 days || noticePeriod == 90 days)) {
             revert BadNoticePeriod();
         }
-        if (quoteAsset_ != weth) revert QuoteAssetNotSupportedYet();
+        if (quoteAsset_ != weth && !isGreenQuoteAsset[quoteAsset_]) revert QuoteAssetNotSupportedYet();
 
         // 1. Token — plain CREATE, no mining. Its address relative to weth is
         //    unconstrained (could sort either side) — see OrderingLib. graduate()/

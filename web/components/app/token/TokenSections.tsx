@@ -387,7 +387,7 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
           </div>
 
           {/* Desktop table (denser scan), cards on mobile. */}
-          <div className="mt-3 hidden overflow-x-auto sm:block">
+          <div className="mt-3 hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="eyebrow text-left">
@@ -423,7 +423,7 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
               </tbody>
             </table>
           </div>
-          <ul className="mt-3 space-y-1.5 sm:hidden">
+          <ul className="mt-3 space-y-1.5 md:hidden">
             {shown.map((t, i) => (
               <TradeRow key={`${t.txHash}-${i}`} t={t} symbol={symbol} now={now} />
             ))}
@@ -459,7 +459,7 @@ function TradeRow({ t, symbol, now }: { t: Trade; symbol?: string; now: number }
           href={`${activeChain.blockExplorers.default.url}/address/${t.wallet}`}
           target="_blank"
           rel="noreferrer"
-          className="hidden font-mono text-xs text-text-faint hover:text-green sm:inline"
+          className="hidden font-mono text-xs text-text-faint hover:text-green md:inline"
         >
           {shortAddress(t.wallet as Address)}
         </a>

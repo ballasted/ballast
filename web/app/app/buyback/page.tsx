@@ -420,7 +420,7 @@ function CopyAddress({ address }: { address: string }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-sm text-text-secondary transition-colors hover:border-text-faint"
+      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-sm text-text-secondary transition-colors hover:border-text-faint md:min-h-0"
       title={`Copy ${address}`}
     >
       <span className="font-mono">{copied ? "Copied ✓" : address}</span>

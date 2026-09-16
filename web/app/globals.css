@@ -312,15 +312,17 @@
      colours. Buy/sell keeps a bespoke active tone (green vs warning) and reuses
      only the layout base. .tab-idle's border-color is a no-op on .tab-segment
      (no border-width there), so the same idle state fits all three shapes. */
+  /* min-h-[44px] is a touch-target floor (mobile-first default); md: removes it
+     since a mouse doesn't need the padding and these sit dense on desktop. */
   .tab {
-    @apply inline-flex items-center justify-center whitespace-nowrap rounded-full border
-      px-3 py-1.5 text-sm transition-colors;
+    @apply inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-full border
+      px-3 py-1.5 text-sm transition-colors md:min-h-0;
   }
   .tab-block {
-    @apply rounded-input border py-2 text-center text-sm transition-colors;
+    @apply min-h-[44px] rounded-input border py-2 text-center text-sm transition-colors md:min-h-0;
   }
   .tab-segment {
-    @apply rounded px-3 py-2 text-center text-sm font-semibold transition-colors;
+    @apply min-h-[44px] rounded px-3 py-2 text-center text-sm font-semibold transition-colors md:min-h-0;
   }
   .tab-active {
     @apply border-green bg-green-bg text-green;

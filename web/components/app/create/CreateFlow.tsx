@@ -14,6 +14,7 @@ import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
 import { ActingAs } from "@/components/app/ActingAs";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import type { AssetIdentity } from "@/lib/assetIdentity";
 import { MotionSection } from "@/components/app/MotionSection";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
@@ -61,6 +62,12 @@ function freshnessOf(a: AllowedAsset, now: number): Freshness | undefined {
   if (a.updatedAt === undefined || now <= 0) return undefined;
   const beyondBound = a.staleAfter !== undefined && now - Number(a.updatedAt) > Number(a.staleAfter);
   return classifyFreshness(Number(a.updatedAt), a.marketHours, beyondBound, now);
+}
+
+// AllowedAsset entries come straight from useAssets() (AssetRegistry, read live)
+// — recognized BY CONSTRUCTION, no separate address check needed here.
+function identityFor(a: AllowedAsset): AssetIdentity {
+  return { status: "recognized", symbol: a.symbol ?? "" };
 }
 
 // Whole-number-friendly age: "42m", "10.8h", "3.1d". For the last-published line.
@@ -717,7 +724,7 @@ function PreviewCard(p: {
           <PreviewRow label="Treasury">
             {p.selected && p.amount ? (
               <span className="inline-flex items-center gap-1.5">
-                <AssetDisc symbol={p.selected.symbol} size={18} reserveAsset />
+                <AssetDisc symbol={p.selected.symbol} size={18} identity={identityFor(p.selected)} />
                 {p.amount} {p.selected.symbol}
                 {p.preview ? <span className="text-text-muted"> · {formatUsd(p.preview.usd, { compact: true })}</span> : null}
               </span>
@@ -1149,7 +1156,7 @@ function AssetPickerOption({
       )}
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <AssetDisc symbol={a.symbol} size={28} reserveAsset />
+        <AssetDisc symbol={a.symbol} size={28} identity={identityFor(a)} />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
           <span className="metric-secondary">

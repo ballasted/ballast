@@ -140,7 +140,7 @@ function CopyAddress({ address }: { address: Address }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="mt-0.5 inline-flex items-center gap-1 font-mono text-[11px] text-text-faint transition-colors hover:text-text-secondary"
+      className="mt-0.5 inline-flex min-h-[44px] items-center gap-1 font-mono text-[11px] text-text-faint transition-colors hover:text-text-secondary md:min-h-0"
       title={`Copy ${address}`}
     >
       {copied ? "Copied ✓" : shortAddress(address)}

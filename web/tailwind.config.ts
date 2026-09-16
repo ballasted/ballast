@@ -119,7 +119,7 @@ const config: Config = {
         "ui-xl": ["24px", { lineHeight: "1.3" }],
       },
       maxWidth: {
-        content: "1200px", // density §1 — anchor content instead of sprawling edge-to-edge
+        content: "1600px", // anchor content on wide/ultrawide screens instead of stretching edge-to-edge
         prose: "720px",
       },
     },

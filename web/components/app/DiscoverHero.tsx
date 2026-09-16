@@ -5,6 +5,7 @@ import { KeelMark } from "@/components/Wordmark";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useAssets } from "@/hooks/useAssets";
 import { CURRENT_CAMPAIGN } from "@/lib/campaign";
+import type { AssetIdentity } from "@/lib/assetIdentity";
 
 // Discover hero (spec §5.1) — two cards, equal height. Left: the launch pitch,
 // with a slow orbit of the REAL current reserve allowlist (useAssets — this
@@ -23,8 +24,14 @@ export function DiscoverHero() {
 
 function PrimaryCard() {
   const { assets } = useAssets();
-  const symbols = assets.map((a) => a.symbol).filter((s): s is string => Boolean(s));
-  const orbitSymbols = symbols.length > 0 ? symbols.slice(0, 6) : ["SGOV"];
+  // Sourced directly from AssetRegistry (useAssets reads it live), so these
+  // pairs are recognized BY CONSTRUCTION — no separate resolve needed, this
+  // isn't an externally-claimed address being checked against the registry.
+  const orbitAssets = assets
+    .filter((a): a is typeof a & { symbol: string } => Boolean(a.symbol))
+    .map((a) => ({ symbol: a.symbol, identity: { status: "recognized", symbol: a.symbol } as AssetIdentity }));
+  const fallback = [{ symbol: "SGOV", identity: { status: "recognized", symbol: "SGOV" } as AssetIdentity }];
+  const orbitItems = orbitAssets.length > 0 ? orbitAssets.slice(0, 6) : fallback;
 
   return (
     <div className="card relative overflow-hidden p-6 lg:p-8" style={{ boxShadow: "0 0 80px rgba(34,201,58,0.10)" }}>
@@ -48,15 +55,15 @@ function PrimaryCard() {
             </div>
           </div>
           <div className="orbit-ring absolute inset-0">
-            {orbitSymbols.map((symbol, i) => (
+            {orbitItems.map((item, i) => (
               <div
-                key={symbol}
+                key={item.symbol}
                 className="absolute inset-0"
-                style={{ transform: `rotate(${(360 / orbitSymbols.length) * i}deg)` }}
+                style={{ transform: `rotate(${(360 / orbitItems.length) * i}deg)` }}
               >
                 <div className="absolute left-1/2 top-0 -translate-x-1/2">
                   <div className="orbit-counter">
-                    <AssetDisc symbol={symbol} size={36} reserveAsset />
+                    <AssetDisc symbol={item.symbol} size={36} identity={item.identity} />
                   </div>
                 </div>
               </div>
