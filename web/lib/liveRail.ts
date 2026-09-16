@@ -30,14 +30,16 @@ export type RailEvent = {
   amountUsd?: number;
 };
 
-// v4 core convention (see lib/pool.ts): a BALLAST token is always currency0,
-// WETH is always currency1. PoolManager's Swap event reports amount0/amount1
-// as the balance delta TO THE POOL — positive means the trader gave the pool
-// that currency. A buy (spend WETH, receive token) therefore has amount1 > 0
-// (pool received WETH) and amount0 < 0 (pool paid out token). This mirrors
-// lib/pool.ts's BUY_ZERO_FOR_ONE=false / SELL_ZERO_FOR_ONE=true documented
-// convention rather than re-deriving it — verify against real trades before
-// trusting the sign if anything here looks backwards.
+// PoolManager's Swap event reports amount0/amount1 as the balance delta TO THE
+// POOL — positive means the trader gave the pool that currency. This still
+// assumes token=currency0/WETH=currency1 unconditionally, true for every pool
+// that exists today (BallastSeeder only supports that ordering — see
+// lib/pool.ts's tokenIsCurrency0/buyZeroForOne/sellZeroForOne, which DERIVE the
+// side per pool rather than assume it). A buy (spend WETH, receive token) has
+// amount1 > 0 (pool received WETH) and amount0 < 0 (pool paid out token).
+// TODO once a non-WETH-quote or token-is-currency1 pool can actually exist:
+// this function needs the pool's real ordering passed in rather than assuming
+// it, the same generalization lib/pool.ts already went through.
 export function classifySwap(amount1: bigint): "buy" | "sell" {
   return amount1 > 0n ? "buy" : "sell";
 }

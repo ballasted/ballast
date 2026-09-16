@@ -32,9 +32,19 @@ contract BallastFactoryTest is Test {
         factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours);
     }
 
-    function test_tokenMinedBelowWeth_currency0() public {
+    // Salt mining is gone (step c of the quote-asset workstream): a token's
+    // address is now plain-CREATE, nonce-based, and genuinely unconstrained
+    // relative to WETH — it can land on either side. This test used to assert
+    // the mined ordering; now it only asserts launch() itself doesn't depend on
+    // ordering at all (deploy succeeds regardless of which side the address
+    // happens to fall on). Whether a SPECIFIC token can graduate is a separate,
+    // later question — BallastSeeder still only supports token-as-currency0
+    // pools until its mirrored one-sided-liquidity math ships.
+    function test_launch_succeedsRegardlessOfTokenAddressOrdering() public {
         (BallastToken t,) = _launch();
-        assertLt(uint160(address(t)), uint160(WETH), "token must sort below WETH (currency0)");
+        assertTrue(address(t) != address(0), "token must deploy");
+        // No assertion on address(t) vs WETH — that relationship is no longer
+        // guaranteed, by design.
     }
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {

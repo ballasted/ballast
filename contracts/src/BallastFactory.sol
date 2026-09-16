@@ -31,9 +31,10 @@ contract BallastFactory {
     /// @notice Global asset allowlist every launched treasury reads from.
     address public immutable registry;
 
-    /// @notice WETH — the token is CREATE2-mined to sort BELOW it (currency0) so
-    ///         the pool price is WETH/token directly (price up = tick up), which
-    ///         keeps the one-sided seeded range intuitive and kills a tick-sign trap.
+    /// @notice WETH — still the only supported quoteAsset_ (QuoteAssetNotSupportedYet
+    ///         otherwise) and the ETH/USD-feed identity used by _quotePrice. No
+    ///         longer an address the token is mined against — see the ordering
+    ///         note on OrderingLib below.
     address public immutable weth;
 
     /// @notice One-sided liquidity seeder (shared singleton).
@@ -90,8 +91,6 @@ contract BallastFactory {
 
     error BadNoticePeriod();
     error ZeroAddress();
-    error CouldNotMineCurrency0();
-    error WrongOrdering();
     error NotLaunchToken();
     error AlreadyGraduated();
     /// @notice A backed launch's feed was stale beyond its outer bound at graduation
@@ -208,22 +207,6 @@ contract BallastFactory {
         tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING);
     }
 
-    /// @dev CREATE2 address of `initHash` deployed by this factory with `salt`.
-    function _create2(bytes32 salt, bytes32 initHash) internal view returns (address) {
-        return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initHash)))));
-    }
-
-    /// @dev Mine a salt whose CREATE2 address sorts BELOW weth (currency0) and is
-    ///      unused. Extracted from launch() to keep that frame within the stack
-    ///      limit. Reverts if none found in the search window.
-    function _mineCurrency0Salt(bytes32 initHash) internal view returns (bytes32) {
-        for (uint256 s = 0; s < 4000; s++) {
-            address predicted = _create2(bytes32(s), initHash);
-            if (predicted < weth && predicted.code.length == 0) return bytes32(s);
-        }
-        revert CouldNotMineCurrency0();
-    }
-
     /// @notice Launch a project: deploy the token + treasury, wire them, register.
     /// @param noticePeriod Withdrawal notice, restricted to the offered set
     ///        (7 / 30 / 90 days) and immutable on the treasury once set.
@@ -247,19 +230,15 @@ contract BallastFactory {
         }
         if (quoteAsset_ != weth) revert QuoteAssetNotSupportedYet();
 
-        // 1. Token — CREATE2-mined so its address sorts BELOW weth (currency0).
-        //    Full supply minted to the factory for one-sided pool seeding. Mining is
-        //    factored out to keep this frame under the stack limit.
-        bytes32 initHash = keccak256(
-            abi.encodePacked(
-                type(BallastToken).creationCode,
-                abi.encode(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI)
-            )
-        );
-        BallastToken t =
-            new BallastToken{salt: _mineCurrency0Salt(initHash)}(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI);
-        // On-chain guard — never trust the mined salt; verify the actual ordering.
-        if (address(t) >= weth) revert WrongOrdering();
+        // 1. Token — plain CREATE, no mining. Its address relative to weth is now
+        //    unconstrained (could sort either side) — see OrderingLib and the
+        //    ordering note on graduate()/BallastSeeder: the seeder only supports
+        //    token-as-currency0 pools today, so a token whose nonce-based address
+        //    happens to sort above its quote asset can launch fine (nothing here
+        //    depends on ordering) but will revert at graduate() until the seeder's
+        //    mirrored one-sided-liquidity math ships (queued as separate work).
+        //    Full supply minted to the factory for one-sided pool seeding.
+        BallastToken t = new BallastToken(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI);
 
         // 2. Treasury — projectToken is immutable here, so self-backing is impossible.
         ProjectTreasury tr = new ProjectTreasury(address(t), msg.sender, noticePeriod, registry);

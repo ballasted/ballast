@@ -17,13 +17,14 @@ import {
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   ETH_USD_FEED_ADDRESS,
+  WETH_ADDRESS,
   hookForFactory,
   isLensConfigured,
   isFactoryConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { candidatePoolKeys, poolKeyForToken, poolId, priceFromSqrtX96 } from "@/lib/pool";
+import { candidatePoolKeys, poolKeyForToken, poolId, tokenIsCurrency0, tokenPriceInQuote } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
 import { liveQuery } from "@/lib/refresh";
 import { devReconcileBig } from "@/lib/reconcile";
@@ -153,14 +154,15 @@ export function useBacking(token?: Address) {
   // paired hook), fall back to probing all candidates so a prior-hook token still
   // prices correctly.
   const pairedHook = hookForFactory(ownerFactory);
-  const candidates = !token
-    ? []
-    : pairedHook
-      ? (() => {
-          const key = poolKeyForToken(token, pairedHook);
-          return key ? [{ hook: pairedHook, key, id: poolId(key) }] : [];
-        })()
-      : candidatePoolKeys(token);
+  const candidates =
+    !token || !WETH_ADDRESS
+      ? []
+      : pairedHook
+        ? (() => {
+            const key = poolKeyForToken(token, WETH_ADDRESS, pairedHook);
+            return key ? [{ hook: pairedHook, key, id: poolId(key) }] : [];
+          })()
+        : candidatePoolKeys(token, WETH_ADDRESS);
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts:
@@ -196,8 +198,8 @@ export function useBacking(token?: Address) {
       poolLiquidity = liq.result as bigint;
       if (slot0?.status === "success") {
         const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-        if (sqrtPriceX96 > 0n) {
-          marketPriceWeth = priceFromSqrtX96(sqrtPriceX96);
+        if (sqrtPriceX96 > 0n && WETH_ADDRESS && token) {
+          marketPriceWeth = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, WETH_ADDRESS), 18);
           poolSqrtPriceX96 = sqrtPriceX96;
         }
       }

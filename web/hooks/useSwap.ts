@@ -13,7 +13,7 @@ import {
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { poolKeyForToken, candidatePoolKeys, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE } from "@/lib/pool";
+import { poolKeyForToken, candidatePoolKeys, buyZeroForOne, sellZeroForOne } from "@/lib/pool";
 import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
@@ -92,7 +92,14 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   // still sits under the OLD hook — quoting/swapping with the current hook would
   // build a PoolKey for a pool that doesn't exist and revert. With a single deployed
   // hook (no priors) there's nothing to resolve and we skip the probe entirely.
-  const candidates = useMemo(() => (token ? candidatePoolKeys(token) : []), [token]);
+  // The launch's quote asset — always WETH today (BallastFactory rejects
+  // anything else). Hardcoded here for the same reason as everywhere else in
+  // this milestone: nothing downstream varies yet, and this is the one place
+  // that's still universally true.
+  const candidates = useMemo(
+    () => (token && WETH_ADDRESS ? candidatePoolKeys(token, WETH_ADDRESS) : []),
+    [token],
+  );
   const [resolvedHook, setResolvedHook] = useState<Address | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
@@ -126,12 +133,12 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   // Quote via V4Quoter (revert-based; simulate to read the return value).
   useEffect(() => {
     let cancelled = false;
-    if (!token || !publicClient || !QUOTER_ADDRESS || amountIn === 0n || !hookForKey) {
+    if (!token || !publicClient || !QUOTER_ADDRESS || !WETH_ADDRESS || amountIn === 0n || !hookForKey) {
       setQuote(undefined);
       setQuoteError(undefined);
       return;
     }
-    const key = poolKeyForToken(token, hookForKey);
+    const key = poolKeyForToken(token, WETH_ADDRESS, hookForKey);
     if (!key) return;
     setPhase("quoting");
     publicClient
@@ -142,7 +149,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
         args: [
           {
             poolKey: key,
-            zeroForOne: side === "buy" ? BUY_ZERO_FOR_ONE : SELL_ZERO_FOR_ONE,
+            zeroForOne: side === "buy" ? buyZeroForOne(token, WETH_ADDRESS) : sellZeroForOne(token, WETH_ADDRESS),
             exactAmount: amountIn,
             hookData: "0x",
           },

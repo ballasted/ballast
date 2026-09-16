@@ -6,7 +6,7 @@ import { stateViewAbi } from "@/lib/abis";
 import { BUYBACK_ADDRESS, STATE_VIEW_ADDRESS, WETH_ADDRESS, isBuybackConfigured } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
-import { poolId, priceFromSqrtX96, type PoolKey } from "@/lib/pool";
+import { poolId, tokenPriceInQuote, type PoolKey } from "@/lib/pool";
 import { buybackBurnerAbi, useBuyback } from "./useBuyback";
 import { useEthUsd } from "./useEthUsd";
 import { useMarket } from "./useMarket";
@@ -65,9 +65,10 @@ export function useBallastMarket() {
     hasPool = true;
     const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
     if (sqrtPriceX96 > 0n) {
-      const ratio = priceFromSqrtX96(sqrtPriceX96); // currency1-per-currency0, 1e18
       const ballastIsCurrency0 = WETH_ADDRESS ? key.currency1.toLowerCase() === WETH_ADDRESS.toLowerCase() : true;
-      priceWethPerBallast = ballastIsCurrency0 ? ratio : ratio > 0n ? 10n ** 36n / ratio : undefined;
+      // WETH is always 18-decimal — the one case this generalized helper is used
+      // for a fixed, known quote asset rather than a variable one.
+      priceWethPerBallast = tokenPriceInQuote(sqrtPriceX96, ballastIsCurrency0, 18);
     }
   }
 

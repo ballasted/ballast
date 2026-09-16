@@ -9,7 +9,7 @@ import {
   UR_CONTRACT_BALANCE,
   exactInputSingleParamsAbi,
 } from "./robinhoodRouter";
-import { poolKeyForToken, BUY_ZERO_FOR_ONE, SELL_ZERO_FOR_ONE, type PoolKey } from "./pool";
+import { poolKeyForToken, buyZeroForOne, sellZeroForOne, type PoolKey } from "./pool";
 import { WETH_ADDRESS } from "./contracts";
 
 export type SwapSide = "buy" | "sell";
@@ -56,11 +56,16 @@ export function buildV4SwapInput(args: {
    *  RESOLVED hook for prior-hook tokens so the PoolKey matches the real pool. */
   hook?: Address;
 }): { commands: Hex; inputs: Hex[]; value: bigint } | null {
-  const key = poolKeyForToken(args.token, args.hook);
-  if (!key || !WETH_ADDRESS) return null;
+  if (!WETH_ADDRESS) return null;
+  // This function is native-ETH-specific by design (WRAP_ETH/UNWRAP_WETH only
+  // make sense for a WETH-paired pool) — WETH is the quote asset it works
+  // against, not a parameter, the same way it's the only quoteAsset_
+  // BallastFactory.launch() accepts today.
+  const key = poolKeyForToken(args.token, WETH_ADDRESS, args.hook);
+  if (!key) return null;
 
   const isBuy = args.side === "buy";
-  const zeroForOne = isBuy ? BUY_ZERO_FOR_ONE : SELL_ZERO_FOR_ONE;
+  const zeroForOne = isBuy ? buyZeroForOne(args.token, WETH_ADDRESS) : sellZeroForOne(args.token, WETH_ADDRESS);
 
   const swapParams = encodeAbiParameters([exactInputSingleParamsAbi], [
     {

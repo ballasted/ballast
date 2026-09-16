@@ -9,6 +9,7 @@ import {
   FACTORY_ADDRESSES,
   BUYBACK_ADDRESS,
   POOL_MANAGER_ADDRESS,
+  WETH_ADDRESS,
   isBuybackConfigured,
   isSwapConfigured,
 } from "@/lib/contracts";
@@ -53,8 +54,9 @@ export function useLiveRail(projects: Project[]) {
 
   const poolIndex = useMemo(() => {
     const m = new Map<string, Project>();
+    if (!WETH_ADDRESS) return m;
     for (const p of projects) {
-      for (const cand of candidatePoolKeys(p.token)) m.set(cand.id.toLowerCase(), p);
+      for (const cand of candidatePoolKeys(p.token, WETH_ADDRESS)) m.set(cand.id.toLowerCase(), p);
     }
     return m;
   }, [projects]);
