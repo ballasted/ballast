@@ -16,6 +16,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {BallastHook} from "../src/BallastHook.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {MockBallastToken} from "./mocks/MockBallastToken.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
 
 interface IWETH9 {
     function deposit() external payable;
@@ -286,5 +287,161 @@ contract BallastHookForkTest is Test {
             if (chunk == sel) return true;
         }
         return false;
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Step (e): per-pool quote-asset concept + per-currency fee ledger     //
+    // --------------------------------------------------------------------- //
+
+    function _mineTokenAgainst(address other, bool below) internal returns (MockBallastToken t) {
+        bytes memory code = abi.encodePacked(type(MockBallastToken).creationCode, abi.encode(creator));
+        bytes32 initHash = keccak256(code);
+        for (uint256 s = 1; s < 200000; s++) {
+            address a = vm.computeCreate2Address(bytes32(s), initHash, address(this));
+            if ((a < other) == below) {
+                t = new MockBallastToken{salt: bytes32(s)}(creator);
+                require(address(t) == a, "t addr");
+                return t;
+            }
+        }
+        revert("no side");
+    }
+
+    /// @dev Same shape as _pool(), but against an arbitrary (non-WETH) quote asset —
+    ///      proves the hook's fee-leg detection is genuinely per-pool, not WETH-only.
+    function _genericPool(MockERC20 quote, MockBallastToken t) internal returns (PoolKey memory key, bool quoteIsC0) {
+        quoteIsC0 = address(quote) < address(t);
+        Currency c0 = Currency.wrap(quoteIsC0 ? address(quote) : address(t));
+        Currency c1 = Currency.wrap(quoteIsC0 ? address(t) : address(quote));
+        key = PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TS, hooks: IHooks(address(hook))});
+        MANAGER.initialize(key, uint160(79228162514264337593543950336)); // 1:1
+
+        t.mint(address(this), 1e27);
+        quote.mint(address(this), 1_000_000e18);
+        quote.approve(address(lp), type(uint256).max);
+        t.approve(address(lp), type(uint256).max);
+        quote.approve(address(swap), type(uint256).max);
+        t.approve(address(swap), type(uint256).max);
+
+        lp.modifyLiquidity(
+            key,
+            IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e20, salt: 0}),
+            ""
+        );
+    }
+
+    /// @dev A pool quoted in something other than WETH must fee-skim in THAT
+    ///      currency, credit the NEW per-currency ledger (never `owed`, the
+    ///      WETH-only legacy one FeeSplitter/BuybackBurner sweep), and be claimable
+    ///      only via claimIn — proving the two ledgers are genuinely isolated.
+    function test_nonWethQuoteAsset_perCurrencyLedger() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        MockERC20 quote = new MockERC20("Mock USDC", "MUSDC", 18);
+        MockBallastToken t = _mineTokenAgainst(address(quote), true);
+        (PoolKey memory key, bool quoteIsC0) = _genericPool(quote, t);
+
+        // Buy: quote in, exact-in — quote is specified, beforeSwap charges it.
+        bool zeroForOne = quoteIsC0;
+        uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: -int256(10e18), sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+
+        uint256 creatorCutIn = hook.owedIn(creator, address(quote));
+        uint256 platformCutIn = hook.owedIn(platform, address(quote));
+        assertGt(creatorCutIn + platformCutIn, 0, "non-WETH fee must accrue in owedIn");
+
+        // The legacy WETH ledger must stay untouched by a non-WETH pool's fee.
+        assertEq(hook.owed(creator), 0, "WETH ledger must not receive non-WETH fees");
+        assertEq(hook.owed(platform), 0, "WETH ledger must not receive non-WETH fees");
+        vm.prank(creator);
+        assertEq(hook.claim(), 0, "claim() (legacy, WETH-only) must not touch the non-WETH ledger");
+
+        // claimIn pays out exactly the accrued amount and zeroes the ledger.
+        uint256 before = quote.balanceOf(creator);
+        vm.prank(creator);
+        uint256 claimedIn = hook.claimIn(address(quote));
+        assertEq(claimedIn, creatorCutIn, "claimIn must pay exactly the accrued amount");
+        assertEq(quote.balanceOf(creator) - before, claimedIn, "claimIn must transfer the quote asset");
+        assertEq(hook.owedIn(creator, address(quote)), 0, "claimIn must zero the ledger");
+    }
+
+    function test_claimIn_revertsForWeth() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        vm.expectRevert(BallastHook.UseClaimForWeth.selector);
+        hook.claimIn(WETH);
+    }
+
+    /// @dev Neither side of this pool answers creator() — not a Ballast pool at all,
+    ///      just two unrelated ERC-20s someone initialized against this shared hook.
+    ///      Must revert rather than silently misattribute a fee to whichever side
+    ///      elimination happens to pick.
+    function test_ambiguousPool_neitherSideIsToken_reverts() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        MockERC20 a = new MockERC20("A", "A", 18);
+        MockERC20 b = new MockERC20("B", "B", 18);
+        (address lo, address hi) = address(a) < address(b) ? (address(a), address(b)) : (address(b), address(a));
+        PoolKey memory key =
+            PoolKey({currency0: Currency.wrap(lo), currency1: Currency.wrap(hi), fee: FEE, tickSpacing: TS, hooks: IHooks(address(hook))});
+        MANAGER.initialize(key, uint160(79228162514264337593543950336));
+        MockERC20(lo).mint(address(this), 1e24);
+        MockERC20(hi).mint(address(this), 1e24);
+        IERC20(lo).approve(address(lp), type(uint256).max);
+        IERC20(hi).approve(address(lp), type(uint256).max);
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e20, salt: 0}), ""
+        );
+
+        IERC20(lo).approve(address(swap), type(uint256).max);
+        vm.expectRevert(); // v4 wraps hook reverts; bare expectRevert matches any reason
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1e18, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+    }
+
+    /// @dev BOTH sides answer creator() — a forged decoy token paired against a
+    ///      real one. Same refusal-to-guess outcome as the neither-side case.
+    function test_ambiguousPool_bothSidesAreTokens_reverts() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        MockBallastToken a = new MockBallastToken(creator);
+        MockBallastToken b = new MockBallastToken(creator);
+        (address lo, address hi) = address(a) < address(b) ? (address(a), address(b)) : (address(b), address(a));
+        PoolKey memory key =
+            PoolKey({currency0: Currency.wrap(lo), currency1: Currency.wrap(hi), fee: FEE, tickSpacing: TS, hooks: IHooks(address(hook))});
+        MANAGER.initialize(key, uint160(79228162514264337593543950336));
+        MockBallastToken(lo).mint(address(this), 1e24);
+        MockBallastToken(hi).mint(address(this), 1e24);
+        IERC20(lo).approve(address(lp), type(uint256).max);
+        IERC20(hi).approve(address(lp), type(uint256).max);
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e20, salt: 0}), ""
+        );
+
+        IERC20(lo).approve(address(swap), type(uint256).max);
+        vm.expectRevert();
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: true, amountSpecified: -1e18, sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
     }
 }
