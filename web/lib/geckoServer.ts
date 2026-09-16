@@ -24,6 +24,18 @@ type GtTopPool = {
 
 // Deepest/most-relevant pool address for a token, or null if GeckoTerminal hasn't
 // indexed one yet. GeckoTerminal returns pools already ordered by relevance.
+//
+// `token` MUST already be a trusted, address-verified contract address — never
+// a ticker, and never resolved by searching GeckoTerminal (or any DEX
+// aggregator) for "whichever pool has the most liquidity/volume for this
+// symbol." That heuristic is exactly what a same-ticker impostor exploits: a
+// fake "GOOGL/WETH" pool on this chain reports a fabricated $6.24B reserve —
+// deep enough to win any liquidity-based ranking — at a DIFFERENT address than
+// the real Robinhood GOOGL (docs/exit-liquidity-table.md, lib/assetIdentity.ts).
+// Every caller here already has the address from a source that itself resolved
+// it by address (our own launch registry, or AssetRegistry) — this function
+// only ever asks "what does GeckoTerminal know about THIS specific contract,"
+// never "which contract is this ticker."
 export async function resolveTopPool(token: string): Promise<string | null> {
   const top = await fetchTopPool(token);
   return top?.pool ?? null;

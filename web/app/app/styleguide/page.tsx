@@ -141,7 +141,7 @@ export default function StyleguidePage() {
                   <td className="py-3 pr-4 font-mono text-ui-xs text-text-primary">{ticker}</td>
                   {RESERVE_LOGO_SIZES.map((size) => (
                     <td key={size} className="py-3 pr-4">
-                      <AssetDisc symbol={ticker} size={size} reserveAsset />
+                      <AssetDisc symbol={ticker} size={size} identity={{ status: "recognized", symbol: ticker }} />
                     </td>
                   ))}
                 </tr>
@@ -155,6 +155,38 @@ export default function StyleguidePage() {
           white-on-transparent: correct only on this dark UI; a light-mode
           build would need a black variant.
         </p>
+      </Section>
+
+      <Section title="Asset identity states">
+        <p className="mb-4 max-w-prose text-sm text-text-muted">
+          AssetDisc never trusts a bare symbol string for the reserve-asset
+          logo set — every call site resolves an <code className="font-mono text-ui-xs">AssetIdentity</code>{" "}
+          (address-checked against the live AssetRegistry, see lib/assetIdentity.ts)
+          first. The fourth column below is the exact real-world case this
+          exists for: a live Uniswap pool on this chain reports a
+          &quot;GOOGL/WETH&quot; pair with a fabricated $6.24B reserve at{" "}
+          <code className="font-mono text-ui-xs">0x1d45…8372b</code> — a
+          different contract than the real Robinhood GOOGL. It must render as
+          hostile, never with the real Google mark.
+        </p>
+        <div className="flex flex-wrap items-end gap-6">
+          <div className="flex flex-col items-center gap-2">
+            <AssetDisc size={48} identity={{ status: "loading" }} />
+            <span className="font-mono text-ui-xs text-text-muted">loading</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <AssetDisc symbol="SPY" size={48} identity={{ status: "recognized", symbol: "SPY" }} />
+            <span className="font-mono text-ui-xs text-text-muted">recognized</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <AssetDisc size={48} identity={{ status: "unrecognized" }} />
+            <span className="font-mono text-ui-xs text-text-muted">unrecognized</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <AssetDisc size={48} identity={{ status: "hostile", claimedSymbol: "GOOGL" }} />
+            <span className="font-mono text-ui-xs text-text-muted">hostile (fake GOOGL)</span>
+          </div>
+        </div>
       </Section>
 
       <Section title="Ambience">

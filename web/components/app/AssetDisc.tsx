@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { tickerLogoFor } from "@/lib/tickerLogos";
+import type { AssetIdentity } from "@/lib/assetIdentity";
 
 // The round asset mark used everywhere a token or reserve asset needs an icon
 // (spec §3, "glass discs"): the pinned image (via `src`, an already-resolved
@@ -13,32 +14,66 @@ import { tickerLogoFor } from "@/lib/tickerLogos";
 // are 24 / 32 / 48 / 64 / 96 (see /app/styleguide) but `size` accepts any pixel
 // value so existing call sites keep their exact density.
 //
-// `reserveAsset` opts into the local trademarked-logo set (AssetRegistry
-// allowlist + quote-asset candidates — see lib/tickerLogos.ts) resolved by
-// ticker. This is gated behind an explicit flag, not automatic symbol
-// matching, so a project token whose symbol happens to collide with a real
-// asset's ticker (a documented impersonation risk on this chain) can never
-// inherit that asset's trademark just by symbol match — only call sites that
-// are actually displaying the reserve asset itself set this. It also only
+// `identity` opts into the local trademarked-logo set (AssetRegistry allowlist
+// + quote-asset candidates — see lib/tickerLogos.ts), gated on an
+// ADDRESS-VERIFIED AssetIdentity (see lib/assetIdentity.ts / useAssetIdentity),
+// never a bare symbol string — a project token whose symbol happens to collide
+// with a real asset's ticker (a documented impersonation risk on this chain,
+// proven real: a fake "GOOGL/WETH" pool with a fabricated $6.24B reserve exists
+// at a different address than the real GOOGL) must never inherit that asset's
+// trademark just by symbol match. `unrecognized`/`hostile` render explicitly as
+// such — never a logo, never the claimed ticker treated as legitimate. It only
 // activates when no explicit `src` is passed, so it never overrides a
-// caller-resolved image.
+// caller-resolved image (an ordinary project token's own logo).
 export function AssetDisc({
   src,
   symbol,
   size = 40,
-  reserveAsset = false,
+  identity,
   className,
 }: {
   src?: string;
   symbol?: string;
   size?: number;
-  reserveAsset?: boolean;
+  identity?: AssetIdentity;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const initials = (symbol || "•").slice(0, 3);
 
-  const tickerLogo = reserveAsset && !src ? tickerLogoFor(symbol, size) : undefined;
+  if (identity && identity.status !== "recognized" && !src) {
+    if (identity.status === "loading") {
+      return (
+        <span
+          aria-hidden
+          className={cn("inline-block shrink-0 animate-pulse rounded-full bg-surface-raised", className)}
+          style={{ width: size, height: size }}
+        />
+      );
+    }
+    // hostile or unrecognized: an explicit "not a trusted mark" treatment —
+    // never the claimed ticker's initials, never a logo, never the normal
+    // patina-tinted ring an ordinary asset gets.
+    const hostile = identity.status === "hostile";
+    return (
+      <span
+        className={cn(
+          "relative inline-flex shrink-0 items-center justify-center rounded-full border border-dashed",
+          hostile ? "border-warning bg-warning-bg text-warning" : "border-text-faint bg-surface-raised text-text-faint",
+          className,
+        )}
+        style={{ width: size, height: size }}
+        title={hostile ? `Claims "${identity.claimedSymbol}" but isn't the registered asset — treat as untrusted` : "Not a recognized asset"}
+      >
+        <span className="font-semibold" style={{ fontSize: size * 0.4 }}>
+          {hostile ? "!" : "?"}
+        </span>
+      </span>
+    );
+  }
+
+  const reserveSymbol = identity?.status === "recognized" ? identity.symbol : symbol;
+  const tickerLogo = identity?.status === "recognized" && !src ? tickerLogoFor(reserveSymbol, size) : undefined;
 
   if (tickerLogo && !failed) {
     // Real third-party trademarks: no recolor, no patina tint, no sheen — the
@@ -55,7 +90,7 @@ export function AssetDisc({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={`/assets/tickers/${tickerLogo.file}`}
-          alt={`${symbol} logo`}
+          alt={`${reserveSymbol} logo`}
           onError={() => setFailed(true)}
           style={{ width: size * tickerLogo.scale, height: size * tickerLogo.scale }}
           className="object-contain"

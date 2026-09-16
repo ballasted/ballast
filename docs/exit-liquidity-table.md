@@ -18,21 +18,26 @@ Searching Uniswap pools by ticker on this chain surfaces a `GOOGL/WETH 0.3%` poo
 | **NVDA** | $1.27M (0.05%) | **$6.72M** (0.05%) | 0.03% | 0.30% | 🟢 GREEN | Deepest of the ten by a clear margin |
 | **SPY** | $1.74M (0.05%) | **$8.64M** (0.3%) | 0.02% | 0.23% | 🟢 GREEN | Deepest via-USDG route of all ten |
 | **META** | $167.9K (0.3%) | **$1.79M** (0.3%) | 0.11% | 1.11% | 🟡 AMBER | Comfortable at $1k, real impact at $10k |
-| **AMZN** | **none found** | **$1.27M** (0.3%) | 0.16% | 1.58% | 🟡 AMBER | ⚠️ **No direct WETH pool at all** — 100% dependent on the USDG bridge; if AMZN/USDG liquidity thins, there is no fallback route |
 | **QQQ** | $209.9K (0.3%) | **$1.47M** (0.05%) | 0.14% | 1.36% | 🟡 AMBER | |
 | **AAPL** | $187.7K (0.05%) | **$1.48M** (0.3%) | 0.14% | 1.36% | 🟡 AMBER | |
 | **GOOGL** | $174.4K (v4) | **$1.50M** (0.3%, real contract) | 0.13% | 1.33% | 🟡 AMBER | Real pool is fine; see the impostor warning above — do not confuse with the $6.24B fake pool |
 | **TSLA** | $487.6K (0.3%) | **$1.13M** (0.3%) | 0.18% | 1.77% | 🟡 AMBER | |
-| **MSFT** | $67.0K (v4, thinnest direct pool of the ten) | **$768.4K** (0.3%) | 0.26% | 2.60% | 🟡 AMBER (borderline) | Shallowest via-USDG route of the ten; closest to the RED line |
+| **MSFT** | $67.0K (v4, thinnest direct pool of the ten) | **$768.4K** (0.3%) | 0.26% | 2.60% | 🟡 AMBER — **review before promotion, do not batch with the others** | Shallowest via-USDG route of the ten and closest to the RED line; the estimate's own margin of error (see Method) could put its real impact over 3% |
+| **AMZN** | **none found** | **$1.27M** (0.3%) | 0.16% | 1.58% | 🔴 **RED** | **No direct WETH pool at all.** Corrected from an earlier AMBER call: a single route isn't a thin exit, it's the only exit — if AMZN/USDG liquidity thins or that pool is disrupted, there is NO fallback path to WETH, full stop. Held out of the allowlist regardless of how the impact number alone reads. |
 
-Thresholds used: **GREEN** < 0.5% impact at $10k with a real (non-trivial) route; **AMBER** 0.5–3% at $10k, or GREEN-level impact but a single point of failure (one route only); **RED** > 3% at $10k, or no viable route to WETH at all. Nothing lands in RED under this estimate — but MSFT sits close to the line, and the estimate's own margin of error (see Method) means it could cross it in practice.
+Thresholds used: **GREEN** < 0.5% impact at $10k with a real (non-trivial) route; **AMBER** 0.5–3% at $10k with at least one real fallback route; **RED** > 3% at $10k, OR no viable route to WETH at all regardless of the impact number on whatever route does exist. AMZN is RED on the second clause, not the first — its $1.58% figure alone would read AMBER, but "the only route" is a structural risk a slippage percentage can't capture. MSFT is the one AMBER asset close enough to the RED line that it should not be promoted alongside the others without its own review.
 
 ## Recommendation for A1's final step
 
-- **Ship GREEN only for now**: SGOV, NVDA, SPY. These clear $10k trades with room to spare and (except none of the three lack this) don't depend on a single pool.
-- **Hold AMBER** (TSLA, GOOGL, AAPL, MSFT, AMZN, META, QQQ) until either (a) their liquidity deepens on its own, or (b) someone runs the real Quoter-simulated version of this table per asset — the estimate here is good enough to triage, not good enough to gate a live contract parameter change on for a launchpad that keeps other people's money in these assets.
-- **AMZN specifically**: flag in the UI (once/if it's ever promoted to GREEN) that it has no direct WETH pool — a holder's only exit is through USDG, and that's a structural fact worth disclosing, not just a liquidity number that might improve.
-- **Re-verify the GOOGL address at the allowlist gate every time**, independent of this table — the impostor pool existing at all is a standing reminder that ticker-based resolution is never safe on this chain.
+- **Ship GREEN only for now**: SGOV, NVDA, SPY. These clear $10k trades with room to spare and don't depend on a single route.
+- **Hold AMBER** (TSLA, GOOGL, AAPL, META, QQQ) until either (a) their liquidity deepens on its own, or (b) someone runs the real Quoter-simulated version of this table per asset — the estimate here is good enough to triage, not good enough to gate a live contract parameter change on for a launchpad that keeps other people's money in these assets.
+- **MSFT specifically**: treat as AMBER-pending-review, not AMBER-same-as-the-rest — re-run its numbers with a real quoter before it's ever bundled into a promotion pass with TSLA/GOOGL/AAPL/META/QQQ.
+- **AMZN is RED, not AMBER — do not allowlist it** until a second, independent route to WETH exists. A single-route asset is one pool incident away from holders having no exit at all; that's a structural exclusion, not a liquidity number that might improve on its own schedule.
+- **Re-verify the GOOGL address at the allowlist gate every time**, independent of this table — the impostor pool existing at all is a standing reminder that ticker-based resolution is never safe on this chain. See docs/asset-identity.md (or lib/assetIdentity.ts) for the address-first resolver this now feeds.
+
+## On-chain enforcement, confirmed
+
+`isGreenQuoteAsset` is enforced inside `BallastFactory.launch()` itself (`if (quoteAsset_ != weth && !isGreenQuoteAsset[quoteAsset_]) revert QuoteAssetNotSupportedYet();`) — a launch attempted against AMZN, MSFT, or any other non-GREEN address reverts on-chain, regardless of what any UI does or doesn't show. Covered by `test_quoteAsset_amberTreasuryAsset_stillReverts` (contracts/test/BallastFactory.t.sol), which launches against a real AssetRegistry treasury asset that is deliberately NOT on the green list and asserts the revert. This is not a UI-only gate that a direct contract call could bypass.
 
 ## Raw pool data (for the next pass to sanity-check or supersede)
 
