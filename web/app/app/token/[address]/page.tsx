@@ -29,6 +29,7 @@ import { useOhlcv } from "@/hooks/useOhlcv";
 import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { VerificationPanel } from "@/components/app/VerificationPanel";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
@@ -234,6 +235,10 @@ export default function TokenDetailPage() {
           </MotionSection>
 
           <AllocationSlot />
+
+          <MotionSection>
+            <VerificationPanel token={token} />
+          </MotionSection>
 
           <MotionSection>
             <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
