@@ -10,10 +10,16 @@ import { formatCompactUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
 
 // Bottom scrolling ticker (spec §4, App shell). Fixed at the viewport bottom,
-// offset past the SideNav, lg+ only. Every figure here is real — chain reads
-// for TVL/ETH/gas/$BALLAST price, GeckoTerminal for 24h volume and $BALLAST's
-// 24h% — and a figure that isn't available yet renders "—", never a guess.
-export function TickerBar() {
+// lg+ only. Every figure here is real — chain reads for TVL/ETH/gas/$BALLAST
+// price, GeckoTerminal for 24h volume and $BALLAST's 24h% — and a figure that
+// isn't available yet renders "—", never a guess.
+//
+// `hasRail` offsets it past SideNav's width on /app/terminal (the only route
+// that still has one — see AppLayout); everywhere else it runs full width.
+// Getting this offset wrong is exactly what made items look clipped at the
+// left edge: a rail-width gap the ticker didn't know to leave, or left when
+// there was no rail to clear.
+export function TickerBar({ hasRail = false }: { hasRail?: boolean }) {
   const { isLoading: statsLoading, totalMarketCapUsd, pricedCount } = useProtocolStats();
   const { volume24hUsd, available: volumeAvailable } = useAnalyticsSeries();
   const { ethUsd1e18 } = useEthUsd();
@@ -39,7 +45,12 @@ export function TickerBar() {
   ];
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 hidden h-7 overflow-hidden border-t border-border bg-bg/95 backdrop-blur lg:left-60 lg:flex">
+    <div
+      className={cn(
+        "fixed inset-x-0 bottom-0 z-20 hidden h-7 overflow-hidden border-t border-border bg-bg/95 backdrop-blur lg:flex",
+        hasRail && "lg:left-60",
+      )}
+    >
       <div className="group flex w-full overflow-hidden">
         <div className="ticker-track flex shrink-0 items-center gap-8 whitespace-nowrap pl-4 [animation-play-state:running] group-hover:[animation-play-state:paused]">
           {[0, 1].map((rep) => (

@@ -1,23 +1,26 @@
 "use client";
 
 import { useAccount } from "wagmi";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { Wordmark } from "@/components/Wordmark";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { CommandSearch } from "@/components/app/CommandSearch";
 import { NetworkChip } from "@/components/app/NetworkChip";
 import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
 import { AvatarMenu } from "@/components/app/AvatarMenu";
+import { NAV_ITEMS } from "@/components/app/nav-items";
+import { cn } from "@/lib/cn";
 
-// App shell top bar (spec §4). Two variants in one component so there's one
-// source of truth for what goes in it:
-//  - Desktop (lg+): sits above the content column, beside the fixed SideNav
-//    (which already carries the wordmark). Full set: search, network,
-//    portfolio value, account.
-//  - Mobile (<lg): the wordmark moves here (SideNav is hidden), and the
-//    network chip / portfolio chip are dropped rather than crammed into 390px
-//    — NetworkGuard's full-width banner already covers the wrong-network case,
-//    and portfolio value has its own page.
-export function TopBar() {
+// App shell top bar. Two variants in one component so there's one source of
+// truth for what goes in it:
+//  - Mobile (<lg): wordmark + search + account. BottomNav covers navigation.
+//  - Desktop (lg+): wordmark, horizontal primary nav (underline active state,
+//    hidden on /app/terminal — the surviving rail there covers nav instead so
+//    the two never show at once), then search / network / portfolio / account.
+//
+// `hasRail` is true only on /app/terminal, where SideNav still renders.
+export function TopBar({ hasRail = false }: { hasRail?: boolean }) {
   const { isConnected } = useAccount();
 
   return (
@@ -33,9 +36,11 @@ export function TopBar() {
       </header>
 
       <header className="sticky top-0 z-30 hidden border-b border-border bg-bg/85 backdrop-blur lg:block">
-        <div className="mx-auto flex h-16 max-w-content items-center justify-between px-10">
-          <CommandSearch />
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex h-16 max-w-content items-center gap-6 px-10">
+          <Wordmark />
+          {!hasRail && <DesktopNav />}
+          <div className="flex flex-1 items-center justify-end gap-3">
+            <CommandSearch />
             <NetworkChip />
             <PortfolioValueChip />
             {isConnected ? <AvatarMenu /> : <ConnectButton />}
@@ -43,5 +48,31 @@ export function TopBar() {
         </div>
       </header>
     </>
+  );
+}
+
+function DesktopNav() {
+  const pathname = usePathname();
+  return (
+    <nav className="flex h-full items-center gap-5">
+      {NAV_ITEMS.map((item) => {
+        const active = pathname.startsWith(item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex h-full items-center border-b-2 text-sm font-medium transition-colors",
+              active
+                ? "border-green text-green"
+                : "border-transparent text-text-muted hover:text-text-secondary",
+            )}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

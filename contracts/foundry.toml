@@ -6,6 +6,11 @@ solc = "0.8.28"
 optimizer = true
 optimizer_runs = 200
 evm_version = "cancun"
+# BallastHook's beforeSwap/afterSwap (calldata-heavy v4 callbacks, now also
+# resolving per-pool quote-asset info) hit legacy codegen's stack-too-deep limit —
+# the standard fix for hook contracts this shape. forge verify-contract reads this
+# same profile, so Blockscout verification picks it up automatically, no extra flag.
+via_ir = true
 remappings = [
     "forge-std/=lib/forge-std/src/",
     "openzeppelin-contracts/=lib/openzeppelin-contracts/",
