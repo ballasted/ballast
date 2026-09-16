@@ -10,6 +10,7 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 import {BackingMath} from "./libraries/BackingMath.sol";
+import {OrderingLib} from "./libraries/OrderingLib.sol";
 
 /// @title BallastFactory
 /// @notice Launch entry point + registry. Atomically deploys a project token and
@@ -102,11 +103,11 @@ contract BallastFactory {
     ///         practice this only trips on a genuinely broken feed, not on an
     ///         expected weekend/holiday rest.
     error FeedStaleAtLaunch(address asset);
-    /// @notice quoteAsset_ must be `weth` for now. Pairing against USDC or a
-    ///         stock/ETF asset needs the ordering helper + one-sided-liquidity
-    ///         support that BallastSeeder/BallastHook don't have yet (queued as
-    ///         separate work) — accepting the choice here before those land would
-    ///         let a launch claim a pairing that graduation can't actually honor.
+    /// @notice quoteAsset_ must be `weth` for now. BallastSeeder now handles
+    ///         either ordering, but BallastHook's fee ledger is still WETH-only
+    ///         (queued as separate work) — accepting a non-WETH quote here before
+    ///         that lands would let a launch claim a pairing that its own pool's
+    ///         hook can't actually honor.
     error QuoteAssetNotSupportedYet();
 
     constructor(
@@ -138,13 +139,13 @@ contract BallastFactory {
         graduated[token] = true;
 
         Launch memory l = launches[idPlus1 - 1];
-        (int24 tickLower, uint256 backingUsd) = _p0Tick(l.treasury, l.quoteAsset);
+        (int24 openTick, uint256 backingUsd) = _p0Tick(token, l.treasury, l.quoteAsset);
 
         uint256 supply = IERC20(token).balanceOf(address(this));
         IERC20(token).transfer(address(seeder), supply);
-        seeder.seed(token, tickLower);
+        seeder.seed(token, openTick);
 
-        emit Graduated(token, l.treasury, tickLower, backingUsd);
+        emit Graduated(token, l.treasury, openTick, backingUsd);
     }
 
     /// @dev The quote asset's own USD price + decimals, for P0 conversion. WETH
@@ -174,17 +175,26 @@ contract BallastFactory {
         decimals = IERC20Metadata(quoteAsset).decimals();
     }
 
-    /// @dev P0 tick + backing USD. Reverts if any held treasury feed, or the quote
-    ///      asset's own feed, is stale beyond its outer bound (see _quotePrice).
-    ///      Age is NOT a proxy for inaccuracy on a deviation-threshold feed — a
-    ///      quiet-but-recent SGOV price is correct — so this bound is the asset's
-    ///      real cadence (e.g. 120h SGOV / 96h equities), not a blunt trading-hours
-    ///      window.
-    function _p0Tick(address treasury, address quoteAsset)
+    /// @dev Opening tick + backing USD. Reverts if any held treasury feed, or the
+    ///      quote asset's own feed, is stale beyond its outer bound (see
+    ///      _quotePrice). Age is NOT a proxy for inaccuracy on a
+    ///      deviation-threshold feed — a quiet-but-recent SGOV price is correct
+    ///      — so this bound is the asset's real cadence (e.g. 120h SGOV / 96h
+    ///      equities), not a blunt trading-hours window.
+    ///
+    ///      UNBACKED_TICK is defined in token-as-currency0 terms (real price =
+    ///      raw tick directly); when the token sorts as currency1 against this
+    ///      launch's quote asset, the same real price is the tick's exact
+    ///      negation (currency1/currency0 = 1/(currency0/currency1), and tick
+    ///      negation is exact for a reciprocal ratio) — still tickSpacing-
+    ///      aligned since UNBACKED_TICK already is.
+    function _p0Tick(address token, address treasury, address quoteAsset)
         internal
         view
-        returns (int24 tickLower, uint256 backingUsd1e18)
+        returns (int24 openTick, uint256 backingUsd1e18)
     {
+        bool tokenIsCurrency0 = OrderingLib.tokenIsCurrency0(token, quoteAsset);
+
         address[] memory assets = ProjectTreasury(treasury).assets();
         bool backed;
         for (uint256 i = 0; i < assets.length; i++) {
@@ -200,11 +210,12 @@ contract BallastFactory {
             uint256 usd = FullMath.mulDiv(held, uint256(ans), 10 ** AggregatorV3Interface(feed).decimals());
             backingUsd1e18 += FullMath.mulDiv(usd, 1e18, 10 ** IERC20Metadata(assets[i]).decimals());
         }
-        if (!backed) return (UNBACKED_TICK, 0);
+        if (!backed) return (tokenIsCurrency0 ? UNBACKED_TICK : -UNBACKED_TICK, 0);
 
         (uint256 quotePrice1e18, uint8 quoteDecimals) = _quotePrice(quoteAsset);
         // Permanent-effect P0 math, isolated + fuzzed in BackingMath.
-        tickLower = BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING);
+        openTick =
+            BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING, tokenIsCurrency0);
     }
 
     /// @notice Launch a project: deploy the token + treasury, wire them, register.
@@ -230,13 +241,11 @@ contract BallastFactory {
         }
         if (quoteAsset_ != weth) revert QuoteAssetNotSupportedYet();
 
-        // 1. Token — plain CREATE, no mining. Its address relative to weth is now
-        //    unconstrained (could sort either side) — see OrderingLib and the
-        //    ordering note on graduate()/BallastSeeder: the seeder only supports
-        //    token-as-currency0 pools today, so a token whose nonce-based address
-        //    happens to sort above its quote asset can launch fine (nothing here
-        //    depends on ordering) but will revert at graduate() until the seeder's
-        //    mirrored one-sided-liquidity math ships (queued as separate work).
+        // 1. Token — plain CREATE, no mining. Its address relative to weth is
+        //    unconstrained (could sort either side) — see OrderingLib. graduate()/
+        //    BallastSeeder mirror the one-sided-liquidity math for whichever
+        //    ordering this token's nonce-based address happens to land on, so
+        //    nothing here (or at graduate() time) depends on the outcome.
         //    Full supply minted to the factory for one-sided pool seeding.
         BallastToken t = new BallastToken(name_, symbol_, TOTAL_SUPPLY, msg.sender, address(this), metadataURI);
 
