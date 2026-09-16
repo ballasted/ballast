@@ -1,4 +1,5 @@
 import { Providers } from "./providers";
+import { Ambience } from "@/components/app/Ambience";
 import { BottomNav } from "@/components/app/BottomNav";
 import { SideNav } from "@/components/app/SideNav";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -17,8 +18,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
       {/* Ambient depth behind everything — a fixed, faint light source so the app
-          never reads as flat edge-to-edge black (density §1). */}
-      <div className="ambient-bg" aria-hidden />
+          never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
+      <Ambience variant="page" />
       <SideNav />
       <div className="flex min-h-screen flex-col lg:pl-60">
         {/* Mobile top bar — brand + wallet. Hidden on desktop, where the SideNav

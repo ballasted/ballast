@@ -28,3 +28,10 @@ next-env.d.ts
 
 # Downloaded, checksum-verified solc binary cache (see scripts/lib/compile.ts)
 scripts/.solc-cache/
+.vercel
+.env*
+
+# Ad-hoc verification/screenshot scripts — never committed, never risk
+# clobbering something real (see Milestone 1 retro: a scratch script
+# overwrote an existing untracked file at the repo root instead of here).
+.scratch/

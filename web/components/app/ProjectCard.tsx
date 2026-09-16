@@ -161,8 +161,8 @@ function CardMedia({
 function VerifiedCheck() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-label="ballasted" className="shrink-0">
-      <circle cx="12" cy="12" r="10" fill="#0E2A12" />
-      <path d="M8 12.5l2.5 2.5L16 9" stroke="#00C805" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="10" fill="#0F2A14" />
+      <path d="M8 12.5l2.5 2.5L16 9" stroke="#22C93A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

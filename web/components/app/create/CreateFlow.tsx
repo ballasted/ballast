@@ -13,7 +13,7 @@ import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { WalletBalance } from "@/components/app/WalletBalance";
 import { ActingAs } from "@/components/app/ActingAs";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { erc20Abi } from "@/lib/abis";
 import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
@@ -669,7 +669,7 @@ function PreviewCard(p: {
   return (
     <section className="card-raised overflow-hidden">
       <div className="flex items-center gap-3 border-b border-border p-4">
-        <Logo src={ipfsToGateway(p.logoUri)} symbol={p.symbol} size={44} />
+        <AssetDisc src={ipfsToGateway(p.logoUri)} symbol={p.symbol} size={44} />
         <div className="min-w-0">
           <div className="truncate font-semibold text-text-primary">{p.name || "Your project"}</div>
           <div className="metric-secondary">${p.symbol || "TICKER"} · {p.category}</div>
@@ -891,7 +891,7 @@ function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: strin
   return (
     <div className="mx-auto max-w-md">
       <section className="card p-6 text-center">
-        <div className="mx-auto w-fit"><Logo src={ipfsToGateway(logoUri)} symbol={symbol} size={48} /></div>
+        <div className="mx-auto w-fit"><AssetDisc src={ipfsToGateway(logoUri)} symbol={symbol} size={48} /></div>
         <h2 className="mt-3 text-lg font-semibold text-text-primary">${symbol} is live</h2>
         <p className="mt-1 text-sm text-text-muted">Its pool is seeded and the LP is locked permanently.</p>
         <div className="mt-4 grid gap-2">

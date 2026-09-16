@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Address } from "viem";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { Freshness } from "@/components/app/Freshness";
 import { shortAddress, formatBackingPerToken } from "@/lib/format";
 import { formatSmallUsd, formatCompactUsd } from "@/lib/market";
@@ -55,7 +55,7 @@ export function TerminalStatStrip({
     <section className="card flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
       {/* Identity */}
       <div className="flex min-w-0 items-center gap-3 pr-2">
-        <Logo src={logoSrc} symbol={symbol} size={36} />
+        <AssetDisc src={logoSrc} symbol={symbol} size={36} />
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
             <h1 className="truncate font-serif text-lg font-semibold leading-tight text-bone">

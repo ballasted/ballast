@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { Logo } from "@/components/app/Logo";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { cn } from "@/lib/cn";
@@ -91,7 +91,7 @@ function FeaturedCard({ project }: { project: Project }) {
   return (
     <Link href={`/app/token/${token}`} className="card card-hover block border-accent p-5">
       <div className="flex items-center gap-3">
-        <Logo src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
+        <AssetDisc src={ipfsToGateway(meta?.logo)} symbol={symbol} size={48} />
         <div className="min-w-0">
           <div className="truncate font-semibold text-text-primary">{symbol ?? shortAddress(token)}</div>
           <p className="truncate text-sm text-text-muted">{name ?? "Unnamed project"}</p>

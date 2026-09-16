@@ -21,15 +21,15 @@ export const contentType = "image/png";
 // Palette — literal hex (satori can't read CSS variables), mirrored from
 // tailwind.config.ts so the card matches the app exactly.
 const C = {
-  bg: "#0A0C0B",
-  card: "#131917",
-  border: "#232B25",
-  green: "#00C805",
-  greenDeep: "#0E2A12",
-  bone: "#DDD8CA",
-  boneMuted: "#8A938D",
-  textPrimary: "#F2F4F2",
-  faint: "#5F665F",
+  bg: "#050A06",
+  card: "#0E1410",
+  border: "rgba(34,201,58,0.16)",
+  green: "#22C93A",
+  greenDeep: "#0F2A14",
+  bone: "#F5F3EC",
+  boneMuted: "rgba(245,243,236,0.35)",
+  textPrimary: "#F5F3EC",
+  faint: "rgba(245,243,236,0.18)",
 };
 
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {

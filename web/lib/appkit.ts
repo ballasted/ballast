@@ -28,8 +28,8 @@ export const modal = appKitEnabled
       allWallets: "SHOW",
       themeMode: "dark",
       themeVariables: {
-        "--w3m-accent": "#00C805",
-        "--w3m-color-mix": "#0A0C0B",
+        "--w3m-accent": "#22C93A",
+        "--w3m-color-mix": "#050A06",
         "--w3m-color-mix-strength": 40,
         "--w3m-border-radius-master": "2px",
         "--w3m-font-family":
