@@ -12,7 +12,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {HookMiner} from "v4-periphery/test/shared/HookMiner.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-import {BallastHook} from "../src/BallastHook.sol";
+import {BallastHook, BALLAST_HOOK_FLAGS} from "../src/BallastHook.sol";
 import {BallastSeeder} from "../src/BallastSeeder.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {MockBallastToken} from "./mocks/MockBallastToken.sol";
@@ -46,12 +46,12 @@ contract BallastSeederForkTest is Test {
         forked = true;
 
         cfg = new FeeConfig(address(this), makeAddr("platform"));
-        uint160 flags = uint160((1 << 7) | (1 << 6) | (1 << 3) | (1 << 2));
         (address hookAddr, bytes32 salt) =
-            HookMiner.find(address(this), flags, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
+            HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
         hook = new BallastHook{salt: salt}(MANAGER, cfg, WETH);
         require(address(hook) == hookAddr, "hook");
         seeder = new BallastSeeder(MANAGER, WETH, address(hook));
+        hook.setSeeder(address(seeder));
         swap = new PoolSwapTest(MANAGER);
         vm.deal(address(this), 1000 ether);
         IWETH9b(WETH).deposit{value: 500 ether}();

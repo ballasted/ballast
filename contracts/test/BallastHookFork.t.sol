@@ -13,7 +13,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {HookMiner} from "v4-periphery/test/shared/HookMiner.sol";
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
-import {BallastHook} from "../src/BallastHook.sol";
+import {BallastHook, BALLAST_HOOK_FLAGS} from "../src/BallastHook.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {MockBallastToken} from "./mocks/MockBallastToken.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -42,6 +42,7 @@ contract BallastHookForkTest is Test {
     PoolSwapTest swap;
     address platform = makeAddr("platform");
     address creator = makeAddr("creator");
+    address seederStandIn = makeAddr("seederStandIn");
 
     bool forked;
 
@@ -55,11 +56,16 @@ contract BallastHookForkTest is Test {
         lp = new PoolModifyLiquidityTest(MANAGER);
         swap = new PoolSwapTest(MANAGER);
 
-        // Mine + deploy the hook at an address carrying exactly FLAGS.
+        // Mine + deploy the hook at an address carrying exactly BALLAST_HOOK_FLAGS.
         (address hookAddr, bytes32 salt) =
-            HookMiner.find(address(this), hook_flags(), type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
+            HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
         hook = new BallastHook{salt: salt}(MANAGER, cfg, WETH);
         require(address(hook) == hookAddr, "hook addr mismatch");
+        // Stand-in Seeder address for the liquidity-lock tests below — this file
+        // tests the hook in isolation, not the full Seeder integration (that's
+        // BallastSeederFork.t.sol). Any address works; what's tested is that
+        // modifyLiquidity FROM this specific address, removing, reverts.
+        hook.setSeeder(seederStandIn);
 
         // Fund WETH.
         vm.deal(address(this), 1000 ether);
@@ -67,8 +73,7 @@ contract BallastHookForkTest is Test {
     }
 
     function hook_flags() internal pure returns (uint160) {
-        // BEFORE_SWAP(1<<7) | BEFORE_SWAP_RETURNS_DELTA(1<<3) | AFTER_SWAP(1<<6) | AFTER_SWAP_RETURNS_DELTA(1<<2)
-        return uint160((1 << 7) | (1 << 6) | (1 << 3) | (1 << 2));
+        return BALLAST_HOOK_FLAGS;
     }
 
     function _deployTokenOnSide(bool belowWeth) internal returns (MockBallastToken t) {
@@ -443,5 +448,112 @@ contract BallastHookForkTest is Test {
             PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
             ""
         );
+    }
+
+    // --------------------------------------------------------------------- //
+    //  A5: liquidity lock — beforeRemoveLiquidity                           //
+    // --------------------------------------------------------------------- //
+
+    /// @dev A v4 hook sees the LIQUIDITY ROUTER's own address as `sender`, not
+    ///      whoever called the router externally (PoolModifyLiquidityTest calls
+    ///      manager.modifyLiquidity from ITS OWN unlockCallback) — exactly how
+    ///      the real BallastSeeder relationship works (Seeder itself is the
+    ///      caller PoolManager sees). So proving "the Seeder specifically is
+    ///      blocked, a third party isn't" needs a SECOND router instance
+    ///      standing in for Seeder's identity, set via setSeeder — a single
+    ///      shared router can't play both roles at once.
+    function test_liquidityLock_seederBlocked_thirdPartyFree() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        MockBallastToken t = _deployTokenOnSide(true);
+        (PoolKey memory key,) = _pool(t); // lp seeds [-12000,12000], liquidityDelta 1e20
+
+        PoolModifyLiquidityTest lpAsSeeder = new PoolModifyLiquidityTest(MANAGER);
+        hook.setSeeder(address(lpAsSeeder));
+
+        t.mint(address(this), 1e26);
+        t.approve(address(lpAsSeeder), type(uint256).max);
+        IERC20(WETH).approve(address(lpAsSeeder), type(uint256).max);
+
+        // Adding is never blocked (beforeRemoveLiquidity only fires for
+        // liquidityDelta <= 0) — only removing is.
+        lpAsSeeder.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e18, salt: 0}), ""
+        );
+
+        vm.expectRevert(BallastHook.SeederLiquidityLocked.selector);
+        lpAsSeeder.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: -1e18, salt: 0}), ""
+        );
+
+        // A genuine third party — `lp`, from _pool's own seeding above — stays
+        // completely free to remove ITS OWN liquidity. The lock is scoped to
+        // the Seeder's identity, not a blanket freeze on the pool.
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: -1e19, salt: 0}), ""
+        );
+    }
+
+    /// @dev Before setSeeder is ever called (seeder == address(0)), removal is
+    ///      allowed for everyone — the lock only engages once wired. No pool can
+    ///      be seeded before BallastSeeder itself is deployed and wired anyway,
+    ///      so this window is never reachable with anything to remove in
+    ///      production; tested here for completeness since it's a real code path.
+    function test_liquidityLock_beforeSeederWired_removalAllowed() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        // A fresh hook, deliberately never wired.
+        FeeConfig freshCfg = new FeeConfig(address(this), platform);
+        (address hookAddr, bytes32 salt) = HookMiner.find(
+            address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, freshCfg, WETH)
+        );
+        BallastHook freshHook = new BallastHook{salt: salt}(MANAGER, freshCfg, WETH);
+        require(address(freshHook) == hookAddr, "hook");
+        assertEq(freshHook.seeder(), address(0), "seeder must start unset");
+
+        MockBallastToken t = _deployTokenOnSide(true);
+        bool wethIsC0 = WETH < address(t);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(wethIsC0 ? WETH : address(t)),
+            currency1: Currency.wrap(wethIsC0 ? address(t) : WETH),
+            fee: FEE,
+            tickSpacing: TS,
+            hooks: IHooks(address(freshHook))
+        });
+        MANAGER.initialize(key, uint160(79228162514264337593543950336));
+        t.mint(address(this), 1e26);
+        t.approve(address(lp), type(uint256).max);
+        IERC20(WETH).approve(address(lp), type(uint256).max);
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e18, salt: 0}), ""
+        );
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: -1e18, salt: 0}), ""
+        );
+    }
+
+    function test_setSeeder_onlyDeployer_onlyOnce() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        // Already set in setUp() — a second call, even from the deployer, reverts.
+        vm.expectRevert(BallastHook.AlreadySet.selector);
+        hook.setSeeder(makeAddr("someoneElse"));
+
+        // A non-deployer could never have set it in the first place.
+        FeeConfig freshCfg = new FeeConfig(address(this), platform);
+        (address hookAddr, bytes32 salt) = HookMiner.find(
+            address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, freshCfg, WETH)
+        );
+        BallastHook freshHook = new BallastHook{salt: salt}(MANAGER, freshCfg, WETH);
+        require(address(freshHook) == hookAddr, "hook");
+        vm.prank(makeAddr("notTheDeployer"));
+        vm.expectRevert(BallastHook.NotDeployer.selector);
+        freshHook.setSeeder(makeAddr("seeder"));
     }
 }

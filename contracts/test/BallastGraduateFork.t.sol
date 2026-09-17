@@ -18,7 +18,7 @@ import {BallastFactory} from "../src/BallastFactory.sol";
 import {BallastToken} from "../src/BallastToken.sol";
 import {ProjectTreasury} from "../src/ProjectTreasury.sol";
 import {BallastSeeder} from "../src/BallastSeeder.sol";
-import {BallastHook} from "../src/BallastHook.sol";
+import {BallastHook, BALLAST_HOOK_FLAGS} from "../src/BallastHook.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {AssetRegistry, MarketHours} from "../src/AssetRegistry.sol";
 import {MockStockToken} from "./mocks/MockStockToken.sol";
@@ -59,12 +59,12 @@ contract BallastGraduateForkTest is Test {
 
         registry = new AssetRegistry(address(this));
         cfg = new FeeConfig(address(this), platform);
-        uint160 flags = uint160((1 << 7) | (1 << 6) | (1 << 3) | (1 << 2));
         (address ha, bytes32 salt) =
-            HookMiner.find(address(this), flags, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
+            HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
         hook = new BallastHook{salt: salt}(MANAGER, cfg, WETH);
         require(address(hook) == ha, "hook");
         seeder = new BallastSeeder(MANAGER, WETH, address(hook));
+        hook.setSeeder(address(seeder));
         ethFeed = new MockAggregator(8, 3000e8, block.timestamp); // ETH = $3000, fresh
         factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours, new address[](0));
         swap = new PoolSwapTest(MANAGER);
