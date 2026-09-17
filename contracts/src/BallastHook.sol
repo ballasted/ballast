@@ -14,6 +14,14 @@ import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/Safe
 import {FeeConfig} from "./FeeConfig.sol";
 import {BallastToken} from "./BallastToken.sol";
 
+// Flag bits BallastHook's mined address must carry (and only these). File-level
+// (not just the BallastHook.FLAGS constant below) because HookMiner needs this
+// value BEFORE any instance exists to read it from — `ContractName.CONSTANT`
+// compile-time access works for libraries/enums, not for a contract's own state
+// variables, so miners and deploy scripts import this directly instead.
+uint160 constant BALLAST_HOOK_FLAGS = Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
+    | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG;
+
 /// @title BallastHook — singleton v4 hook that takes a fee on the QUOTE-ASSET leg
 ///
 /// @notice Charges `FeeConfig.feeBps` (1%) of the quote-asset side of every swap and
@@ -51,6 +59,19 @@ import {BallastToken} from "./BallastToken.sol";
 ///
 ///      Distribution is accrue-and-claim (pull, not push): a reverting/blocklisted
 ///      recipient can only fail its own claim(), never brick a swap.
+///
+///      LIQUIDITY LOCK, on its own merits: BallastSeeder's one-sided position is
+///      already structurally unremovable (it has no function that calls
+///      modifyLiquidity with a negative delta after the initial seed — see
+///      BallastSeeder.sol), but that guarantee currently requires reading
+///      Seeder's bytecode to confirm. `beforeRemoveLiquidity` makes the SAME
+///      guarantee provable from this hook alone: it reverts if the caller
+///      removing liquidity is the Seeder, full stop. It does NOT block anyone
+///      else — a third party who adds their own liquidity to a Ballast pool
+///      (explicitly possible; see the token page's "not a floor" disclosure)
+///      stays free to remove it. This is not a scanner-facing substitute for
+///      anything; it is a real, independently-checkable lock on the one
+///      position that must never move.
 contract BallastHook {
     using SafeERC20 for IERC20;
     using BalanceDeltaLibrary for BalanceDelta;
@@ -61,6 +82,19 @@ contract BallastHook {
     /// @notice Kept for the legacy WETH-only ledger below — NOT used to identify
     ///         which side of a pool is the quote asset anymore (see _resolvePool).
     address public immutable weth;
+    /// @notice Whoever deployed this hook — authorized ONLY to call setSeeder,
+    ///         exactly once, immediately after BallastSeeder deploys. Not an
+    ///         ongoing admin role; there is nothing else this address can do.
+    address private immutable _deployer;
+
+    /// @notice The one address beforeRemoveLiquidity ever blocks. Settable once
+    ///         (setSeeder) because BallastSeeder's constructor needs THIS hook's
+    ///         address, so the hook must exist first and can't know Seeder's
+    ///         address at construction — a one-time wiring step, not a live
+    ///         admin control. Until set, beforeRemoveLiquidity allows everyone
+    ///         (harmless: no pool can be seeded before Seeder exists anyway).
+    address public seeder;
+    bool private _seederSet;
 
     /// @notice WETH owed to each recipient, claimable via claim(). Legacy ledger,
     ///         untouched selector/semantics — FeeSplitter and BuybackBurner sweep
@@ -103,16 +137,26 @@ contract BallastHook {
     /// @notice claim() (no args) is the WETH-specific path; use claimIn(currency)
     ///         for anything else.
     error UseClaimForWeth();
+    /// @notice setSeeder was called by anyone other than the deployer.
+    error NotDeployer();
+    /// @notice setSeeder was already called — one-time wiring, not retunable.
+    error AlreadySet();
+    error ZeroAddress();
+    /// @notice The Seeder tried to remove liquidity. It never should (no code
+    ///         path exists to), but this makes the lock provable from the hook
+    ///         alone rather than from Seeder's absence of a removal function.
+    error SeederLiquidityLocked();
 
-    /// Flag bits this hook's mined address must carry (and only these).
-    uint160 public constant FLAGS =
-        Hooks.BEFORE_SWAP_FLAG | Hooks.BEFORE_SWAP_RETURNS_DELTA_FLAG
-        | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG;
+    /// @notice Same value as the file-level BALLAST_HOOK_FLAGS — kept as an
+    ///         instance-readable constant too (on-chain introspection, and for
+    ///         any caller that already has a deployed instance in hand).
+    uint160 public constant FLAGS = BALLAST_HOOK_FLAGS;
 
     constructor(IPoolManager poolManager_, FeeConfig feeConfig_, address weth_) {
         poolManager = poolManager_;
         feeConfig = feeConfig_;
         weth = weth_;
+        _deployer = msg.sender;
     }
 
     modifier onlyPoolManager() {
@@ -120,12 +164,37 @@ contract BallastHook {
         _;
     }
 
-    /// @notice For HookMiner / readability — the four permissions this hook needs.
+    /// @notice One-time wiring: the deployer calls this immediately after
+    ///         BallastSeeder deploys (which needed THIS hook's address in ITS
+    ///         OWN constructor, so the ordering can't be the other way around).
+    function setSeeder(address seeder_) external {
+        if (msg.sender != _deployer) revert NotDeployer();
+        if (_seederSet) revert AlreadySet();
+        if (seeder_ == address(0)) revert ZeroAddress();
+        seeder = seeder_;
+        _seederSet = true;
+    }
+
+    /// @notice For HookMiner / readability — the five permissions this hook needs.
     function getHookPermissions() external pure returns (Hooks.Permissions memory p) {
         p.beforeSwap = true;
         p.afterSwap = true;
         p.beforeSwapReturnDelta = true;
         p.afterSwapReturnDelta = true;
+        p.beforeRemoveLiquidity = true;
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Liquidity lock — the Seeder's position can never be removed          //
+    // --------------------------------------------------------------------- //
+    function beforeRemoveLiquidity(address sender, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        if (sender == seeder) revert SeederLiquidityLocked();
+        return IHooks.beforeRemoveLiquidity.selector;
     }
 
     // --------------------------------------------------------------------- //
