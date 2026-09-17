@@ -1,13 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Playfair_Display } from "next/font/google";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { SAME_AS, X_HANDLE } from "@/lib/links";
 import "./globals.css";
 
 // Self-hosted at build time by next/font (no runtime request to Google Fonts,
 // so this doesn't reopen the "marketing bundle stays offline-safe" concern the
 // previous system-font stack was chosen for — see tailwind.config.ts).
-const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const serif = Playfair_Display({ subsets: ["latin"], variable: "--font-display", display: "swap" });
+//
+// Single UI typeface sitewide (Space Grotesk, weights 400-700) — the display
+// serif register (Playfair Display) is retired; `--font-display` now points
+// at the same family so any lingering `font-serif` usage still resolves
+// instead of silently falling back to a system serif.
+const sans = Space_Grotesk({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-sans", display: "swap" });
+// Same family, second next/font instance so `--font-display` (the token
+// `font-serif` still resolves to in tailwind.config.ts) points at Space
+// Grotesk too rather than silently falling back to a system serif.
+const display = Space_Grotesk({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-display", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 // ROOT LAYOUT — html/body only. Deliberately contains NO web3 providers.
@@ -67,7 +75,7 @@ export default function RootLayout({
     sameAs: SAME_AS,
   };
   return (
-    <html lang="en" className={`${sans.variable} ${serif.variable} ${mono.variable}`}>
+    <html lang="en" className={`${sans.variable} ${display.variable} ${mono.variable}`}>
       <body>
         <script
           type="application/ld+json"

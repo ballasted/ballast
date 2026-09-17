@@ -1,15 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { WalletGate } from "@/components/app/WalletGate";
 import { SocialIcon } from "@/components/SocialIcon";
+import { CopyAddress } from "@/components/app/CopyAddress";
 import { COMMUNITY_LINKS } from "@/lib/links";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { activeChain } from "@/lib/chain";
+import { cn } from "@/lib/cn";
+
+type LaunchFilter = "all" | "ballasted" | "unbacked";
 
 export default function ProfilePage() {
+  const [filter, setFilter] = useState<LaunchFilter>("all");
   const { address: account, isConnected } = useAccount();
   const { projects, isLoading, isConfigured } = useProjects();
 
@@ -23,38 +29,68 @@ export default function ProfilePage() {
   const mine = projects.filter((p) => p.creator.toLowerCase() === account.toLowerCase());
   const stillFunded = mine.filter((p) => p.ballasted).length;
   const totalLocked = mine.reduce((s, p) => s + (p.backing?.lockedValueUsd ?? 0n), 0n);
+  const totalTreasury = mine.reduce((s, p) => s + (p.backing?.totalValueUsd ?? 0n), 0n);
+  const filtered =
+    filter === "all" ? mine : filter === "ballasted" ? mine.filter((p) => p.ballasted) : mine.filter((p) => !p.ballasted);
 
   return (
     <div className="space-y-5">
-      <header className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-bg font-semibold text-green">
-          {account.slice(2, 4).toUpperCase()}
+      <section className="card flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-bg font-semibold text-green ring-1 ring-inset ring-bone/10">
+            {account.slice(2, 4).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="font-serif text-lg font-semibold text-bone">Profile</h1>
+              <span className="chip chip-accent">Connected</span>
+            </div>
+            <CopyAddress address={account} label={shortAddress(account)} className="mt-0.5" />
+          </div>
         </div>
-        <div>
-          <h1 className="font-serif text-xl font-semibold text-bone">{shortAddress(account)}</h1>
-          {/* X OAuth isn't wired — anchor to the wallet and say so plainly (spec §9). */}
-          <p className="text-xs text-text-muted">
-            Wallet identity. Linking an X account (harder to fake than a fresh wallet) comes with the social layer.
-          </p>
+        <div className="text-left sm:text-right">
+          <div className="eyebrow">Locked backing</div>
+          <div className="mt-0.5 flex items-baseline gap-2 sm:justify-end">
+            <span data-balance className="figure-primary text-4xl">
+              {formatUsd(totalLocked, { compact: true })}
+            </span>
+          </div>
+          <div className="metric-secondary">across {mine.length} launch{mine.length === 1 ? "" : "es"}</div>
         </div>
-      </header>
+      </section>
+
+      {/* X OAuth isn't wired — anchor to the wallet and say so plainly (spec §9). */}
+      <p className="text-xs text-text-faint">
+        Wallet identity. Linking an X account (harder to fake than a fresh wallet) comes with the social layer.
+      </p>
 
       {isLoading ? (
         <div className="card h-24 animate-pulse" />
       ) : (
         <>
-          <section className="grid grid-cols-3 gap-3">
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Launched" value={String(mine.length)} />
-            <Stat label="Still funded" value={mine.length ? `${stillFunded} of ${mine.length}` : "0"} />
-            <Stat label="Locked backing" value={formatUsd(totalLocked, { compact: true })} />
+            <Stat label="Ballasted" value={mine.length ? `${stillFunded} of ${mine.length}` : "0"} />
+            <Stat label="Locked backing" value={formatUsd(totalLocked, { compact: true })} balance />
+            <Stat label="Total treasury" value={formatUsd(totalTreasury, { compact: true })} balance />
           </section>
 
           {mine.length === 0 ? (
             <Notice title="No launches yet" body="No launches from this wallet yet. Its track record will build here, publicly from chain." />
           ) : (
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold text-text-primary">Launches</h2>
-              {mine.map((p) => <ProfileLaunch key={p.token} p={p} />)}
+            <section className="space-y-3">
+              <div className="flex gap-2">
+                {(["all", "ballasted", "unbacked"] as const).map((f) => (
+                  <button key={f} onClick={() => setFilter(f)} className={cn("tab", filter === f ? "tab-active" : "tab-idle")}>
+                    {f === "all" ? "All launches" : f === "ballasted" ? "Ballasted" : "Unbacked"}
+                  </button>
+                ))}
+              </div>
+              {filtered.length === 0 ? (
+                <Notice title="Nothing here" body="No launches match this filter." />
+              ) : (
+                filtered.map((p) => <ProfileLaunch key={p.token} p={p} />)
+              )}
             </section>
           )}
 
@@ -109,10 +145,12 @@ function CommunityLinks() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, balance }: { label: string; value: string; balance?: boolean }) {
   return (
     <div className="card p-4 text-center">
-      <div className="figure-primary text-xl">{value}</div>
+      <div data-balance={balance ? true : undefined} className="figure-primary text-xl">
+        {value}
+      </div>
       <div className="metric-secondary">{label}</div>
     </div>
   );
@@ -128,8 +166,8 @@ function ProfileLaunch({ p }: { p: Project }) {
       <div className="text-right">
         {p.ballasted && p.backing ? (
           <>
-            <div className="figure-primary">{formatUsd(p.backing.totalValueUsd, { compact: true })}</div>
-            <div className="metric-secondary">{formatUsd(p.backing.lockedValueUsd, { compact: true })} locked</div>
+            <div data-balance className="figure-primary">{formatUsd(p.backing.totalValueUsd, { compact: true })}</div>
+            <div data-balance className="metric-secondary">{formatUsd(p.backing.lockedValueUsd, { compact: true })} locked</div>
           </>
         ) : (
           <div className="text-xs text-text-faint">Unbacked</div>

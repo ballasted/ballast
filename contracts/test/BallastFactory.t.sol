@@ -29,7 +29,7 @@ contract BallastFactoryTest is Test {
         registry = new AssetRegistry(owner);
         // Seeder + ethUsdFeed are only exercised by graduate() (fork-tested
         // separately); dummies here keep the launch/wiring unit tests pure.
-        BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), WETH, address(2));
+        BallastSeeder seeder = new BallastSeeder(IPoolManager(address(1)), address(2));
         address[] memory green = new address[](1);
         green[0] = greenAsset;
         factory = new BallastFactory(address(registry), WETH, seeder, address(3), 24 hours, green);
@@ -52,8 +52,13 @@ contract BallastFactoryTest is Test {
 
     function _launch() internal returns (BallastToken t, ProjectTreasury tr) {
         vm.prank(creator);
-        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj", WETH);
+        (, address token, address treasury) = factory.launch("Project", "PRJ", 30 days, "ipfs://proj", _one(WETH));
         return (BallastToken(token), ProjectTreasury(treasury));
+    }
+
+    function _one(address a) internal pure returns (address[] memory arr) {
+        arr = new address[](1);
+        arr[0] = a;
     }
 
     // ── Metadata: updatable-with-history, launch identity permanent ──────────
@@ -161,35 +166,36 @@ contract BallastFactoryTest is Test {
         uint256[3] memory ok = [uint256(7 days), 30 days, 90 days];
         for (uint256 i = 0; i < ok.length; i++) {
             vm.prank(creator);
-            factory.launch("P", "P", ok[i], "", WETH);
+            factory.launch("P", "P", ok[i], "", _one(WETH));
         }
         assertEq(factory.launchCount(), 3);
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 5 days, "", WETH);
+        factory.launch("P", "P", 5 days, "", _one(WETH));
 
         vm.prank(creator);
         vm.expectRevert(BallastFactory.BadNoticePeriod.selector);
-        factory.launch("P", "P", 0, "", WETH);
+        factory.launch("P", "P", 0, "", _one(WETH));
     }
 
     // ===================================================================== //
-    //  Quote asset: WETH-only for now, but a real per-launch field          //
+    //  Quote assets: an array (1..MAX_QUOTE_ASSETS), each WETH-or-GREEN     //
     // ===================================================================== //
 
     function test_quoteAsset_storedPerLaunch() public {
         vm.prank(creator);
-        (, address token,) = factory.launch("P", "P", 30 days, "", WETH);
-        (,,, address storedQuoteAsset) = factory.launches(factory.launchIdOf(token) - 1);
-        assertEq(storedQuoteAsset, WETH);
+        (, address token,) = factory.launch("P", "P", 30 days, "", _one(WETH));
+        address[] memory qa = factory.quoteAssetsOf(token);
+        assertEq(qa.length, 1);
+        assertEq(qa[0], WETH);
     }
 
     function test_quoteAsset_nonWeth_reverts() public {
         address notWeth = makeAddr("notWeth");
         vm.prank(creator);
         vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
-        factory.launch("P", "P", 30 days, "", notWeth);
+        factory.launch("P", "P", 30 days, "", _one(notWeth));
     }
 
     // A GREEN asset (per docs/exit-liquidity-table.md), fixed at deploy, is
@@ -197,9 +203,10 @@ contract BallastFactoryTest is Test {
     // a WETH-specific capability gap.
     function test_quoteAsset_green_accepted() public {
         vm.prank(creator);
-        (, address token,) = factory.launch("P", "P", 30 days, "", greenAsset);
-        (,,, address storedQuoteAsset) = factory.launches(factory.launchIdOf(token) - 1);
-        assertEq(storedQuoteAsset, greenAsset);
+        (, address token,) = factory.launch("P", "P", 30 days, "", _one(greenAsset));
+        address[] memory qa = factory.quoteAssetsOf(token);
+        assertEq(qa.length, 1);
+        assertEq(qa[0], greenAsset);
     }
 
     // An asset NOT on the green list, and not WETH, still reverts — even if it's
@@ -209,7 +216,75 @@ contract BallastFactoryTest is Test {
         MockStockToken amberAsset = new MockStockToken("Amber", "AMB", 18);
         vm.prank(creator);
         vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
-        factory.launch("P", "P", 30 days, "", address(amberAsset));
+        factory.launch("P", "P", 30 days, "", _one(address(amberAsset)));
+    }
+
+    // ── Multiple stock pairs: an array of several quote assets per launch ──
+
+    function test_quoteAssets_multiple_storedInOrder() public {
+        address greenB = makeAddr("greenB");
+        // Not exposed as a setter on the deployed factory (isGreenQuoteAsset is
+        // deploy-time-fixed) — redeploy a factory with two green assets instead
+        // of trying to mutate the one from setUp().
+        address[] memory greens = new address[](2);
+        greens[0] = greenAsset;
+        greens[1] = greenB;
+        BallastSeeder seeder2 = new BallastSeeder(IPoolManager(address(1)), address(2));
+        BallastFactory f2 = new BallastFactory(address(registry), WETH, seeder2, address(3), 24 hours, greens);
+
+        address[] memory picked = new address[](3);
+        picked[0] = WETH;
+        picked[1] = greenAsset;
+        picked[2] = greenB;
+        vm.prank(creator);
+        (, address token,) = f2.launch("P", "P", 30 days, "", picked);
+
+        address[] memory qa = f2.quoteAssetsOf(token);
+        assertEq(qa.length, 3);
+        assertEq(qa[0], WETH);
+        assertEq(qa[1], greenAsset);
+        assertEq(qa[2], greenB);
+    }
+
+    function test_quoteAssets_empty_reverts() public {
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.NoQuoteAssets.selector);
+        factory.launch("P", "P", 30 days, "", new address[](0));
+    }
+
+    function test_quoteAssets_tooMany_reverts() public {
+        address[] memory tooMany = new address[](factory.MAX_QUOTE_ASSETS() + 1);
+        for (uint256 i = 0; i < tooMany.length; i++) {
+            tooMany[i] = WETH; // content doesn't matter — length check trips first
+        }
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.TooManyQuoteAssets.selector);
+        factory.launch("P", "P", 30 days, "", tooMany);
+    }
+
+    function test_quoteAssets_duplicate_reverts() public {
+        address[] memory dup = new address[](2);
+        dup[0] = WETH;
+        dup[1] = WETH;
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.DuplicateQuoteAsset.selector);
+        factory.launch("P", "P", 30 days, "", dup);
+    }
+
+    // One bad element anywhere in the array reverts the WHOLE launch — no
+    // partial state (no token/treasury deployed, no launch registered).
+    function test_quoteAssets_oneUnsupportedAmongValid_revertsWholeLaunch_noPartialState() public {
+        address notSupported = makeAddr("notSupported");
+        address[] memory mixed = new address[](2);
+        mixed[0] = WETH;
+        mixed[1] = notSupported;
+        uint256 countBefore = factory.launchCount();
+
+        vm.prank(creator);
+        vm.expectRevert(BallastFactory.QuoteAssetNotSupportedYet.selector);
+        factory.launch("P", "P", 30 days, "", mixed);
+
+        assertEq(factory.launchCount(), countBefore, "no launch registered on revert");
     }
 
     // ===================================================================== //
@@ -240,17 +315,21 @@ contract BallastFactoryTest is Test {
 
     function test_twoLaunches_distinctAddressesAndIds() public {
         vm.prank(creator);
-        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "", WETH);
+        (uint256 id0, address tok0, address tre0) = factory.launch("A", "A", 7 days, "", _one(WETH));
         vm.prank(alice);
-        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "", WETH);
+        (uint256 id1, address tok1, address tre1) = factory.launch("B", "B", 90 days, "", _one(WETH));
 
         assertEq(id0, 0);
         assertEq(id1, 1);
         assertTrue(tok0 != tok1 && tre0 != tre1);
         assertEq(factory.launchIdOf(tok1), 2); // id 1 + 1
-        (address tokenAt1,, address creatorAt1, address quoteAssetAt1) = factory.launches(1);
+        // launches(id)'s auto-generated getter omits the dynamic-array
+        // quoteAssets member — 3-tuple, not 4.
+        (address tokenAt1,, address creatorAt1) = factory.launches(1);
         assertEq(tokenAt1, tok1);
         assertEq(creatorAt1, alice);
-        assertEq(quoteAssetAt1, WETH);
+        address[] memory qa = factory.quoteAssetsOf(tok1);
+        assertEq(qa.length, 1);
+        assertEq(qa[0], WETH);
     }
 }

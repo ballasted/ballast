@@ -397,10 +397,7 @@ export function CreateFlow() {
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  className={cn(
-                    "rounded-input px-3 py-2.5 text-sm font-medium transition-colors",
-                    mode === m ? "bg-green-bg text-green" : "text-text-muted hover:text-text-secondary",
-                  )}
+                  className={cn("tab-segment border", mode === m ? "tab-active" : "tab-idle")}
                 >
                   {m === "ballast" ? "Ballast this launch" : "No treasury"}
                 </button>
@@ -996,12 +993,12 @@ function LogoUploader({
           if (f) void onFile(f);
         }}
         className={cn(
-          "relative flex h-[132px] w-[132px] flex-col items-center justify-center gap-2 rounded-card border border-dashed px-3 text-center transition-colors",
+          "group relative flex h-[140px] w-[140px] flex-col items-center justify-center gap-2 rounded-card border-2 border-dashed px-3 text-center transition-colors",
           locked
             ? "cursor-not-allowed border-border-strong opacity-40"
             : dragOver
               ? "cursor-pointer border-green bg-surface-raised"
-              : "cursor-pointer border-border-strong hover:bg-surface-raised",
+              : "cursor-pointer border-border-strong hover:border-green hover:bg-surface-raised",
         )}
       >
         <input
@@ -1056,8 +1053,8 @@ function LogoUploader({
           </>
         ) : (
           <>
-            <GalleryGlyph />
-            <span className="text-xs text-text-muted">Upload logo</span>
+            <GalleryGlyph className="group-hover:text-green" />
+            <span className="text-xs text-text-muted group-hover:text-green">Upload logo</span>
           </>
         )}
       </div>
@@ -1108,7 +1105,7 @@ function LogoUploader({
 // The empty-dropzone glyph — a gallery/image mark (rounded frame, a circle top-left,
 // a diagonal "mountain" line). Inline SVG, no icon library (Phase 1 / "What not to
 // do"). Faint by default; negative-toned when it marks an upload error.
-function GalleryGlyph({ tone }: { tone?: "negative" }) {
+function GalleryGlyph({ tone, className }: { tone?: "negative"; className?: string }) {
   return (
     <svg
       width="32"
@@ -1116,7 +1113,7 @@ function GalleryGlyph({ tone }: { tone?: "negative" }) {
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden
-      className={tone === "negative" ? "text-negative" : "text-text-faint"}
+      className={cn(tone === "negative" ? "text-negative" : "text-text-faint", className)}
     >
       <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" />
       <circle cx="8.5" cy="8.5" r="1.6" stroke="currentColor" strokeWidth="1.5" />

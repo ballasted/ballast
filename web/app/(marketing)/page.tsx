@@ -3,6 +3,7 @@ import { Container } from "@/components/Container";
 import { Reveal } from "@/components/Reveal";
 import { FaqList } from "@/components/marketing/FaqList";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
+import { KeelMark } from "@/components/Wordmark";
 import { getHeroStats, type HeroStats } from "@/lib/heroStats";
 import { formatCompactUsd } from "@/lib/market";
 
@@ -46,13 +47,17 @@ function Hero({ stats }: { stats: HeroStats }) {
             underneath"). Stacks on mobile, illustration last so the message leads. */}
         <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
           <div>
-            {/* Hero entrance — staggered, once on load. transform + opacity only. */}
-            <h1 className="anim-enter max-w-2xl font-serif text-4xl font-semibold tracking-tight text-bone sm:text-6xl">
-              Launch with something underneath.
+            {/* Hero entrance — staggered, once on load. transform + opacity only.
+                Trimmed to a logo lockup + one tagline line — the paragraph that
+                used to sit here now lives in the sections below, in full. */}
+            <h1 className="anim-enter flex items-center gap-3">
+              <KeelMark size={40} />
+              <span className="font-serif text-4xl font-bold tracking-tight text-bone sm:text-6xl">
+                BALLAST
+              </span>
             </h1>
-            <p className="anim-enter anim-d1 mt-6 max-w-xl text-lg text-text-secondary">
-              A launchpad on Robinhood Chain. Projects hold a treasury of tokenized
-              real-world assets — and anyone can see how much backs each token, live.
+            <p className="anim-enter anim-d1 mt-5 max-w-xl text-lg text-text-secondary">
+              See exactly how much backs each token, live.
             </p>
             <div className="anim-enter anim-d2 mt-8 flex flex-wrap gap-3">
               <Link

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
@@ -9,6 +10,7 @@ import { formatSmallUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
 
 const MAX_ROWS = 5;
+const FLASH_MS = 900;
 
 // Top movers (spec §5.6) — sorted by |24h% change|. Sourced from the SAME
 // /api/trending call Discover's Trending view already makes (priceUsd/
@@ -24,6 +26,27 @@ export function TopMovers({ projects }: { projects: Project[] }) {
     .sort((a, b) => Math.abs(b.change24hPct!) - Math.abs(a.change24hPct!))
     .slice(0, MAX_ROWS);
 
+  // A brief background tint when a real price actually moves between refetches
+  // (react-query refetches this every 90s) — EON's "tick" energy, but only
+  // ever fired by a genuine changed value, never on a timer of its own.
+  const lastPrices = useRef<Map<string, number>>(new Map());
+  const [flashes, setFlashes] = useState<Map<string, "up" | "down">>(new Map());
+  useEffect(() => {
+    const next = new Map<string, "up" | "down">();
+    for (const m of movers) {
+      const prev = lastPrices.current.get(m.token.toLowerCase());
+      if (prev !== undefined && m.priceUsd !== null && m.priceUsd !== prev) {
+        next.set(m.token.toLowerCase(), m.priceUsd > prev ? "up" : "down");
+      }
+    }
+    for (const m of movers) if (m.priceUsd !== null) lastPrices.current.set(m.token.toLowerCase(), m.priceUsd);
+    if (next.size === 0) return;
+    setFlashes(next);
+    const t = setTimeout(() => setFlashes(new Map()), FLASH_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trending.data]);
+
   return (
     <div className="card p-4">
       <h2 className="section-label">Top movers</h2>
@@ -36,11 +59,16 @@ export function TopMovers({ projects }: { projects: Project[] }) {
           {movers.map((m) => {
             const p = byToken.get(m.token.toLowerCase());
             const up = (m.change24hPct ?? 0) >= 0;
+            const flash = flashes.get(m.token.toLowerCase());
             return (
               <li key={m.token}>
                 <Link
                   href={`/app/token/${m.token}`}
-                  className="flex items-center gap-2.5 rounded-input px-1.5 py-1.5 transition-colors hover:bg-surface-raised"
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-input px-1.5 py-1.5 transition-colors duration-700 hover:bg-surface-raised",
+                    flash === "up" && "bg-green/10",
+                    flash === "down" && "bg-negative/10",
+                  )}
                 >
                   <AssetDisc symbol={p?.symbol} size={24} />
                   <span className="min-w-0 flex-1 truncate text-sm text-text-primary">

@@ -32,34 +32,26 @@ export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
       <h2 className="font-serif text-lg font-semibold text-bone">The protocol token</h2>
       <div className="mt-2 space-y-2 text-sm text-text-secondary">
         <p>
-          Launched by the BALLAST team on BALLAST, under exactly the same rules as every other launch: 100% of supply
-          seeded the pool, no presale, no team allocation. We hold none of it.
+          Launched by the BALLAST team under the same rules as every launch: 100% of supply seeded the pool, no
+          presale, no team allocation — we hold none of it. It confers no ownership, governance, claim, or
+          redemption right.
         </p>
         <p>
-          It confers no ownership, no governance, and no claim, redemption right, or entitlement to the protocol or its
-          fees.
-        </p>
-        <p>
-          The protocol&apos;s share of swap fees funds open-market{" "}
+          The protocol&apos;s swap-fee share funds open-market{" "}
           <Link href="/app/buyback" className="text-green underline underline-offset-2">
-            buybacks of $BALLAST that are then burned
-          </Link>
-          . So protocol fees do flow back — through market buying and burning, not a distribution. This grants holders no
-          claim and is not a dividend; burning reduces supply and predicts nothing about price.
+            buybacks of $BALLAST, then burned
+          </Link>{" "}
+          — value routed through the market, not distributed. Not a dividend; burning reduces supply and predicts
+          nothing about price.
         </p>
         <p className="text-text-faint">
-          Previously this page stated $BALLAST confers &ldquo;no revenue share.&rdquo; Corrected on 4 August 2026: the
-          protocol fee share now funds buyback-and-burn — value routed through the market, not distributed — so that
-          wording was no longer accurate. Holders still have no claim, redemption right, or governance.
+          Amendments: &ldquo;no revenue share&rdquo; wording corrected 4 Aug 2026 once buyback-and-burn started
+          (holders still have no claim, redemption right, or governance); this page said $BALLAST was not a
+          protocol token until 28 Jul 2026, before any trading occurred.
         </p>
         <p className="text-text-faint">
-          Previously this page stated $BALLAST was not a protocol token. That changed on 28 July 2026 — before any
-          trading occurred.
-        </p>
-        <p className="text-text-faint">
-          On 28 July 2026 the launch factory was redeployed with a corrected freshness gate for backed launches.
-          $BALLAST was not relaunched: it remains the original launch from the first factory and is still listed here.
-          Only new launches use the new factory; nothing about $BALLAST changed on-chain.
+          The launch factory was redeployed 28 Jul 2026 (corrected freshness gate). $BALLAST was not relaunched —
+          it&apos;s still the original listing; only new launches use the new factory.
         </p>
       </div>
     </section>

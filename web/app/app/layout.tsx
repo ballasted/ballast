@@ -4,9 +4,9 @@ import { usePathname } from "next/navigation";
 import { Providers } from "./providers";
 import { Ambience } from "@/components/app/Ambience";
 import { BottomNav } from "@/components/app/BottomNav";
+import { EventToasts } from "@/components/app/EventToasts";
 import { SideNav } from "@/components/app/SideNav";
 import { TopBar } from "@/components/app/TopBar";
-import { TickerBar } from "@/components/app/TickerBar";
 import { ConfigGuard } from "@/components/app/ConfigGuard";
 import { NetworkGuard } from "@/components/app/NetworkGuard";
 import { cn } from "@/lib/cn";
@@ -30,19 +30,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Ambient depth behind everything — a fixed, faint light source so the app
           never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
       <Ambience variant="page" />
+      <EventToasts />
       {hasRail && <SideNav />}
       <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
         <TopBar hasRail={hasRail} />
         <ConfigGuard />
         <NetworkGuard />
-        {/* Content sits in a wide column, centred. Bottom padding clears the fixed
-            bottom nav PLUS the device safe-area inset on mobile; on desktop it
-            clears the fixed TickerBar instead. */}
-        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(72px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-16">
+        {/* Content sits in a wide column, centred. Bottom padding clears the floating
+            nav pill (BottomNav renders at every breakpoint now, not just mobile)
+            PLUS the device safe-area inset. */}
+        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(96px+env(safe-area-inset-bottom))] pt-5 lg:px-10">
           {children}
         </main>
-        <BottomNav />
-        <TickerBar hasRail={hasRail} />
+        <BottomNav hasRail={hasRail} />
       </div>
     </Providers>
   );

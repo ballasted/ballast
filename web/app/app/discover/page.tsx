@@ -14,6 +14,7 @@ import { MotionSection } from "@/components/app/MotionSection";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/SortRail";
 import { DiscoverHero } from "@/components/app/DiscoverHero";
+import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
 import { TopMovers } from "@/components/app/TopMovers";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
@@ -149,13 +150,82 @@ export default function DiscoverPage() {
   // A chain-time sort shows launch-order, not a chart, on each card.
   const chainTimeSort = sort === "newest" || sort === "oldest";
 
+  // ── Home strips (New / Trending / Ballasted) — independent of the sort rail's
+  // current filter state, exactly like Discover's stats row: an unfiltered global
+  // preview, not a live view of whatever the rail happens to be set to. "Show
+  // more" on each strip just points the SAME sort rail at that order and scrolls
+  // down to the grid it already renders — no second grid/view to keep in sync.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const scrollToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const newestStrip = useMemo(
+    () => [...projects].filter((p) => !isProtocolToken(p.token)).reverse().slice(0, 10),
+    [projects],
+  );
+  const ballastedStrip = useMemo(
+    () =>
+      [...projects]
+        .filter((p) => !isProtocolToken(p.token) && p.ballasted)
+        .sort((a, b) => cmpBigDesc(a.backing?.lockedValueUsd ?? 0n, b.backing?.lockedValueUsd ?? 0n))
+        .slice(0, 10),
+    [projects],
+  );
+  const trendingStrip = useMemo(() => {
+    const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
+    return (trending.data?.items ?? [])
+      .map((it) => byToken.get(it.token.toLowerCase()))
+      .filter((p): p is Project => Boolean(p) && !isProtocolToken(p!.token))
+      .slice(0, 10);
+  }, [trending.data, projects]);
+
+  const showMore = (next: { sort?: SortId; trending?: boolean }) => {
+    setCategory("all");
+    setGraduatedFilter("all");
+    if (next.trending) setTrendingView(true);
+    else {
+      setTrendingView(false);
+      if (next.sort) setSort(next.sort);
+    }
+    scrollToGrid();
+  };
+
   return (
     <div className="relative overflow-hidden">
       <MeanderWatermark />
 
+      {isConfigured && !isLoading && (newestStrip.length > 0 || ballastedStrip.length > 0 || trendingStrip.length > 0) && (
+        <PromoBanners />
+      )}
+
       <DiscoverHero />
 
-      <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Discover</h1>
+      {isConfigured && !isLoading && (
+        <div className="mt-6 space-y-8">
+          <TokenRow
+            title="Trending"
+            countLabel="GeckoTerminal"
+            projects={trendingStrip}
+            badge="trending"
+            onShowMore={() => showMore({ trending: true })}
+          />
+          <TokenRow
+            title="New"
+            projects={newestStrip}
+            badge="new"
+            onShowMore={() => showMore({ sort: "newest" })}
+          />
+          <TokenRow
+            title="Ballasted"
+            projects={ballastedStrip}
+            onShowMore={() => showMore({ sort: "ballasted" })}
+          />
+        </div>
+      )}
+
+      {/* Anchor for "Show more" from the strips above — no second page title here,
+          DiscoverHero's <h1> is the page's only one (two <h1>s also read as two
+          stacked apps, which is exactly the "acak-acakan" complaint this fixes). */}
+      <div ref={gridRef} className="scroll-mt-28" />
 
       {/* Live rail (spec §5.6) sits at xl+ only, beside the main column — a narrower
           viewport has no room for a third column alongside a 2/3-col card grid. */}
@@ -367,6 +437,49 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
   );
 }
 
+// Home strip — a horizontal-scroll row of cards under a row header ("EON-style"
+// section), with a "Show more ›" that hands off to the existing sort-rail grid
+// below rather than opening a second view. Renders nothing when there's
+// nothing to show (e.g. Trending before GeckoTerminal has data, or no
+// ballasted project yet) — an empty row reading as "coming soon" would be
+// exactly the kind of implied promise this app avoids.
+function TokenRow({
+  title,
+  countLabel,
+  projects,
+  badge,
+  onShowMore,
+}: {
+  title: string;
+  countLabel?: string;
+  projects: Project[];
+  badge?: "new" | "trending";
+  onShowMore: () => void;
+}) {
+  if (projects.length === 0) return null;
+  return (
+    <section aria-label={title}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
+          <span className="chip chip-neutral font-mono">{projects.length}</span>
+          {countLabel && <span className="text-xs text-text-faint">· {countLabel}</span>}
+        </div>
+        <button onClick={onShowMore} className="shrink-0 text-sm text-text-muted transition-colors hover:text-green">
+          Show more ›
+        </button>
+      </div>
+      <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-2 snap-x">
+        {projects.map((p) => (
+          <div key={p.token} className="w-[78%] shrink-0 snap-start sm:w-[46%] lg:w-[calc(25%-12px)]">
+            <ProjectCard project={p} badge={badge} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // Responsive card grid: 1 / 2 / 3 columns. At very low counts (1) the card is
 // featured and centred rather than stranded small in a wide row (density §1).
 function CardGrid({
@@ -464,15 +577,10 @@ function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">
-        {reason === "unreachable" ? "Trending is unavailable right now" : "Not enough trading to rank yet"}
+        {reason === "unreachable" ? "Trending unavailable" : "Not enough trading yet"}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {reason === "unreachable"
-          ? "GeckoTerminal didn't respond, so trending is paused rather than faked."
-          : "Not enough real trades to rank yet — so we won't fake an order."}
-      </p>
-      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        Ballasted and Newest still work — live from the chain.
+        {reason === "unreachable" ? "Paused, not faked. Try Ballasted or Newest." : "Too few real trades to rank — try Ballasted or Newest."}
       </p>
     </div>
   );
@@ -485,13 +593,8 @@ function SourceUnavailableNotice({ metric, source }: { metric: string; source: s
   return (
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric} right now</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {source} didn’t respond, so this order is paused rather than faked.
-      </p>
-      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        The on-chain orders still work.
-      </p>
+      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{source} didn’t respond — on-chain orders still work.</p>
     </div>
   );
 }
