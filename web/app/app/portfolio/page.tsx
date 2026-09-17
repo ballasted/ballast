@@ -3,16 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatUnits } from "viem";
+import { useAccount } from "wagmi";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
 import { WalletGate } from "@/components/app/WalletGate";
 import { FeePanel } from "@/components/app/FeePanel";
 import { Meander } from "@/components/Meander";
-import { formatUsd, formatBackingPerToken } from "@/lib/format";
+import { CopyAddress } from "@/components/app/CopyAddress";
+import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
 import { cn } from "@/lib/cn";
 
 export default function PortfolioPage() {
   const [tab, setTab] = useState<"holdings" | "launches">("holdings");
+  const { address: account } = useAccount();
   const {
     isConnected,
     isConfigured,
@@ -28,7 +31,7 @@ export default function PortfolioPage() {
   if (!isConfigured) {
     return <Notice title="Not configured yet" body="Set the factory + lens addresses (after deploy) to read your holdings." />;
   }
-  if (!isConnected) {
+  if (!isConnected || !account) {
     return <WalletGate body="Holdings, exposure, and launches read live from your wallet." />;
   }
 
@@ -36,24 +39,52 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Portfolio</h1>
-        <div className="mt-1 flex items-baseline gap-2">
-          <span className="figure-primary text-3xl">{formatUsd(totalValue, { compact: true })}</span>
-          <span className="metric-secondary">{hasMarketData ? "valued at market where a pool exists, else backing" : "valued at backing"}</span>
+      <section className="card flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-bg font-semibold text-green ring-1 ring-inset ring-bone/10">
+            {account.slice(2, 4).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="font-serif text-lg font-semibold text-bone">Portfolio</h1>
+              <span className="chip chip-accent">Connected</span>
+            </div>
+            <CopyAddress address={account} label={shortAddress(account)} />
+          </div>
         </div>
-        {/* P&L is deliberately absent. Holdings and current value are exact (chain
-            balances × chain/market price). Cost basis would need your full buy
-            history at execution prices, which can't be reconstructed from public
-            data without guessing — transfers carry no price, gifts/OTC/self-moves
-            have no market price, and pre-graduation buys aren't in pool history. A
-            wrong P&L is worse than none. */}
-        <p className="mt-1 text-xs text-text-faint">
-          Holdings and current value are exact. We don&apos;t show profit/loss: reconstructing what you paid needs your
-          full buy history at execution prices, which can&apos;t be derived from public data without guessing — and a
-          wrong number is worse than none.
-        </p>
-      </div>
+        <div className="text-left sm:text-right">
+          <div className="eyebrow">Portfolio value</div>
+          <div className="mt-0.5 flex items-baseline gap-2 sm:justify-end">
+            <span data-balance className="figure-primary text-4xl">
+              {formatUsd(totalValue, { compact: true })}
+            </span>
+          </div>
+          <div className="metric-secondary">
+            {hasMarketData ? "valued at market where a pool exists, else backing" : "valued at backing"}
+          </div>
+        </div>
+      </section>
+
+      {/* P&L is deliberately absent. Holdings and current value are exact (chain
+          balances × chain/market price). Cost basis would need your full buy
+          history at execution prices, which can't be reconstructed from public
+          data without guessing — transfers carry no price, gifts/OTC/self-moves
+          have no market price, and pre-graduation buys aren't in pool history. A
+          wrong P&L is worse than none. */}
+      <p className="text-xs text-text-faint">
+        Holdings and current value are exact. We don&apos;t show profit/loss: reconstructing what you paid needs your
+        full buy history at execution prices, which can&apos;t be derived from public data without guessing — and a
+        wrong number is worse than none.
+      </p>
+
+      {/* Headline counts — same numbers the exposure card and tabs below are
+          built from, just surfaced at a glance (no new data source). */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Holdings" value={String(holdings.length)} />
+        <Stat label="Launches" value={String(myLaunches.length)} />
+        <Stat label="Backed" value={`${backedPct.toFixed(0)}%`} />
+        <Stat label="Backed value" value={formatUsd(backedValue, { compact: true })} balance />
+      </section>
 
       {/* Backed vs unbacked exposure (spec §9). */}
       <section className="card p-4">
@@ -65,11 +96,11 @@ export default function PortfolioPage() {
         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
           <div>
             <div className="text-green">Ballasted</div>
-            <div className="figure-primary">{formatUsd(backedValue, { compact: true })}</div>
+            <div data-balance className="figure-primary">{formatUsd(backedValue, { compact: true })}</div>
           </div>
           <div className="text-right">
             <div className="text-text-muted">Unbacked</div>
-            <div className="figure-primary">{formatUsd(unbackedValue, { compact: true })}</div>
+            <div data-balance className="figure-primary">{formatUsd(unbackedValue, { compact: true })}</div>
           </div>
         </div>
       </section>
@@ -79,16 +110,9 @@ export default function PortfolioPage() {
           accrue fees. Self-hides when nothing is owed. */}
       <FeePanel title="Claimable swap fees" />
 
-      <div className="flex gap-6 border-b border-border">
+      <div className="flex gap-2">
         {(["holdings", "launches"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "relative -mb-px border-b-2 pb-2.5 text-sm capitalize",
-              tab === t ? "border-green text-text-primary" : "border-transparent text-text-muted hover:text-text-secondary",
-            )}
-          >
+          <button key={t} onClick={() => setTab(t)} className={cn("tab", tab === t ? "tab-active" : "tab-idle")}>
             {t === "holdings" ? "Holdings" : "My launches"}
           </button>
         ))}
@@ -158,7 +182,7 @@ function HoldingRow({ h }: { h: Holding }) {
         <div className="metric-secondary">{amount} tokens</div>
       </div>
       <div className="text-right">
-        <div className="figure-primary">{formatUsd(h.displayValueUsd, { compact: true })}</div>
+        <div data-balance className="figure-primary">{formatUsd(h.displayValueUsd, { compact: true })}</div>
         {p.ballasted ? (
           <div className="metric-secondary">
             Backing {formatBackingPerToken(p.backing!.backingPerToken)}{ratio !== null ? ` · ${ratio.toFixed(2)}×` : ""}
@@ -181,14 +205,25 @@ function LaunchRow({ p }: { p: Project }) {
       <div className="text-right">
         {p.ballasted && p.backing ? (
           <>
-            <div className="figure-primary">{formatUsd(p.backing.totalValueUsd, { compact: true })}</div>
-            <div className="metric-secondary">{formatUsd(p.backing.lockedValueUsd, { compact: true })} locked</div>
+            <div data-balance className="figure-primary">{formatUsd(p.backing.totalValueUsd, { compact: true })}</div>
+            <div data-balance className="metric-secondary">{formatUsd(p.backing.lockedValueUsd, { compact: true })} locked</div>
           </>
         ) : (
           <div className="text-xs text-text-faint">Unbacked</div>
         )}
       </div>
     </Link>
+  );
+}
+
+function Stat({ label, value, balance }: { label: string; value: string; balance?: boolean }) {
+  return (
+    <div className="card p-4 text-center">
+      <div data-balance={balance ? true : undefined} className="figure-primary text-xl">
+        {value}
+      </div>
+      <div className="metric-secondary">{label}</div>
+    </div>
   );
 }
 

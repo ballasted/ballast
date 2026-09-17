@@ -212,6 +212,28 @@
   @keyframes ballast-bar-grow {
     from { width: 0 !important; }
   }
+
+  /* "This is live" cue — a quiet opacity breathe, not a scaling/box-shadow
+     pulse. Used next to the ticker label and anywhere else genuinely-live
+     on-chain data needs a marker (never decorative). Collapses to static
+     under prefers-reduced-motion via the global rule below. */
+  .live-dot {
+    animation: ballast-live-breathe 2s ease-in-out infinite;
+  }
+  @keyframes ballast-live-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* Toast / transient-notice entrance — slides down 6px while fading in,
+     matching .anim-enter's easing so it reads as one motion language. */
+  .anim-toast-in {
+    animation: ballast-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes ballast-toast-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: none; }
+  }
 }
 
 /* prefers-reduced-motion: turn NON-ESSENTIAL motion actually OFF. Entrances,

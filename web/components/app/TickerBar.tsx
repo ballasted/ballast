@@ -9,17 +9,14 @@ import { formatUsd } from "@/lib/format";
 import { formatCompactUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
 
-// Bottom scrolling ticker (spec §4, App shell). Fixed at the viewport bottom,
-// lg+ only. Every figure here is real — chain reads for TVL/ETH/gas/$BALLAST
-// price, GeckoTerminal for 24h volume and $BALLAST's 24h% — and a figure that
-// isn't available yet renders "—", never a guess.
-//
-// `hasRail` offsets it past SideNav's width on /app/terminal (the only route
-// that still has one — see AppLayout); everywhere else it runs full width.
-// Getting this offset wrong is exactly what made items look clipped at the
-// left edge: a rail-width gap the ticker didn't know to leave, or left when
-// there was no rail to clear.
-export function TickerBar({ hasRail = false }: { hasRail?: boolean }) {
+// Scrolling ticker (spec §4, App shell). Sits in normal flow directly under
+// TopBar, lg+ only — NOT fixed, so it doesn't need a hasRail offset or a
+// bottom-padding reservation on <main>: it just shifts right along with the
+// rest of the shell when SideNav's lg:pl-60 applies. Every figure here is
+// real — chain reads for TVL/ETH/gas/$BALLAST price, GeckoTerminal for 24h
+// volume and $BALLAST's 24h% — and a figure that isn't available yet renders
+// "—", never a guess.
+export function TickerBar() {
   const { isLoading: statsLoading, totalMarketCapUsd, pricedCount } = useProtocolStats();
   const { volume24hUsd, available: volumeAvailable } = useAnalyticsSeries();
   const { ethUsd1e18 } = useEthUsd();
@@ -45,21 +42,29 @@ export function TickerBar({ hasRail = false }: { hasRail?: boolean }) {
   ];
 
   return (
-    <div
-      className={cn(
-        "fixed inset-x-0 bottom-0 z-20 hidden h-7 overflow-hidden border-t border-border bg-bg/95 backdrop-blur lg:flex",
-        hasRail && "lg:left-60",
-      )}
-    >
-      <div className="group flex w-full overflow-hidden">
-        <div className="ticker-track flex shrink-0 items-center gap-8 whitespace-nowrap pl-4 [animation-play-state:running] group-hover:[animation-play-state:paused]">
-          {[0, 1].map((rep) => (
-            <div key={rep} className="flex items-center gap-8">
-              {items.map((item, i) => (
-                <TickerItem key={`${rep}-${i}`} {...item} />
-              ))}
-            </div>
-          ))}
+    <div className="relative z-20 hidden h-8 overflow-hidden border-b border-border bg-bg/95 lg:flex">
+      {/* Faint patina underglow along the bottom edge — a quiet "this row is live"
+          cue instead of a loud one, in keeping with the app's restraint. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px opacity-60"
+        style={{ background: "linear-gradient(90deg, rgba(34,201,58,0.4), rgba(34,201,58,0.05) 60%, transparent)" }}
+        aria-hidden
+      />
+      <div className="group flex w-full items-center overflow-hidden pl-4">
+        <span className="mr-6 flex shrink-0 items-center gap-1.5 text-xs font-semibold text-green">
+          <span className="live-dot h-1.5 w-1.5 rounded-full bg-green" aria-hidden />
+          Live
+        </span>
+        <div className="flex w-full overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_4%,#000_96%,transparent)]">
+          <div className="ticker-track flex shrink-0 items-center gap-8 whitespace-nowrap [animation-play-state:running] group-hover:[animation-play-state:paused]">
+            {[0, 1].map((rep) => (
+              <div key={rep} className="flex items-center gap-8">
+                {items.map((item, i) => (
+                  <TickerItem key={`${rep}-${i}`} {...item} />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

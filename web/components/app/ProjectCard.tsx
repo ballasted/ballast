@@ -23,6 +23,7 @@ export function ProjectCard({
   hideSparkline,
   firstLaunch,
   featured,
+  badge,
 }: {
   project: Project;
   hideSparkline?: boolean;
@@ -30,6 +31,11 @@ export function ProjectCard({
   // At very low counts Discover renders one card "featured" — a wider media band —
   // rather than stranding a small card in a wide row (density §1).
   featured?: boolean;
+  // Row-context label for the horizontal "New" / "Trending" strips on Discover —
+  // distinct from the media band's Ballasted/Graduated badges (those are
+  // permanent chain-state; this is "why this card is in THIS row"). Omitted
+  // outside those rows.
+  badge?: "new" | "trending";
 }) {
   const { symbol, name, backing, ballasted, token, metadataURI, hasPool, marketPriceUsd, depthToDoubleUsd } = project;
   const priceStr = marketPriceUsd !== undefined ? formatSmallUsd(Number(marketPriceUsd) / 1e18) : "—";
@@ -52,6 +58,7 @@ export function ProjectCard({
         symbol={symbol}
         ballasted={ballasted}
         hasPool={hasPool}
+        badge={badge}
         aspect={featured ? "aspect-[16/9]" : "aspect-[16/10]"}
       />
 
@@ -107,6 +114,13 @@ export function ProjectCard({
         {hideSparkline && <div className="mt-1 metric-secondary">New · ordered by launch</div>}
 
         <ProjectLinks meta={shownMeta} variant="icons" className="mt-3" />
+
+        {/* Footer — contract address only. No "time since launch": the registry
+            gives chain order, not a timestamp, and guessing an age would be
+            exactly the kind of fabricated figure this app refuses to show. */}
+        <div className="mt-3 border-t border-border pt-2">
+          <span className="font-mono text-xs text-text-faint">{shortAddress(token)}</span>
+        </div>
       </div>
     </Link>
   );
@@ -120,12 +134,18 @@ function CardMedia({
   symbol,
   ballasted,
   hasPool,
+  badge,
   aspect,
 }: {
   logo?: string;
   symbol?: string;
   ballasted: boolean;
   hasPool: boolean;
+  // Row-context status (New / Trending) from the horizontal Discover strips —
+  // takes the media's top-right corner in place of the hasPool indicator,
+  // which stays available in the price sub-line below either way. Omitted
+  // outside those rows, where the hasPool pill renders as before.
+  badge?: "new" | "trending";
   aspect: string;
 }) {
   const [failed, setFailed] = useState(false);
@@ -157,17 +177,30 @@ function CardMedia({
           <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden /> Ballasted
         </span>
       )}
-      {/* Binary state, not a progress bar — there's no on-chain graduation
-          threshold to show a % toward (Milestone 1 decision). hasPool alone
-          says whether this token trades in the AMM pool or is still pre-pool. */}
-      <span
-        className={cn(
-          "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium backdrop-blur",
-          hasPool ? "bg-bg/85 text-green" : "bg-bg/85 text-text-muted",
-        )}
-      >
-        {hasPool ? "Graduated" : "On curve"}
-      </span>
+      {/* Row-context status (New / Trending — spec §2 horizontal strips) takes the
+          corner when present; otherwise the binary hasPool state, not a progress
+          bar — there's no on-chain graduation threshold to show a % toward
+          (Milestone 1 decision). hasPool alone says whether this token trades in
+          the AMM pool or is still pre-pool. */}
+      {badge ? (
+        <span
+          className={cn(
+            "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-bg/85 px-2 py-1 text-[11px] font-medium backdrop-blur",
+            badge === "trending" ? "text-warning" : "text-text-muted",
+          )}
+        >
+          {badge === "trending" ? "Trending" : "New"}
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "absolute right-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium backdrop-blur",
+            hasPool ? "bg-bg/85 text-green" : "bg-bg/85 text-text-muted",
+          )}
+        >
+          {hasPool ? "Graduated" : "On curve"}
+        </span>
+      )}
     </div>
   );
 }
