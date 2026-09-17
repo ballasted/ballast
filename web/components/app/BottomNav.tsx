@@ -139,26 +139,29 @@ function NavTab({
 }) {
   if (isFab) {
     // Raised, larger, circular — proud of the pill rather than in-line with
-    // the other icons, since this is the primary "launch a token" CTA. Static
-    // treatment only (position, size, ring, shadow) — no pulsing/looping
-    // animation, per this app's motion philosophy (globals.css "Motion").
+    // the other icons, since this is the primary "launch a token" CTA. A
+    // looping pulse ring (.fab-pulse-ring) sits behind it as the one "look
+    // here" cue on this nav — the button itself never moves or scales.
     return (
-      <Link
-        href={href}
-        aria-current={active ? "page" : undefined}
-        aria-label={label}
-        title={label}
-        className={cn(
-          "-translate-y-4 flex h-16 w-16 shrink-0 items-center justify-center rounded-full border shadow-lg ring-4 ring-bg transition-colors",
-          active
-            ? "border-green bg-green text-bg"
-            : "border-border bg-surface-raised text-text-primary hover:bg-surface-hover",
-        )}
-      >
-        <span className="scale-125">
-          <Icon active={active} />
-        </span>
-      </Link>
+      <span className="relative -translate-y-4 flex h-16 w-16 shrink-0 items-center justify-center">
+        <span className="fab-pulse-ring pointer-events-none absolute inset-0 rounded-full" aria-hidden />
+        <Link
+          href={href}
+          aria-current={active ? "page" : undefined}
+          aria-label={label}
+          title={label}
+          className={cn(
+            "relative z-10 flex h-16 w-16 items-center justify-center rounded-full border shadow-lg ring-4 ring-bg transition-colors",
+            active
+              ? "border-green bg-green text-bg"
+              : "border-border bg-surface-raised text-text-primary hover:bg-surface-hover",
+          )}
+        >
+          <span className="scale-125">
+            <Icon active={active} />
+          </span>
+        </Link>
+      </span>
     );
   }
 

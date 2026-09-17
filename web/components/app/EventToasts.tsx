@@ -96,7 +96,7 @@ export function EventToasts() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="anim-toast-in card-raised pointer-events-auto flex items-center gap-2 px-3 py-2 shadow-lg"
+          className="anim-toast-in anim-toast-flash card-raised pointer-events-auto flex items-center gap-2 px-3 py-2 shadow-lg"
         >
           <span className={cn("chip", t.chipClass)}>{t.tag}</span>
           <span className="text-sm text-text-secondary">{t.text}</span>

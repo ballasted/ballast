@@ -32,7 +32,7 @@ function TreasuryBanner() {
     <div
       className="card relative overflow-hidden p-6 lg:p-8"
       style={{
-        background: "radial-gradient(120% 140% at 88% 50%, rgba(34,201,58,0.14), transparent 60%), #0E1410",
+        background: "radial-gradient(120% 140% at 88% 50%, rgba(34,201,58,0.22), transparent 60%), #0E1410",
       }}
     >
       <div className="grid items-center gap-6 sm:grid-cols-[1fr_auto]">
@@ -49,7 +49,7 @@ function TreasuryBanner() {
         <div className="relative mx-auto h-36 w-36 shrink-0 sm:h-40 sm:w-40" aria-hidden>
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="live-dot absolute h-9 w-9 rounded-full bg-green/25" />
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised">
+            <div className="core-pulse flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised">
               <KeelMark size={18} />
             </div>
           </div>
@@ -79,7 +79,7 @@ function BuybackBanner() {
     <div
       className="card relative overflow-hidden p-6 lg:p-8"
       style={{
-        background: "radial-gradient(120% 140% at 88% 50%, rgba(232,163,61,0.10), transparent 60%), #0E1410",
+        background: "radial-gradient(120% 140% at 88% 50%, rgba(232,163,61,0.18), transparent 60%), #0E1410",
       }}
     >
       <div className="relative z-10 flex h-full flex-col justify-center">
@@ -100,7 +100,7 @@ function BuybackBanner() {
       <svg
         aria-hidden
         viewBox="0 0 200 200"
-        className="pointer-events-none absolute -right-6 top-1/2 h-48 w-48 -translate-y-1/2 opacity-[0.08]"
+        className="pointer-events-none absolute -right-8 top-1/2 h-64 w-64 -translate-y-1/2 opacity-[0.13]"
       >
         <path
           d="M100 20c0 30-30 40-30 70a30 30 0 0060 0c0-15-10-20-10-35 10 10 20 25 20 45a40 40 0 01-80 0c0-45 40-55 40-80z"

@@ -16,6 +16,7 @@ import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/So
 import { DiscoverHero } from "@/components/app/DiscoverHero";
 import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
+import { NewsPanel } from "@/components/app/NewsPanel";
 import { TopMovers } from "@/components/app/TopMovers";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
@@ -377,6 +378,7 @@ export default function DiscoverPage() {
       {isConfigured && (
         <aside className="mt-6 hidden space-y-4 xl:sticky xl:top-20 xl:mt-0 xl:block">
           <LiveRail projects={projects} />
+          <NewsPanel projects={projects} />
           <TopMovers projects={projects} />
         </aside>
       )}

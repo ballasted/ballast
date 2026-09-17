@@ -411,6 +411,14 @@ function ChartPlot({
   const [trendDraft, setTrendDraft] = useState<{ i1: number; p1: number } | null>(null);
   const [trendPreview, setTrendPreview] = useState<{ i2: number; p2: number } | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  // Live-tick burst — fires ONLY when the newest candle's own timestamp/close
+  // actually changes between renders (a genuine new sample from the real
+  // GeckoTerminal poll), never on a timer. `lastTickRef` starts null so the
+  // very first render (mount, or a timeframe swap that resets the series)
+  // never fires a burst for data that was already there.
+  const lastTickRef = useRef<{ t: number; c: number } | null>(null);
+  const [burstNonce, setBurstNonce] = useState(0);
+  const [burstOn, setBurstOn] = useState(false);
 
   const n = candles.length;
   const count = range.count > 0 ? Math.min(range.count, n) : n;
@@ -458,6 +466,18 @@ function ChartPlot({
   const last = candles[n - 1];
   const lastY = last ? y(clamp(last.c, lo, hi)) : 0;
   const lastUp = last ? last.c >= last.o : true;
+
+  useEffect(() => {
+    if (!last) return;
+    const prev = lastTickRef.current;
+    lastTickRef.current = { t: last.t, c: last.c };
+    if (prev && (prev.t !== last.t || prev.c !== last.c)) {
+      setBurstNonce((v) => v + 1);
+      setBurstOn(true);
+      const id = setTimeout(() => setBurstOn(false), 800);
+      return () => clearTimeout(id);
+    }
+  }, [last?.t, last?.c]);
 
   const ticks = Array.from({ length: 5 }, (_, i) => lo + (span * i) / 4);
 
@@ -779,6 +799,22 @@ function ChartPlot({
           </g>
         )}
       </svg>
+
+      {/* Live-tick burst — a one-shot pair of expanding rings at the current-
+          price tag, only ever mounted right after a genuine new sample lands
+          (see the effect above). Keyed on burstNonce so a second tick in
+          quick succession remounts and replays the animation from scratch. */}
+      {burstOn && last && (
+        <div
+          key={burstNonce}
+          aria-hidden
+          className="pointer-events-none absolute z-10"
+          style={{ left: plotW + AXIS_W / 2 - 6, top: lastY - 6 }}
+        >
+          <span className={cn("tick-burst absolute h-3 w-3 rounded-full border-2", lastUp ? "border-positive" : "border-negative")} />
+          <span className={cn("tick-burst-delay absolute h-3 w-3 rounded-full border-2", lastUp ? "border-positive" : "border-negative")} />
+        </div>
+      )}
 
       {readoutC && tip && (hover ?? -1) >= 0 && (
         <div

@@ -83,17 +83,20 @@ const config: Config = {
           "Arial",
           "sans-serif",
         ],
-        // Display serif — Playfair Display (Didone), the second register from
-        // the brand's two-register system. Headings and brand moments only;
-        // body / numbers / controls stay sans for legibility.
+        // `serif` token kept for existing `font-serif` call sites, but the
+        // display-register split is retired — this now resolves to the same
+        // Space Grotesk family as `sans` (see app/layout.tsx), just the
+        // heavier weights, so a single typeface reads sitewide like EON.
         serif: [
           "var(--font-display)",
-          "Iowan Old Style",
-          "Palatino Linotype",
-          "Palatino",
-          "Georgia",
-          "Cambria",
-          "serif",
+          "var(--font-sans)",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
         ],
         mono: [
           "var(--font-mono)",
