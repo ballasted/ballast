@@ -50,7 +50,7 @@ contract BallastSeederForkTest is Test {
             HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
         hook = new BallastHook{salt: salt}(MANAGER, cfg, WETH);
         require(address(hook) == hookAddr, "hook");
-        seeder = new BallastSeeder(MANAGER, WETH, address(hook));
+        seeder = new BallastSeeder(MANAGER, address(hook));
         hook.setSeeder(address(seeder));
         swap = new PoolSwapTest(MANAGER);
         vm.deal(address(this), 1000 ether);
@@ -92,7 +92,7 @@ contract BallastSeederForkTest is Test {
         t.transfer(address(seeder), t.balanceOf(address(this))); // seeder holds all token
 
         uint256 seederWethBefore = IERC20(WETH).balanceOf(address(seeder));
-        PoolKey memory key = seeder.seed(address(t), 0); // P0 at tick 0 (1:1)
+        PoolKey memory key = seeder.seed(address(t), WETH, 0, t.balanceOf(address(seeder))); // P0 at tick 0 (1:1)
         uint256 seederWethAfter = IERC20(WETH).balanceOf(address(seeder));
 
         // No WETH was ever required from the seeder/creator (strictly one-sided).
@@ -127,7 +127,7 @@ contract BallastSeederForkTest is Test {
         }
         MockBallastToken t = _tokenBelowWeth();
         t.transfer(address(seeder), t.balanceOf(address(this)));
-        PoolKey memory key = seeder.seed(address(t), 0); // P0 at tick 0
+        PoolKey memory key = seeder.seed(address(t), WETH, 0, t.balanceOf(address(seeder))); // P0 at tick 0
 
         // Try to SELL token for WETH (pushes price below P0/tick 0). There is no
         // liquidity below P0, so the swap can move essentially nothing.
@@ -160,7 +160,7 @@ contract BallastSeederForkTest is Test {
         t.transfer(address(seeder), t.balanceOf(address(this)));
 
         uint256 seederWethBefore = IERC20(WETH).balanceOf(address(seeder));
-        PoolKey memory key = seeder.seed(address(t), 0); // P0 at tick 0 (1:1)
+        PoolKey memory key = seeder.seed(address(t), WETH, 0, t.balanceOf(address(seeder))); // P0 at tick 0 (1:1)
         uint256 seederWethAfter = IERC20(WETH).balanceOf(address(seeder));
 
         assertEq(seederWethBefore, 0);
@@ -214,7 +214,7 @@ contract BallastSeederForkTest is Test {
         }
         MockBallastToken t = _tokenAboveWeth();
         t.transfer(address(seeder), t.balanceOf(address(this)));
-        PoolKey memory key = seeder.seed(address(t), 0);
+        PoolKey memory key = seeder.seed(address(t), WETH, 0, t.balanceOf(address(seeder)));
 
         // Sell = token(c1) -> WETH(c0) = zeroForOne FALSE here, pushes the raw
         // tick above `openTick` (0), past the seeded range's upper bound.

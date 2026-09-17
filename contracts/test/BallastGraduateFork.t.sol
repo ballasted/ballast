@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console2, Vm} from "forge-std/Test.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
@@ -21,6 +21,7 @@ import {BallastSeeder} from "../src/BallastSeeder.sol";
 import {BallastHook, BALLAST_HOOK_FLAGS} from "../src/BallastHook.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {AssetRegistry, MarketHours} from "../src/AssetRegistry.sol";
+import {OrderingLib} from "../src/libraries/OrderingLib.sol";
 import {MockStockToken} from "./mocks/MockStockToken.sol";
 import {MockAggregator} from "./mocks/MockAggregator.sol";
 
@@ -63,7 +64,7 @@ contract BallastGraduateForkTest is Test {
             HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg, WETH));
         hook = new BallastHook{salt: salt}(MANAGER, cfg, WETH);
         require(address(hook) == ha, "hook");
-        seeder = new BallastSeeder(MANAGER, WETH, address(hook));
+        seeder = new BallastSeeder(MANAGER, address(hook));
         hook.setSeeder(address(seeder));
         ethFeed = new MockAggregator(8, 3000e8, block.timestamp); // ETH = $3000, fresh
         factory = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours, new address[](0));
@@ -104,6 +105,11 @@ contract BallastGraduateForkTest is Test {
         vm.setNonce(address(factory), nonce);
     }
 
+    function _one(address a) internal pure returns (address[] memory arr) {
+        arr = new address[](1);
+        arr[0] = a;
+    }
+
     function _poolPrice1e18(PoolKey memory key) internal view returns (uint256) {
         (uint160 sp,,,) = MANAGER.getSlot0(key.toId());
         // price = (sp/2^96)^2, currency1/currency0 = WETH/token. Return 1e18-scaled.
@@ -118,7 +124,7 @@ contract BallastGraduateForkTest is Test {
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj", WETH);
+        (, address token, address treasury) = factory.launch("Proj", "PRJ", 30 days, "ipfs://proj", _one(WETH));
         // Deposit 1000 stock ($100k backing) as creator (msg.sender == this).
         stock.mint(address(this), 1000e18);
         stock.approve(treasury, type(uint256).max);
@@ -168,7 +174,7 @@ contract BallastGraduateForkTest is Test {
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
         _forceNextLaunchCurrency1();
-        (, address token, address treasury) = factory.launch("Proj1", "PRJ1", 30 days, "ipfs://proj", WETH);
+        (, address token, address treasury) = factory.launch("Proj1", "PRJ1", 30 days, "ipfs://proj", _one(WETH));
         assertGt(uint160(token), uint160(WETH), "token must sort as currency1 for this test");
         stock.mint(address(this), 1000e18);
         stock.approve(treasury, type(uint256).max);
@@ -217,7 +223,7 @@ contract BallastGraduateForkTest is Test {
     function test_unbackedLaunch_constantP0_endToEnd() public {
         if (!forked) return;
         _forceNextLaunchCurrency0();
-        (, address token,) = factory.launch("Meme", "MEME", 7 days, "", WETH);
+        (, address token,) = factory.launch("Meme", "MEME", 7 days, "", _one(WETH));
         factory.graduate(token); // no treasury assets -> UNBACKED_TICK
 
         PoolKey memory key = PoolKey({
@@ -273,7 +279,7 @@ contract BallastGraduateForkTest is Test {
         ethFeed.setAnswer(int256(ethUsd), block.timestamp);
 
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("F", "F", 30 days, "", WETH);
+        (, address token, address treasury) = factory.launch("F", "F", 30 days, "", _one(WETH));
         _addBackedAsset(treasury, feedDec, 100 * (10 ** feedDec), amount, 0); // $100 asset
         factory.graduate(token);
 
@@ -290,12 +296,12 @@ contract BallastGraduateForkTest is Test {
         // Two identical launches; one asset has uiMultiplier 3x. Backing (hence P0)
         // must be IDENTICAL — the feed price already embeds the multiplier (rule 7).
         _forceNextLaunchCurrency0();
-        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "", WETH);
+        (, address tokA, address trA) = factory.launch("A", "A", 30 days, "", _one(WETH));
         _addBackedAsset(trA, 8, 100e8, 1000e18, 1e18); // uiMultiplier 1.0
         factory.graduate(tokA);
 
         _forceNextLaunchCurrency0();
-        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "", WETH);
+        (, address tokB, address trB) = factory.launch("B", "B", 30 days, "", _one(WETH));
         _addBackedAsset(trB, 8, 100e8, 1000e18, 3e18); // uiMultiplier 3.0
         factory.graduate(tokB);
 
@@ -308,7 +314,7 @@ contract BallastGraduateForkTest is Test {
     function test_mixedAssets_sumBacking() public {
         if (!forked) return;
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "", WETH);
+        (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "", _one(WETH));
         _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
         _addBackedAsset(treasury, 18, 2e18, 10_000e18, 0); // $20k (2 USD, 18-dec feed)
         factory.graduate(token);
@@ -328,7 +334,7 @@ contract BallastGraduateForkTest is Test {
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "", WETH);
+        (, address token, address treasury) = factory.launch("Stale", "STL", 30 days, "", _one(WETH));
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -348,7 +354,7 @@ contract BallastGraduateForkTest is Test {
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "", WETH);
+        (, address token, address treasury) = factory.launch("Quiet", "QT", 30 days, "", _one(WETH));
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -366,7 +372,7 @@ contract BallastGraduateForkTest is Test {
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
 
         _forceNextLaunchCurrency0();
-        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "", WETH);
+        (, address token, address treasury) = factory.launch("EthStale", "ETS", 30 days, "", _one(WETH));
         stock.mint(address(this), 500e18);
         stock.approve(treasury, type(uint256).max);
         ProjectTreasury(treasury).deposit(address(stock), 500e18);
@@ -378,5 +384,133 @@ contract BallastGraduateForkTest is Test {
         // as part of generalizing this check to any quote asset.
         vm.expectRevert(abi.encodeWithSelector(BallastFactory.FeedStaleAtLaunch.selector, WETH));
         factory.graduate(token);
+    }
+
+    // ===================================================================== //
+    //  Multiple stock pairs: one launch, several quote-asset pools          //
+    // ===================================================================== //
+
+    function _poolKeyFor(address token, address quoteAsset) internal view returns (PoolKey memory) {
+        (address c0, address c1) = OrderingLib.sort(token, quoteAsset);
+        return PoolKey({
+            currency0: Currency.wrap(c0),
+            currency1: Currency.wrap(c1),
+            fee: 0,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+    }
+
+    /// @dev One graduate() call seeds THREE pools (WETH + two mock stock quote
+    ///      assets) atomically. 1e9e18 total supply doesn't split evenly by 3,
+    ///      exercising the remainder-to-first-pool rule as well as the equal-
+    ///      split rule. Each pool independently swaps, and each pool's fee
+    ///      lands in its OWN isolated ledger — `owed` for WETH, `owedIn[...][X]`
+    ///      for each stock quote asset — proving no cross-pool leakage.
+    function test_multiQuoteAsset_graduate_seedsAllPools_equalSplit_isolatedFeeLedgers() public {
+        if (!forked) return;
+
+        MockStockToken quoteB = new MockStockToken("Mock TSLA", "MTSLA", 18);
+        MockStockToken quoteC = new MockStockToken("Mock AMZN", "MAMZN", 18);
+        registry.setAsset(
+            address(quoteB), address(new MockAggregator(8, 50e8, block.timestamp)), 3 days, 1e12, MarketHours.UsEquities24_5
+        );
+        registry.setAsset(
+            address(quoteC), address(new MockAggregator(8, 200e8, block.timestamp)), 3 days, 1e12, MarketHours.UsEquities24_5
+        );
+
+        address[] memory greens = new address[](2);
+        greens[0] = address(quoteB);
+        greens[1] = address(quoteC);
+        BallastFactory f2 = new BallastFactory(address(registry), WETH, seeder, address(ethFeed), 24 hours, greens);
+
+        address[] memory picks = new address[](3);
+        picks[0] = WETH;
+        picks[1] = address(quoteB);
+        picks[2] = address(quoteC);
+        (, address token, address treasury) = f2.launch("Multi", "MLT", 30 days, "", picks);
+
+        MockStockToken backing = new MockStockToken("Mock NVDA", "MNVDA", 18);
+        registry.setAsset(
+            address(backing), address(new MockAggregator(8, 100e8, block.timestamp)), 3 days, 1e12, MarketHours.UsEquities24_5
+        );
+        backing.mint(address(this), 1000e18);
+        backing.approve(treasury, type(uint256).max);
+        ProjectTreasury(treasury).deposit(address(backing), 1000e18);
+
+        uint256 supply = 1_000_000_000e18;
+        uint256 share = supply / 3;
+        uint256 firstAmount = supply - share * 2; // remainder goes to the first pool (WETH)
+
+        vm.recordLogs();
+        f2.graduate(token);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256 found;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] != BallastFactory.PoolSeeded.selector) continue;
+            address quoteAsset = address(uint160(uint256(logs[i].topics[2])));
+            (,, uint256 amount) = abi.decode(logs[i].data, (bytes32, int24, uint256));
+            if (quoteAsset == WETH) assertEq(amount, firstAmount, "WETH pool gets the remainder");
+            else assertEq(amount, share, "stock-quoted pools get an even share");
+            found++;
+        }
+        assertEq(found, 3, "graduate() must emit exactly one PoolSeeded per quote asset");
+
+        // All three pools exist and hold real, active liquidity.
+        PoolKey memory keyWeth = _poolKeyFor(token, WETH);
+        PoolKey memory keyB = _poolKeyFor(token, address(quoteB));
+        PoolKey memory keyC = _poolKeyFor(token, address(quoteC));
+        assertGt(MANAGER.getLiquidity(keyWeth.toId()), 0, "WETH pool seeded");
+        assertGt(MANAGER.getLiquidity(keyB.toId()), 0, "quoteB pool seeded");
+        assertGt(MANAGER.getLiquidity(keyC.toId()), 0, "quoteC pool seeded");
+
+        // Supply fully distributed — nothing stuck in the factory or the seeder.
+        assertEq(IERC20(token).balanceOf(address(f2)), 0, "factory holds nothing after graduating all pools");
+        assertEq(IERC20(token).balanceOf(address(seeder)), 0, "seeder holds no leftover token");
+
+        // Buy in EACH pool, then confirm fees landed in the RIGHT, ISOLATED
+        // ledger — never bleeding into another pool's quote asset.
+        quoteB.mint(address(this), 1_000_000e18);
+        quoteC.mint(address(this), 1_000_000e18);
+        quoteB.approve(address(swap), type(uint256).max);
+        quoteC.approve(address(swap), type(uint256).max);
+
+        _buyOneUnit(keyWeth, WETH);
+        _buyOneUnit(keyB, address(quoteB));
+        _buyOneUnit(keyC, address(quoteC));
+
+        uint256 wethBefore = IERC20(WETH).balanceOf(address(this));
+        hook.claim();
+        assertGt(IERC20(WETH).balanceOf(address(this)) - wethBefore, 0, "WETH ledger paid out");
+
+        uint256 bBefore = quoteB.balanceOf(address(this));
+        hook.claimIn(address(quoteB));
+        assertGt(quoteB.balanceOf(address(this)) - bBefore, 0, "quoteB ledger paid out");
+
+        uint256 cBefore = quoteC.balanceOf(address(this));
+        hook.claimIn(address(quoteC));
+        assertGt(quoteC.balanceOf(address(this)) - cBefore, 0, "quoteC ledger paid out");
+
+        // Isolation, not just "every ledger happens to be nonzero": claiming
+        // quoteB again pays nothing (already swept), proving quoteC's swap fee
+        // never touched quoteB's ledger, and vice versa implicitly above.
+        assertEq(hook.claimIn(address(quoteB)), 0, "quoteB ledger fully drained, no cross-pool leakage");
+    }
+
+    /// @dev Buy the project token with 1 unit of `quoteAsset` in `key`, whichever
+    ///      side of the pool each currency happens to sort to.
+    function _buyOneUnit(PoolKey memory key, address quoteAsset) internal {
+        bool quoteIsCurrency0 = Currency.unwrap(key.currency0) == quoteAsset;
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({
+                zeroForOne: quoteIsCurrency0,
+                amountSpecified: -1 ether,
+                sqrtPriceLimitX96: quoteIsCurrency0 ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
     }
 }

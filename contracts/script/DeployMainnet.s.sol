@@ -71,7 +71,7 @@ contract DeployMainnet is Script {
         console2.log("FeeConfig:      ", address(cfg));
         BallastHook hook = _deployHook(e.pm, cfg, e.weth);
         console2.log("BallastHook:    ", address(hook));
-        BallastSeeder seeder = new BallastSeeder(IPoolManager(e.pm), e.weth, address(hook));
+        BallastSeeder seeder = new BallastSeeder(IPoolManager(e.pm), address(hook));
         console2.log("BallastSeeder:  ", address(seeder));
         // ETH/USD leg outer staleness bound (coarse backstop). 24h given observed
         // gaps up to ~2.8h; owner can't retune an immutable, so it's set once here.

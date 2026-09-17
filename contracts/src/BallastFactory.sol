@@ -11,6 +11,8 @@ import {IERC20Metadata} from "openzeppelin-contracts/contracts/token/ERC20/exten
 import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 import {BackingMath} from "./libraries/BackingMath.sol";
 import {OrderingLib} from "./libraries/OrderingLib.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 
 /// @title BallastFactory
 /// @notice Launch entry point + registry. Atomically deploys a project token and
@@ -26,8 +28,15 @@ import {OrderingLib} from "./libraries/OrderingLib.sol";
 ///      phase. No per-launch address is hardcoded anywhere — callers resolve
 ///      token/treasury from the launch registry or the Launched event.
 contract BallastFactory {
+    using PoolIdLibrary for PoolKey;
+
     /// @notice Fixed supply for every launch: 1,000,000,000 tokens (18 decimals).
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
+
+    /// @notice Upper bound on how many quote-asset pools one launch can request.
+    ///         Bounds graduate()'s loop gas and keeps the create-flow picker
+    ///         simple — not a economic parameter, just a sanity ceiling.
+    uint256 public constant MAX_QUOTE_ASSETS = 4;
 
     /// @notice Global asset allowlist every launched treasury reads from.
     address public immutable registry;
@@ -76,12 +85,15 @@ contract BallastFactory {
         address token;
         address treasury;
         address creator;
-        /// @notice The asset this launch's pool is (or will be) paired against.
-        ///         Restricted to `weth` for now — see QuoteAssetNotSupportedYet.
-        ///         Appended last so existing tuple-destructuring readers of
-        ///         `launches(id)` (web/lib/abis.ts callers reading only the first
-        ///         three fields) keep working unchanged.
-        address quoteAsset;
+        /// @notice The asset(s) this launch's pool(s) are (or will be) paired
+        ///         against — 1 to MAX_QUOTE_ASSETS, each `weth` or GREEN (see
+        ///         QuoteAssetNotSupportedYet). Solidity's auto-generated getter
+        ///         for a public array-of-structs omits dynamic-array MEMBERS from
+        ///         the returned tuple, so `launches(id)` still returns exactly
+        ///         (token, treasury, creator) — existing tuple-destructuring
+        ///         readers (web/lib/abis.ts) keep working unchanged. Use
+        ///         `quoteAssetsOf(token)` for this field.
+        address[] quoteAssets;
     }
 
     Launch[] public launches;
@@ -97,12 +109,26 @@ contract BallastFactory {
         string metadataURI
     );
 
-    event Graduated(address indexed token, address treasury, int24 tickLower, uint256 backingUsd1e18);
+    /// @notice One per graduate() call — the treasury's USD backing at that
+    ///         moment, quote-asset-independent (same for every pool this
+    ///         graduation seeds; see PoolSeeded for the per-pool tick/amount).
+    event Graduated(address indexed token, address treasury, uint256 backingUsd1e18);
+    /// @notice Emitted once per quote asset a graduation seeds a pool for. v4 has
+    ///         no canonical "all pools for this token" lookup (PoolManager is a
+    ///         singleton keyed by the full PoolKey), so this event stream is how
+    ///         the frontend/indexer enumerates a token's pools.
+    event PoolSeeded(address indexed token, address indexed quoteAsset, bytes32 poolId, int24 openTick, uint256 amount);
 
     error BadNoticePeriod();
     error ZeroAddress();
     error NotLaunchToken();
     error AlreadyGraduated();
+    /// @notice launch() was called with an empty quoteAssets_ array.
+    error NoQuoteAssets();
+    /// @notice launch() was called with more than MAX_QUOTE_ASSETS entries.
+    error TooManyQuoteAssets();
+    /// @notice The same quote asset appeared twice in one launch's quoteAssets_.
+    error DuplicateQuoteAsset();
     /// @notice A backed launch's feed was stale beyond its outer bound at graduation
     ///         (treasury asset: past AssetRegistry.staleAfter; the quote asset
     ///         itself, WETH or otherwise: past ethUsdStaleWindow for WETH, or its
@@ -141,24 +167,52 @@ contract BallastFactory {
         }
     }
 
-    /// @notice Seed the token/WETH pool at P0 and lock LP. Backed launches derive P0
-    ///         from live backing (each treasury feed must be within its own outer
-    ///         staleness bound — see FeedStaleAtLaunch); unbacked launches use a
-    ///         constant P0.
+    /// @notice Seed one pool per this launch's quoteAssets and lock LP in each.
+    ///         Backed launches derive each pool's P0 from the SAME live backing
+    ///         figure (each treasury feed must be within its own outer staleness
+    ///         bound — see FeedStaleAtLaunch), converted through that pool's own
+    ///         quote-asset price; unbacked launches use a constant P0 in every
+    ///         pool. The full token supply splits EVENLY across the N pools
+    ///         (remainder from integer division goes to the first pool, so
+    ///         nothing is dust-lost) — a single atomic call, single graduated[]
+    ///         flip: either every pool seeds or the whole call reverts, no
+    ///         partial-graduation state to reason about.
     function graduate(address token) external {
         uint256 idPlus1 = launchIdOf[token];
         if (idPlus1 == 0) revert NotLaunchToken();
         if (graduated[token]) revert AlreadyGraduated();
         graduated[token] = true;
 
-        Launch memory l = launches[idPlus1 - 1];
-        (int24 openTick, uint256 backingUsd) = _p0Tick(token, l.treasury, l.quoteAsset);
+        Launch storage l = launches[idPlus1 - 1];
+        address treasury = l.treasury;
+        uint256 n = l.quoteAssets.length;
 
         uint256 supply = IERC20(token).balanceOf(address(this));
-        IERC20(token).transfer(address(seeder), supply);
-        seeder.seed(token, openTick);
+        uint256 share = supply / n;
+        uint256 backingUsdForEvent;
 
-        emit Graduated(token, l.treasury, openTick, backingUsd);
+        for (uint256 i = 0; i < n; i++) {
+            address quoteAsset = l.quoteAssets[i];
+            (int24 openTick, uint256 backingUsd) = _p0Tick(token, treasury, quoteAsset);
+            if (i == 0) backingUsdForEvent = backingUsd;
+
+            uint256 amount = i == 0 ? supply - share * (n - 1) : share;
+            IERC20(token).transfer(address(seeder), amount);
+            PoolKey memory key = seeder.seed(token, quoteAsset, openTick, amount);
+
+            emit PoolSeeded(token, quoteAsset, PoolId.unwrap(key.toId()), openTick, amount);
+        }
+
+        emit Graduated(token, treasury, backingUsdForEvent);
+    }
+
+    /// @notice The quote assets this launch's pool(s) are/will be paired against.
+    ///         Separate from `launches(id)`'s auto-generated getter, which omits
+    ///         dynamic-array struct members (see the Launch struct's natspec).
+    function quoteAssetsOf(address token) external view returns (address[] memory) {
+        uint256 idPlus1 = launchIdOf[token];
+        if (idPlus1 == 0) revert NotLaunchToken();
+        return launches[idPlus1 - 1].quoteAssets;
     }
 
     /// @dev The quote asset's own USD price + decimals, for P0 conversion. WETH
@@ -237,21 +291,32 @@ contract BallastFactory {
     /// @param metadataURI ipfs://CID of the pinned project metadata JSON (name,
     ///        description, category, logo, website, x). Stored on the token as the
     ///        permanent launch identity + the initial (updatable) current URI.
-    /// @param quoteAsset_ The asset this launch's pool will be paired against at
-    ///        graduation. Must be `weth` or one of the deploy-time GREEN assets
-    ///        (isGreenQuoteAsset) — see QuoteAssetNotSupportedYet and
+    /// @param quoteAssets_ The asset(s) this launch's pool(s) will be paired
+    ///        against at graduation — 1 to MAX_QUOTE_ASSETS entries, each `weth`
+    ///        or one of the deploy-time GREEN assets (isGreenQuoteAsset), no
+    ///        duplicates. Each pool gets an equal share of the token supply at
+    ///        graduation — see QuoteAssetNotSupportedYet and
     ///        docs/exit-liquidity-table.md.
     function launch(
         string calldata name_,
         string calldata symbol_,
         uint256 noticePeriod,
         string calldata metadataURI,
-        address quoteAsset_
+        address[] calldata quoteAssets_
     ) external returns (uint256 id, address token, address treasury) {
         if (!(noticePeriod == 7 days || noticePeriod == 30 days || noticePeriod == 90 days)) {
             revert BadNoticePeriod();
         }
-        if (quoteAsset_ != weth && !isGreenQuoteAsset[quoteAsset_]) revert QuoteAssetNotSupportedYet();
+        uint256 nq = quoteAssets_.length;
+        if (nq == 0) revert NoQuoteAssets();
+        if (nq > MAX_QUOTE_ASSETS) revert TooManyQuoteAssets();
+        for (uint256 i = 0; i < nq; i++) {
+            address qa = quoteAssets_[i];
+            if (qa != weth && !isGreenQuoteAsset[qa]) revert QuoteAssetNotSupportedYet();
+            for (uint256 j = i + 1; j < nq; j++) {
+                if (quoteAssets_[j] == qa) revert DuplicateQuoteAsset();
+            }
+        }
 
         // 1. Token — plain CREATE, no mining. Its address relative to weth is
         //    unconstrained (could sort either side) — see OrderingLib. graduate()/
@@ -270,7 +335,7 @@ contract BallastFactory {
         // 4. Register.
         token = address(t);
         treasury = address(tr);
-        launches.push(Launch({token: token, treasury: treasury, creator: msg.sender, quoteAsset: quoteAsset_}));
+        launches.push(Launch({token: token, treasury: treasury, creator: msg.sender, quoteAssets: quoteAssets_}));
         id = launches.length - 1;
         launchIdOf[token] = id + 1;
 

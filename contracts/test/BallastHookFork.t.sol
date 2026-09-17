@@ -377,6 +377,66 @@ contract BallastHookForkTest is Test {
         assertEq(hook.owedIn(creator, address(quote)), 0, "claimIn must zero the ledger");
     }
 
+    /// @dev The gap `test_nonWethQuoteAsset_perCurrencyLedger` didn't cover: ONE
+    ///      token in TWO pools AT ONCE (WETH-quoted and a non-WETH quote-asset-
+    ///      quoted), proving the hook's per-PoolKey resolution (`_pools`, keyed
+    ///      by pool id, not by token) genuinely isolates fees pool-by-pool for
+    ///      the SAME token, not just across two independent single-pool tests.
+    ///      Exactly the "multiple stock pairs" shape BallastFactory now builds
+    ///      in one graduate() call, tested here at the hook layer alone.
+    function test_sameToken_twoSimultaneousPools_isolatedLedgers() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        MockBallastToken t = _deployTokenOnSide(true); // token < WETH; irrelevant to this test, just a side
+        (PoolKey memory keyWeth, bool wethIsC0) = _pool(t);
+
+        MockERC20 quote = new MockERC20("Mock TSLA", "MTSLA", 18);
+        (PoolKey memory keyQuote, bool quoteIsC0) = _genericPool(quote, t);
+
+        // Buy in the WETH pool.
+        bool zfoWeth = wethIsC0;
+        swap.swap(
+            keyWeth,
+            IPoolManager.SwapParams({
+                zeroForOne: zfoWeth,
+                amountSpecified: -10 ether,
+                sqrtPriceLimitX96: zfoWeth ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+        // Buy in the quote-asset pool.
+        bool zfoQuote = quoteIsC0;
+        swap.swap(
+            keyQuote,
+            IPoolManager.SwapParams({
+                zeroForOne: zfoQuote,
+                amountSpecified: -10e18,
+                sqrtPriceLimitX96: zfoQuote ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1
+            }),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+
+        uint256 wethOwed = hook.owed(creator);
+        uint256 quoteOwed = hook.owedIn(creator, address(quote));
+        assertGt(wethOwed, 0, "WETH-pool fee must accrue in the legacy owed ledger");
+        assertGt(quoteOwed, 0, "quote-asset-pool fee must accrue in owedIn, for the SAME token's other pool");
+
+        // Isolation: draining one ledger must not touch the other.
+        vm.prank(creator);
+        uint256 claimedWeth = hook.claim();
+        assertEq(claimedWeth, wethOwed, "claim() pays exactly the WETH pool's fee");
+        assertEq(hook.owedIn(creator, address(quote)), quoteOwed, "claiming WETH must not touch the quote ledger");
+
+        vm.prank(creator);
+        uint256 claimedQuote = hook.claimIn(address(quote));
+        assertEq(claimedQuote, quoteOwed, "claimIn() pays exactly the quote-asset pool's fee");
+        assertEq(hook.owed(creator), 0, "WETH ledger stays drained after claiming the quote ledger");
+    }
+
     function test_claimIn_revertsForWeth() public {
         if (!forked) {
             vm.skip(true);

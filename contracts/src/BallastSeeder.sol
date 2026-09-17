@@ -10,7 +10,6 @@ import {BalanceDelta, BalanceDeltaLibrary} from "v4-core/src/types/BalanceDelta.
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {LiquidityAmounts} from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 import {CurrencySettler} from "v4-core/test/utils/CurrencySettler.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {OrderingLib} from "./libraries/OrderingLib.sol";
 
 /// @title BallastSeeder — seed a token/quote pool with ONE-SIDED token liquidity
@@ -44,7 +43,6 @@ contract BallastSeeder is IUnlockCallback {
     using BalanceDeltaLibrary for BalanceDelta;
 
     IPoolManager public immutable poolManager;
-    address public immutable weth;
     address public immutable hook;
 
     int24 public constant TICK_SPACING = 60;
@@ -57,22 +55,34 @@ contract BallastSeeder is IUnlockCallback {
 
     event Seeded(address indexed token, PoolKey key, int24 tickLower, int24 tickUpper, uint128 liquidity);
 
-    constructor(IPoolManager poolManager_, address weth_, address hook_) {
+    constructor(IPoolManager poolManager_, address hook_) {
         poolManager = poolManager_;
-        weth = weth_;
         hook = hook_;
     }
 
-    /// @notice Create the token/WETH pool at `openTick` (the backing-price tick,
-    ///         already ordering-correct — see BackingMath.p0Tick) and seed all
-    ///         token this contract holds as one-sided liquidity around it.
-    /// @param token project token — may sort as currency0 or currency1 vs weth
+    /// @notice Create the token/`quoteAsset` pool at `openTick` (the backing-price
+    ///         tick, already ordering-correct — see BackingMath.p0Tick) and seed
+    ///         EXACTLY `amount` of token as one-sided liquidity around it.
+    /// @dev `amount` is explicit, not `balanceOf(this)` — a token can now have
+    ///      several pools seeded in the same graduate() call (one per quote
+    ///      asset), each carved out of the total supply. Reading the seeder's
+    ///      whole balance here would let one pool accidentally sweep another
+    ///      pool's not-yet-seeded slice (or dust from an unrelated token). The
+    ///      caller (BallastFactory) transfers exactly `amount` of `token`
+    ///      immediately before this call; a short/insufficient transfer reverts
+    ///      naturally inside `unlockCallback`'s settle, no separate check needed.
+    /// @param token project token — may sort as currency0 or currency1 vs quoteAsset
+    /// @param quoteAsset the asset this pool pairs `token` against
     /// @param openTick the tick AT true backing; must be tick-spacing aligned
-    function seed(address token, int24 openTick) external returns (PoolKey memory key) {
+    /// @param amount exact amount of `token` to seed this pool with
+    function seed(address token, address quoteAsset, int24 openTick, uint256 amount)
+        external
+        returns (PoolKey memory key)
+    {
         if (openTick % TICK_SPACING != 0) revert TickMisaligned();
 
-        bool tokenIsCurrency0 = OrderingLib.tokenIsCurrency0(token, weth);
-        (address currency0, address currency1) = OrderingLib.sort(token, weth);
+        bool tokenIsCurrency0 = OrderingLib.tokenIsCurrency0(token, quoteAsset);
+        (address currency0, address currency1) = OrderingLib.sort(token, quoteAsset);
         key = PoolKey({
             currency0: Currency.wrap(currency0),
             currency1: Currency.wrap(currency1),
@@ -82,7 +92,6 @@ contract BallastSeeder is IUnlockCallback {
         });
         poolManager.initialize(key, TickMath.getSqrtPriceAtTick(openTick));
 
-        uint256 amount = IERC20(token).balanceOf(address(this));
         poolManager.unlock(abi.encode(key, token, openTick, amount, tokenIsCurrency0));
         return key;
     }
