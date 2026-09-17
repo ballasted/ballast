@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatUnits } from "viem";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
-import { ConnectButton } from "@/components/app/ConnectButton";
+import { WalletGate } from "@/components/app/WalletGate";
 import { FeePanel } from "@/components/app/FeePanel";
 import { Meander } from "@/components/Meander";
 import { formatUsd, formatBackingPerToken } from "@/lib/format";
@@ -29,13 +29,7 @@ export default function PortfolioPage() {
     return <Notice title="Not configured yet" body="Set the factory + lens addresses (after deploy) to read your holdings." />;
   }
   if (!isConnected) {
-    return (
-      <div className="card p-8 text-center">
-        <h1 className="font-semibold text-text-primary">Connect your wallet</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Holdings, exposure, and launches read live from your wallet.</p>
-        <div className="mt-4 flex justify-center"><ConnectButton /></div>
-      </div>
-    );
+    return <WalletGate body="Holdings, exposure, and launches read live from your wallet." />;
   }
 
   const backedPct = totalValue > 0n ? Number((backedValue * 10000n) / totalValue) / 100 : 0;

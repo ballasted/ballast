@@ -19,7 +19,9 @@ export default function MintPage() {
       <header>
         <p className="eyebrow">On-chain collection</p>
         <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Manatee</h1>
-        {/* Copy, verbatim to the launch brief — tone matters here. */}
+        {/* Copy, verbatim to the launch brief — tone matters here. The third
+            paragraph names an unbuilt mechanism without promising it: the only
+            honest way to mention it on a page where people are about to mint. */}
         <div className="mt-3 max-w-2xl space-y-3 text-sm text-text-secondary">
           <p>
             Free to mint, one per wallet. The art is generated on-chain from the token id — there is
@@ -27,8 +29,13 @@ export default function MintPage() {
             Nothing is rarer than anything else.
           </p>
           <p>
-            This confers nothing. No revenue share, no governance, no airdrop, no allocation. If that
-            changes, we&apos;ll announce it after it&apos;s true.
+            What this gets you today: nothing. No revenue share, no governance, no airdrop, no
+            allocation.
+          </p>
+          <p>
+            There is a mechanism being designed where secondary trading fees buy $BALLAST and split
+            between holders, the protocol, and a burn. None of those contracts exist yet. It is not
+            part of this mint and it is not a promise.
           </p>
         </div>
       </header>
@@ -139,13 +146,18 @@ function Minted({ tokenId, txHash }: { tokenId?: number; txHash?: `0x${string}` 
 
       <div className="relative aspect-square w-full max-w-sm overflow-hidden rounded-card border border-border bg-card">
         {art.svg ? (
-          // Rendered as an <img> data URI: the SVG never enters our DOM as active
-          // markup, and it comes from our own immutable renderer, read live.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`data:image/svg+xml;utf8,${encodeURIComponent(art.svg)}`}
-            alt={tokenId != null ? `Manatee #${tokenId}` : "Your manatee"}
-            className="h-full w-full"
+          // Inlined, NOT via <img src="data:…">. Our CSP already allows data: images
+          // (img-src 'self' data: blob: https:), but the ;utf8 data-URI form renders
+          // blank in strict browsers (Firefox/Safari) — which is why the art showed on
+          // OpenSea (tokenURI base64 path) yet nothing here. Inlining sidesteps the whole
+          // img/data-URI class. Safe to inline: this markup is our own immutable on-chain
+          // renderer's output, deterministic from the token id, static shapes only — no
+          // <script>, no external refs, no user-controlled string.
+          <div
+            role="img"
+            aria-label={tokenId != null ? `Manatee #${tokenId}` : "Your manatee"}
+            className="h-full w-full [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+            dangerouslySetInnerHTML={{ __html: art.svg }}
           />
         ) : art.error ? (
           <div className="flex h-full items-center justify-center p-4 text-center text-xs text-text-muted">

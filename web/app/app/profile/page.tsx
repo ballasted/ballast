@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useProjects, type Project } from "@/hooks/useProjects";
-import { ConnectButton } from "@/components/app/ConnectButton";
+import { WalletGate } from "@/components/app/WalletGate";
 import { SocialIcon } from "@/components/SocialIcon";
 import { COMMUNITY_LINKS } from "@/lib/links";
 import { formatUsd, shortAddress } from "@/lib/format";
@@ -17,13 +17,7 @@ export default function ProfilePage() {
     return <Notice title="Not configured yet" body="Set the factory address (after deploy) to read a track record." />;
   }
   if (!isConnected || !account) {
-    return (
-      <div className="card p-8 text-center">
-        <h1 className="font-semibold text-text-primary">Connect your wallet</h1>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">Your track record reads live from this wallet&apos;s launches.</p>
-        <div className="mt-4 flex justify-center"><ConnectButton /></div>
-      </div>
-    );
+    return <WalletGate body="Your track record reads live from this wallet's launches." />;
   }
 
   const mine = projects.filter((p) => p.creator.toLowerCase() === account.toLowerCase());
