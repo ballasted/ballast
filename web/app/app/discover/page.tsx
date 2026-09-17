@@ -16,7 +16,6 @@ import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/So
 import { DiscoverHero } from "@/components/app/DiscoverHero";
 import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
-import { NewsPanel } from "@/components/app/NewsPanel";
 import { TopMovers } from "@/components/app/TopMovers";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 import { formatEt } from "@/lib/marketHours";
@@ -156,7 +155,7 @@ export default function DiscoverPage() {
   // preview, not a live view of whatever the rail happens to be set to. "Show
   // more" on each strip just points the SAME sort rail at that order and scrolls
   // down to the grid it already renders — no second grid/view to keep in sync.
-  const gridRef = useRef<HTMLHeadingElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const scrollToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const newestStrip = useMemo(
@@ -223,9 +222,10 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      <h1 ref={gridRef} className="scroll-mt-28 font-serif text-2xl font-semibold tracking-tight text-bone">
-        Discover
-      </h1>
+      {/* Anchor for "Show more" from the strips above — no second page title here,
+          DiscoverHero's <h1> is the page's only one (two <h1>s also read as two
+          stacked apps, which is exactly the "acak-acakan" complaint this fixes). */}
+      <div ref={gridRef} className="scroll-mt-28" />
 
       {/* Live rail (spec §5.6) sits at xl+ only, beside the main column — a narrower
           viewport has no room for a third column alongside a 2/3-col card grid. */}
@@ -378,7 +378,6 @@ export default function DiscoverPage() {
       {isConfigured && (
         <aside className="mt-6 hidden space-y-4 xl:sticky xl:top-20 xl:mt-0 xl:block">
           <LiveRail projects={projects} />
-          <NewsPanel projects={projects} />
           <TopMovers projects={projects} />
         </aside>
       )}
@@ -578,15 +577,10 @@ function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">
-        {reason === "unreachable" ? "Trending is unavailable right now" : "Not enough trading to rank yet"}
+        {reason === "unreachable" ? "Trending unavailable" : "Not enough trading yet"}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {reason === "unreachable"
-          ? "GeckoTerminal didn't respond, so trending is paused rather than faked."
-          : "Not enough real trades to rank yet — so we won't fake an order."}
-      </p>
-      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        Ballasted and Newest still work — live from the chain.
+        {reason === "unreachable" ? "Paused, not faked. Try Ballasted or Newest." : "Too few real trades to rank — try Ballasted or Newest."}
       </p>
     </div>
   );
@@ -599,13 +593,8 @@ function SourceUnavailableNotice({ metric, source }: { metric: string; source: s
   return (
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric} right now</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {source} didn’t respond, so this order is paused rather than faked.
-      </p>
-      <p className="mx-auto mt-3 max-w-md text-xs text-text-faint">
-        The on-chain orders still work.
-      </p>
+      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{source} didn’t respond — on-chain orders still work.</p>
     </div>
   );
 }

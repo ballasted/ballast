@@ -23,6 +23,7 @@ import {
   HoldersPanel,
   TradesPanel,
 } from "@/components/app/token/TokenSections";
+import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
 import { TerminalChart } from "@/components/app/terminal/TerminalChart";
 import { useOhlcv } from "@/hooks/useOhlcv";
@@ -73,6 +74,12 @@ export default function TokenDetailPage() {
   const { market } = useMarket(token);
   const { holders } = useHolders(token);
   const [tf, setTf] = useState<Timeframe>(DEFAULT_TIMEFRAME);
+  // One card, tab-switched, instead of four/two stacked always-visible cards —
+  // matches the sparse EON token-page pattern (a single Recent-trades/Holders
+  // tab card, not a wall of separate sections) without touching the panels'
+  // own internals, which TerminalTabs.tsx also reuses as-is.
+  const [activityTab, setActivityTab] = useState<"trades" | "holders">("trades");
+  const [infoTab, setInfoTab] = useState<"verification" | "supply" | "history" | "creator">("verification");
   const { ohlcv, isLoading: ohlcvLoading, available: ohlcvAvailable } = useOhlcv(token, tf);
   // Metadata denylist: a denied token keeps its ticker, price, backing, holders and
   // trades, but its project-supplied branding (name, logo, description, links) is
@@ -159,13 +166,12 @@ export default function TokenDetailPage() {
           withheld, with the reason + the raw metadataURI so anyone can verify. */}
       {metaDenied && (
         <section className="card border-warning-border bg-warning-bg p-5" role="note">
-          <h2 className="font-serif text-lg font-semibold text-bone">Project metadata withheld</h2>
+          <h2 className="font-serif text-lg font-semibold text-bone">Metadata withheld</h2>
           <div className="mt-2 space-y-2 text-sm text-text-secondary">
             <p>
-              BALLAST is withholding this project&apos;s self-declared name, logo, description, and links.
-              {denyReason ? <> Reason: <span className="text-text-primary">{denyReason}</span>.</> : null} Price,
-              backing, holders, and trades are unchanged. See our{" "}
-              <a className="text-green underline underline-offset-2" href="/docs/content-policy">content policy</a>.
+              Name, logo, description, and links are withheld{denyReason ? <> — <span className="text-text-primary">{denyReason}</span></> : null}.
+              Price, backing, holders, and trades are unaffected.{" "}
+              <a className="text-green underline underline-offset-2" href="/docs/content-policy">Content policy</a>.
             </p>
             <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-faint">
               {ipfsToGateway(metadataURI) && (
@@ -222,42 +228,64 @@ export default function TokenDetailPage() {
             </MotionSection>
           )}
 
+          {/* Recent trades / Holders — ONE card, tab-switched (EON's pattern), not
+              two always-stacked cards. Both panels already render their own
+              self-contained <section>, so switching which one mounts is enough —
+              no change to either component (TerminalTabs.tsx reuses them the same
+              way, one at a time). */}
           <MotionSection>
-            <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
-          </MotionSection>
-
-          <MotionSection>
-            <TradesPanel token={token!} symbol={symbol} now={now} />
+            <TabBar
+              tabs={[
+                { id: "trades", label: "Recent trades" },
+                { id: "holders", label: "Holders" },
+              ]}
+              active={activityTab}
+              onChange={setActivityTab}
+            />
+            {activityTab === "trades" ? (
+              <TradesPanel token={token!} symbol={symbol} now={now} />
+            ) : (
+              <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />
+            )}
           </MotionSection>
 
           <MotionSection>
             <MarketPanel token={token!} chainPriceUsd={marketPriceUsd} />
           </MotionSection>
 
-          <AllocationSlot />
-
+          {/* Verification / Supply / History / Creator — ONE card, tab-switched,
+              instead of four always-visible stacked cards. Same technique as
+              above: each panel is already self-contained, only one mounts. */}
           <MotionSection>
-            <VerificationPanel token={token} />
+            <TabBar
+              tabs={[
+                { id: "verification", label: "Verification" },
+                { id: "supply", label: "Supply" },
+                { id: "history", label: "History" },
+                { id: "creator", label: "Creator" },
+              ]}
+              active={infoTab}
+              onChange={setInfoTab}
+            />
+            {infoTab === "verification" ? (
+              <VerificationPanel token={token} />
+            ) : infoTab === "supply" ? (
+              <AllocationSlot />
+            ) : infoTab === "history" ? (
+              <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
+            ) : (
+              <CreatorTrackRecord creator={creator} thisToken={token!} />
+            )}
           </MotionSection>
 
-          <MotionSection>
-            <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
-          </MotionSection>
-
-          <MotionSection>
-            <CreatorTrackRecord creator={creator} thisToken={token!} />
-          </MotionSection>
-
-          {/* Launch-liquidity disclosure — verbatim approved copy. */}
+          {/* Launch-liquidity disclosure — approved substance, tightened wording. */}
           <MotionSection>
             <section className="card p-4">
-              <h2 className="text-sm font-semibold text-text-primary">No protocol liquidity below backing at launch — not a floor</h2>
+              <h2 className="text-sm font-semibold text-text-primary">Not a floor</h2>
               <p className="mt-2 text-sm text-text-secondary">
-                A ballasted launch seeds the project&apos;s tokens from its backing price upward, and nothing below it. So
-                at the very first trades the token cannot print below its backing in this pool — not because the price is
-                supported, but because no one has placed a bid there yet. The protocol spends nothing to hold the price and
-                never will. Anyone can add liquidity below backing at any time, and once they do, the token can and will
-                trade below its backing. Do not read the launch state as a floor.
+                A ballasted launch seeds liquidity from backing price upward, nothing below — not price support, just no
+                bid placed there yet. Anyone can add liquidity below backing later, and once they do, the token can and
+                will trade below it.
               </p>
             </section>
           </MotionSection>
@@ -312,6 +340,34 @@ function CopyAddress({ address, label }: { address: Address; label?: string }) {
         </svg>
       )}
     </button>
+  );
+}
+
+// Small tab-pill row used to collapse several always-visible cards into one
+// tab-switched card (EON's sparse token-page pattern) without changing any of
+// the panels themselves — only one mounts at a time.
+function TabBar<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { id: T; label: string }[];
+  active: T;
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div className="mb-3 flex gap-2 overflow-x-auto">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          aria-pressed={active === t.id}
+          className={cn("tab shrink-0", active === t.id ? "tab-active" : "tab-idle")}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
