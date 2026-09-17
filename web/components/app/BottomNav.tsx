@@ -6,24 +6,29 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "@/components/app/nav-items";
 
-// Mobile / small-screen navigation. On desktop (lg+) TopBar's horizontal nav (or
-// the terminal rail) replaces this, so it's hidden there. Items come from the
-// shared NAV_ITEMS list — hrefs, labels, icons, and active-state logic are all
-// untouched here; this file only changes how they're rendered (a floating pill
-// instead of a flush full-width bar).
+// THE nav, at every breakpoint — a floating pill, not a horizontal header row.
+// TopBar no longer carries its own link list; primary navigation lives here
+// alone (the terminal rail is the one exception, still swapped in on
+// /app/terminal). Items come from the shared NAV_ITEMS list — hrefs, labels,
+// icons, and active-state logic are unchanged; only the rendering (a floating
+// pill instead of a bar) differs.
 //
 // Seven items don't fit at 360px, so below md this shows only the 4 most-used
 // (Discover, Terminal, Portfolio, Create) plus a "More" button revealing the
 // rest (Analytics, Buyback, Profile) in a small popover — not wallet-gated, so
-// it works whether or not a wallet is connected. At md and up (still <lg,
-// tablet portrait) there's room for all 7 in one row.
+// it works whether or not a wallet is connected. At md and up there's room for
+// all 7 in one row, all the way up through desktop.
 const PRIMARY_HREFS = new Set(["/app/discover", "/app/terminal", "/app/portfolio", "/app/create"]);
 
 // The primary CTA — "launch a token" — gets a raised circular FAB treatment
 // instead of sitting flush in the pill like the other icons.
 const FAB_HREF = "/app/create";
 
-export function BottomNav() {
+// `hasRail` is true only on /app/terminal, where SideNav already carries the
+// full nav list in a persistent left rail — this floating pill hides at lg+
+// there specifically, so the two never show the same links twice. Everywhere
+// else, and on any screen below lg, this is the only nav there is.
+export function BottomNav({ hasRail = false }: { hasRail?: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -51,7 +56,10 @@ export function BottomNav() {
   return (
     <nav
       ref={rootRef}
-      className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className={cn(
+        "fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 pb-[env(safe-area-inset-bottom)]",
+        hasRail && "lg:hidden",
+      )}
     >
       <div className="relative flex items-center gap-0.5 rounded-full border border-border bg-bg/80 px-2 py-1.5 shadow-lg shadow-black/30 backdrop-blur-md">
         {moreOpen && (

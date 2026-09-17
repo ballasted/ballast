@@ -7,7 +7,6 @@ import { BottomNav } from "@/components/app/BottomNav";
 import { EventToasts } from "@/components/app/EventToasts";
 import { SideNav } from "@/components/app/SideNav";
 import { TopBar } from "@/components/app/TopBar";
-import { TickerBar } from "@/components/app/TickerBar";
 import { ConfigGuard } from "@/components/app/ConfigGuard";
 import { NetworkGuard } from "@/components/app/NetworkGuard";
 import { cn } from "@/lib/cn";
@@ -35,16 +34,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {hasRail && <SideNav />}
       <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
         <TopBar hasRail={hasRail} />
-        <TickerBar />
         <ConfigGuard />
         <NetworkGuard />
-        {/* Content sits in a wide column, centred. Bottom padding clears the fixed
-            bottom nav (mobile) PLUS the device safe-area inset; TickerBar is no
-            longer fixed, so desktop doesn't need a matching bottom reservation. */}
-        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(72px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10">
+        {/* Content sits in a wide column, centred. Bottom padding clears the floating
+            nav pill (BottomNav renders at every breakpoint now, not just mobile)
+            PLUS the device safe-area inset. */}
+        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(96px+env(safe-area-inset-bottom))] pt-5 lg:px-10">
           {children}
         </main>
-        <BottomNav />
+        <BottomNav hasRail={hasRail} />
       </div>
     </Providers>
   );
