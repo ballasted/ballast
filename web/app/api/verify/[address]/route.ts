@@ -39,18 +39,31 @@ export type VerificationResult = {
 
 const TIMEOUT_MS = 6_000;
 
-async function sourceVerified(address: Address): Promise<CheckStatus> {
+// Diagnosed (2026-09-19): Blockscout's public instance sits behind Cloudflare
+// bot-protection that intermittently 403s server-to-server requests with an
+// HTML JS-challenge page instead of JSON — reproducible via a plain curl from
+// outside a browser, independent of headers sent (User-Agent spoofing did not
+// reliably bypass it; likely TLS-fingerprint/behavioral, not a fixable header
+// tweak). This is the real cause behind "Unavailable" showing for EVERY token's
+// source-verification check, not a bug in the fetch call itself or in these
+// specific tokens' verification status — there's nothing wrong to fix on our
+// side beyond being honest about which failure mode occurred, which is what
+// the distinct "blocked" reason below is for.
+type SourceOutcome = { status: CheckStatus; reason?: "blocked" | "timeout" | "network" };
+
+async function sourceVerified(address: Address): Promise<SourceOutcome> {
   try {
     const res = await fetch(`${BLOCKSCOUT_URL}/api/v2/smart-contracts/${address}`, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (res.status === 404) return "fail"; // Blockscout knows the address but has no verified source
-    if (!res.ok) return "unavailable";
+    if (res.status === 404) return { status: "fail" }; // Blockscout knows the address but has no verified source
+    if (res.status === 403) return { status: "unavailable", reason: "blocked" };
+    if (!res.ok) return { status: "unavailable" };
     const json = (await res.json()) as { is_verified?: boolean };
-    return json.is_verified ? "pass" : "fail";
-  } catch {
-    return "unavailable";
+    return { status: json.is_verified ? "pass" : "fail" };
+  } catch (e) {
+    return { status: "unavailable", reason: e instanceof Error && e.name === "TimeoutError" ? "timeout" : "network" };
   }
 }
 
@@ -58,8 +71,12 @@ function explorerUrl(address: Address): string {
   return `${activeChain.blockExplorers.default.url}/address/${address}`;
 }
 
-function sourceLabel(status: CheckStatus): string {
-  return status === "pass" ? "Verified on Blockscout" : status === "fail" ? "Not verified" : "Unavailable";
+function sourceLabel(outcome: SourceOutcome): string {
+  if (outcome.status === "pass") return "Verified on Blockscout";
+  if (outcome.status === "fail") return "Not verified";
+  if (outcome.reason === "blocked") return "Blockscout blocked this request";
+  if (outcome.reason === "timeout") return "Blockscout timed out";
+  return "Blockscout unreachable";
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ address: string }> }) {
@@ -111,7 +128,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
 
   const [sourceToken, sourceTreasury, creatorBal, backing, registryAddresses] = await Promise.all([
     sourceVerified(token),
-    treasury ? sourceVerified(treasury) : Promise.resolve<CheckStatus>("unavailable"),
+    treasury ? sourceVerified(treasury) : Promise.resolve<SourceOutcome>({ status: "unavailable" }),
     creator
       ? client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [creator] }).catch(() => undefined)
       : Promise.resolve(undefined),
@@ -242,9 +259,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
     isBallastLaunch: true,
     fetchedAt,
     checks: {
-      sourceVerifiedToken: { status: sourceToken, value: sourceLabel(sourceToken), explorerUrl: explorerUrl(token) },
+      sourceVerifiedToken: { status: sourceToken.status, value: sourceLabel(sourceToken), explorerUrl: explorerUrl(token) },
       sourceVerifiedTreasury: treasury
-        ? { status: sourceTreasury, value: sourceLabel(sourceTreasury), explorerUrl: explorerUrl(treasury) }
+        ? { status: sourceTreasury.status, value: sourceLabel(sourceTreasury), explorerUrl: explorerUrl(treasury) }
         : { status: "unavailable", value: "No treasury found", explorerUrl: "" },
       mintAuthority,
       mutableParams,
