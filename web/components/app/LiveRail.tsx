@@ -34,9 +34,7 @@ export function LiveRail({ projects }: { projects: Project[] }) {
       {status === "loading" ? (
         <SkeletonRows />
       ) : events.length === 0 ? (
-        <p className="mt-3 text-sm text-text-muted">
-          Nothing yet. Launches, graduations, burns, and large buys will appear here as they happen.
-        </p>
+        <p className="mt-3 text-sm text-text-muted">Nothing yet.</p>
       ) : (
         <ul className="mt-3 space-y-2" aria-live="polite">
           {events.map((e) => (

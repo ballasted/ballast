@@ -43,9 +43,6 @@ export default function TerminalIndexPage() {
   return (
     <div>
       <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Terminal</h1>
-      <p className="mt-2 max-w-prose text-sm text-text-muted">
-        A token&apos;s full trading view — chart, order rail, treasury, trades.
-      </p>
 
       {/* Search / paste-address bar. A valid address enables Open (and Enter routes
           straight there), so a token you already know needs no scrolling. */}
@@ -72,13 +69,12 @@ export default function TerminalIndexPage() {
 
       <div className="mt-5">
         {!isConfigured ? (
-          <Empty title="Not configured yet" body="No contracts set, so there are no launches yet." />
+          <Empty title="Not configured yet" />
         ) : isLoading ? (
           <SkeletonList />
         ) : !hasLaunches ? (
           <Empty
-            title="Nothing has launched yet"
-            body="The first launch shows up here."
+            title="Nothing yet."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
@@ -86,10 +82,7 @@ export default function TerminalIndexPage() {
             }
           />
         ) : filtered.length === 0 ? (
-          <Empty
-            title="No match"
-            body={isAddr ? `Nothing matches “${trimmed}”. Press Open to go to that address.` : `Nothing matches “${trimmed}”.`}
-          />
+          <Empty title="No match" />
         ) : (
           <ul className="space-y-2">
             {filtered.map((p) => (
@@ -127,12 +120,12 @@ function TokenRow({ p, logo }: { p: Project; logo?: string }) {
   );
 }
 
-function Empty({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+function Empty({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+      {body && <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );

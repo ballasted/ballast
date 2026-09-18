@@ -2,17 +2,9 @@ import Link from "next/link";
 import type { Address } from "viem";
 
 // $BALLAST — the protocol's OWN token, launched by the BALLAST team on BALLAST
-// under the same rules as every other launch. "Official protocol token" makes
-// people assume rights it doesn't grant, so this notice states plainly what it
-// confers (nothing) and leads with the true, strong fact: the team holds none of
-// it. Above the fold, same blunt voice as "what BALLAST is not".
-//
-// The record is amended, not rewritten silently: this page previously said
-// $BALLAST was NOT a protocol token; that changed on the date below. A disclosure
-// product shouldn't quietly edit its own history — so when the launch factory was
-// redeployed (corrected freshness gate), that too is recorded below as a dated
-// line, and $BALLAST was deliberately NOT relaunched: it stays the original launch
-// from the first factory, still listed via the multi-factory union.
+// under the same rules as every other launch. Full amendment history (wording
+// corrections, the factory redeploy) lives in /docs/corrections — a dated
+// record we don't rewrite — rather than as paragraphs on this page.
 //
 // ⚠️ HARDCODED per-launch address — a deliberate, user-approved exception to the
 // "never hardcode per-launch addresses" convention. When launch metadata carries a
@@ -29,31 +21,29 @@ export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
   if (!isProtocolToken(token)) return null;
   return (
     <section className="card border-accent p-5" role="note">
-      <h2 className="font-serif text-lg font-semibold text-bone">The protocol token</h2>
-      <div className="mt-2 space-y-2 text-sm text-text-secondary">
-        <p>
-          Launched by the BALLAST team under the same rules as every launch: 100% of supply seeded the pool, no
-          presale, no team allocation — we hold none of it. It confers no ownership, governance, claim, or
-          redemption right.
-        </p>
-        <p>
-          The protocol&apos;s swap-fee share funds open-market{" "}
-          <Link href="/app/buyback" className="text-green underline underline-offset-2">
-            buybacks of $BALLAST, then burned
-          </Link>{" "}
-          — value routed through the market, not distributed. Not a dividend; burning reduces supply and predicts
-          nothing about price.
-        </p>
-        <p className="text-text-faint">
-          Amendments: &ldquo;no revenue share&rdquo; wording corrected 4 Aug 2026 once buyback-and-burn started
-          (holders still have no claim, redemption right, or governance); this page said $BALLAST was not a
-          protocol token until 28 Jul 2026, before any trading occurred.
-        </p>
-        <p className="text-text-faint">
-          The launch factory was redeployed 28 Jul 2026 (corrected freshness gate). $BALLAST was not relaunched —
-          it&apos;s still the original listing; only new launches use the new factory.
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <span className="chip chip-accent">Protocol token</span>
+        <Link href="/docs/corrections" className="text-xs text-text-faint underline underline-offset-2 hover:text-text-secondary">
+          Amendment history ↗
+        </Link>
       </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
+        <Row label="Team allocation" value="None" />
+        <Row label="Governance" value="None" />
+        <Row label="Redemption right" value="None" />
+      </div>
+      <Link href="/app/buyback" className="mt-3 inline-block text-xs text-green underline underline-offset-2">
+        Fee share → buyback &amp; burn ↗
+      </Link>
     </section>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-text-faint">{label}</div>
+      <div className="mt-0.5 font-medium text-text-primary">{value}</div>
+    </div>
   );
 }

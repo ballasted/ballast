@@ -50,10 +50,8 @@ export function TopMovers({ projects }: { projects: Project[] }) {
   return (
     <div className="card p-4">
       <h2 className="section-label">Top movers</h2>
-      {!trending.available ? (
-        <p className="mt-3 text-sm text-text-muted">GeckoTerminal didn’t respond, so movers are paused.</p>
-      ) : movers.length === 0 ? (
-        <p className="mt-3 text-sm text-text-muted">Not enough priced pools yet to rank movers.</p>
+      {!trending.available || movers.length === 0 ? (
+        <p className="mt-3 text-sm text-text-muted">Nothing yet.</p>
       ) : (
         <ul className="mt-3 space-y-2">
           {movers.map((m) => {

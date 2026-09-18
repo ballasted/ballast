@@ -98,34 +98,31 @@ export function BackingPanel({
       <Meander className="my-4" />
 
       {/* Backing figure + timestamp: one unit. Never shown apart. */}
-      <div className="text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         {oldest ? (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-text-secondary">
-              Equities valued at {formatEt(Number(oldest.updatedAt))}
+          <>
+            <span className="text-text-faint" title="When the oldest priced treasury asset last updated">
+              {formatEt(Number(oldest.updatedAt))}
             </span>
             {fresh && <FreshnessChip tier={fresh.tier} label={fresh.label} />}
-          </div>
+          </>
         ) : (
-          <span className="text-text-muted">No priced assets to value.</span>
+          <span className="text-text-muted">No priced assets</span>
         )}
-
         {backing.anyUnpriced && (
-          <p className="mt-2 text-xs text-warning">
-            Some assets could not be priced and are excluded from the total.
-          </p>
+          <span className="chip chip-warning" title="Some assets could not be priced and are excluded from the total">
+            Unpriced assets excluded
+          </span>
         )}
         {seq === "Unknown" && (
-          <p className="mt-2 text-xs text-text-muted">
-            Sequencer status unverifiable on this chain — no L2 uptime feed exists yet.
-            We did not check it; we do not imply we did.
-          </p>
+          <span className="chip chip-neutral" title="No L2 sequencer uptime feed exists for this chain — we did not check it">
+            Sequencer unverifiable
+          </span>
         )}
         {(seq === "Down" || seq === "GracePeriod") && (
-          <p className="mt-2 text-xs text-warning">
-            Sequencer {seq === "Down" ? "is down" : "recently recovered"} — prices not
-            currently trusted.
-          </p>
+          <span className="chip chip-warning" title="Prices not currently trusted">
+            Sequencer {seq === "Down" ? "down" : "recovering"}
+          </span>
         )}
       </div>
 

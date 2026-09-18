@@ -53,6 +53,22 @@ These are not style preferences. Violating any of them either breaks the legal p
 
 ---
 
+## UI principles — authoritative, do not argue taste
+
+1. The interface is labels and numbers. Prose lives in docs only.
+2. Cards contain zero sentences. Section headings have no captions.
+3. Never add explanatory text to justify a number. Add an (i) to docs.
+4. When in doubt, remove. Empty space is the default state, not a gap to fill.
+5. Match app.long.xyz / ponsfamily.com density. If a screen has more words
+   than a Pons screen, it is wrong.
+6. Do not propose adding copy. Do not defend existing copy. Just cut it.
+
+Keep applying every rule above about data correctness, unverified claims,
+impostor assets, and warnings shown before a signature — those aren't UI taste
+and still apply, and you still raise them.
+
+---
+
 ## Chain gotchas — Robinhood Chain
 
 - Chain ID `4663` mainnet, `46630` testnet. Gas token ETH. Arbitrum Orbit L2.

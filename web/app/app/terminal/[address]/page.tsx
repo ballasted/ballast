@@ -145,11 +145,11 @@ export default function TerminalPage() {
       {/* Below sm: a floating trigger opening the swap panel as a bottom sheet,
           instead of leaving it buried below every other panel on a short screen. */}
       <div className="sm:hidden">
-        {/* Offset to clear BottomNav (fixed, ~72px tall including its own
-            safe-area padding) rather than sit behind it. */}
+        {/* Offset to clear BottomNav (fixed, ~52px tall plus its own safe-area
+            padding) rather than sit behind it. */}
         <button
           onClick={() => setSheetOpen(true)}
-          className="btn-primary fixed inset-x-4 bottom-[calc(84px+env(safe-area-inset-bottom))] z-40 shadow-lg"
+          className="btn-primary fixed inset-x-4 bottom-[calc(64px+env(safe-area-inset-bottom))] z-40 shadow-lg"
         >
           Buy / Sell {b.symbol ?? ""}
         </button>

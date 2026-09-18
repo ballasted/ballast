@@ -16,46 +16,6 @@ import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
 
-// ── Market overview ─────────────────────────────────────────────────────────
-// FDV is derived live on-chain (market price × supply). Liquidity + 24h volume come
-// from GeckoTerminal, holder count from Blockscout — each labelled with its source.
-// A figure whose source is unavailable shows "—", never a fabricated number.
-export function MarketOverview({
-  marketPriceUsd,
-  totalSupply,
-  hasPool,
-  liquidityUsd,
-  volume24hUsd,
-  holdersCount,
-}: {
-  marketPriceUsd?: bigint;
-  totalSupply?: bigint;
-  hasPool: boolean;
-  liquidityUsd?: number; // GeckoTerminal, top pool reserve
-  volume24hUsd?: number; // GeckoTerminal
-  holdersCount?: number; // Blockscout
-}) {
-  // Same helper as Discover + the featured strip, so a token's market cap (FDV) is
-  // identical wherever it appears (spec 1.4). The caller passes the canonical supply.
-  const fdv = totalSupply !== undefined ? marketCapUsd(marketPriceUsd, totalSupply) : undefined;
-
-  return (
-    <section className="card p-5">
-      <h2 className="section-label">Market overview</h2>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-        <Stat label="FDV" value={fdv !== undefined ? formatUsd(fdv, { compact: true }) : hasPool ? "—" : "no market"} />
-        <Stat label="Liquidity" value={liquidityUsd !== undefined ? formatCompactUsd(liquidityUsd) : "—"} />
-        <Stat label="Holders" value={holdersCount !== undefined ? holdersCount.toLocaleString("en") : "—"} />
-        <Stat label="24h volume" value={volume24hUsd !== undefined ? formatCompactUsd(volume24hUsd) : "—"} />
-      </dl>
-      <p className="mt-4 text-xs text-text-faint">
-        FDV = price × supply, computed on-chain. Liquidity/volume from GeckoTerminal, holders from Blockscout. A dash
-        means that source has nothing yet.
-      </p>
-    </section>
-  );
-}
-
 // ── Holders (Blockscout) ──────────────────────────────────────────────────────
 // Full history from block zero via Blockscout's free API — a better source than our
 // own indexer (which would start at a deploy block). Labels the LP, seeder, creator,
@@ -94,11 +54,7 @@ export function HoldersPanel({
       ) : !holders?.available || holders.holders.length === 0 ? (
         <div className="mt-4 flex flex-col items-center py-6 text-center">
           <Meander className="mb-4 max-w-[100px] opacity-60" />
-          <p className="max-w-sm text-sm text-text-muted">
-            {holders?.reason === "not-found"
-              ? "No transfers indexed yet — the pool holds essentially the whole supply until someone trades."
-              : "Blockscout is unreachable, so the holder list shows unavailable rather than stale."}
-          </p>
+          <p className="text-sm text-text-muted">Nothing yet.</p>
         </div>
       ) : (
         <>
@@ -113,9 +69,8 @@ export function HoldersPanel({
               />
             ))}
           </ul>
-          <p className="mt-4 text-[11px] text-text-faint">
-            Source: Blockscout (full history){holders.fetchedAt ? ` · updated ${formatEt(holders.fetchedAt)}` : ""}.
-            Balances are chain truth; labels explain known addresses.
+          <p className="mt-4 text-[11px] text-text-faint" title="Balances are chain truth; labels explain known addresses">
+            Blockscout{holders.fetchedAt ? ` · ${formatEt(holders.fetchedAt)}` : ""}
           </p>
         </>
       )}
@@ -196,14 +151,11 @@ export function AllocationSlot() {
   return (
     <section className="card p-5">
       <h2 className="section-label">Supply &amp; allocation</h2>
-      <div className="mt-3 flex items-baseline gap-3">
-        <span className="figure-primary text-3xl text-green">100%</span>
-        <span className="text-sm text-text-secondary">of supply seeded the pool</span>
-      </div>
-      <p className="mt-3 text-sm text-text-secondary">
-        The creator holds <span className="font-semibold text-text-primary">none</span> — no presale, team bag, or
-        vesting. No allocation chart because there&apos;s no allocation: the one thing that sets a BALLAST launch apart.
-      </p>
+      <dl className="mt-3 grid grid-cols-3 gap-3 text-center">
+        <Stat label="Seeded to pool" value="100%" />
+        <Stat label="Creator allocation" value="None" />
+        <Stat label="Presale" value="None" />
+      </dl>
     </section>
   );
 }
@@ -226,7 +178,10 @@ export function MetadataHistory({
 
   return (
     <section className="card p-5">
-      <h2 className="section-label">Metadata history</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="section-label">Metadata history</h2>
+        <span className={cn("chip", changed ? "chip-warning" : "chip-accent")}>{changed ? "Changed" : "Unchanged"}</span>
+      </div>
       <ol className="mt-3 space-y-3">
         {changed && (
           <HistoryRow
@@ -243,13 +198,6 @@ export function MetadataHistory({
           uri={launchUri}
         />
       </ol>
-      <p className="mt-4 text-xs text-text-faint">
-        {changed
-          ? "Updated since launch; the launch version above is permanent."
-          : "Unchanged since launch."}{" "}
-        A dated change-by-change timeline needs indexing; until then, each MetadataUpdated event is readable on the
-        explorer.
-      </p>
     </section>
   );
 }
@@ -366,11 +314,7 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
       ) : !data?.available || data.trades.length === 0 ? (
         <div className="mt-4 flex flex-col items-center py-6 text-center">
           <Meander className="mb-4 max-w-[100px] opacity-60" />
-          <p className="max-w-sm text-sm text-text-muted">
-            {data?.reason === "not-indexed"
-              ? "No trades yet — the feed fills in once the pool trades. Price and backing above are already chain-live."
-              : "GeckoTerminal is unreachable, so the trade feed shows unavailable rather than stale."}
-          </p>
+          <p className="text-sm text-text-muted">Nothing yet.</p>
         </div>
       ) : (
         <>
@@ -429,10 +373,11 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
             ))}
           </ul>
 
-          <p className="mt-4 text-[11px] text-text-faint">
-            Source: GeckoTerminal{data.fetchedAt ? ` · updated ${formatEt(data.fetchedAt)}` : ""}. A live sample of
-            recent trades, not the full 24h — so the split above covers this sample only; 24h volume elsewhere is the
-            full-window aggregate.
+          <p
+            className="mt-4 text-[11px] text-text-faint"
+            title="A live sample of recent trades, not the full 24h — 24h volume elsewhere is the full-window aggregate"
+          >
+            GeckoTerminal{data.fetchedAt ? ` · ${formatEt(data.fetchedAt)}` : ""}
           </p>
         </>
       )}
