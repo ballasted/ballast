@@ -8,7 +8,7 @@ import { useDenylist } from "@/hooks/useDenylist";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
-import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
+import { formatUsd, formatBackingPerToken, backingRatio, shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
 import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
@@ -77,7 +77,15 @@ export function ProjectCard({
             <div key={priceStr} className="figure-primary anim-fade text-lg tabular-nums">{priceStr}</div>
             <div className="metric-secondary inline-flex items-center justify-end gap-1">
               {hasPool && <span className="h-1.5 w-1.5 rounded-full bg-green" aria-hidden />}
-              {hasPool ? "market price" : "no pool yet"}
+              {/* Unbacked launches all open at the SAME constant tick
+                  (BallastFactory.UNBACKED_TICK — no oracle dependency), so
+                  several untraded ones showing an identical price is
+                  expected, not a bug. "market price" implies active price
+                  discovery against a backing reference an unbacked token
+                  doesn't have; "opening price" (same framing CreateFlow's
+                  unbacked-launch preview already uses) is accurate whether
+                  or not it's traded since. */}
+              {hasPool ? (ballasted ? "market price" : "opening price") : "no pool yet"}
             </div>
           </div>
         </div>
@@ -94,7 +102,22 @@ export function ProjectCard({
                   {formatUsd(backing.lockedValueUsd, { compact: true })} locked
                 </div>
               </div>
-              {backing.anyStale && <span className="chip chip-warning shrink-0">prices resting</span>}
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {/* Same derivation as FeaturedStrip (lib/format.ts's backingRatio,
+                    price ÷ backing-per-token, no supply arithmetic) — a token
+                    must never show two different ratios on two cards. */}
+                {(() => {
+                  const ratio = marketPriceUsd !== undefined ? backingRatio(marketPriceUsd, backing.backingPerToken) : null;
+                  return (
+                    ratio !== null && (
+                      <span className={cn("text-xs font-medium", ratio >= 1 ? "text-green" : "text-warning")}>
+                        {ratio.toFixed(2)}× backing
+                      </span>
+                    )
+                  );
+                })()}
+                {backing.anyStale && <span className="chip chip-warning">prices resting</span>}
+              </div>
             </div>
           ) : (
             <span className="text-sm text-text-muted">
