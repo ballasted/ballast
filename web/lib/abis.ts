@@ -246,17 +246,17 @@ export const ballastFactoryAbi = [
   },
   {
     // Declares only the first 3 fields on PURPOSE, even though the newer contract
-    // source has a 4th (quoteAsset, appended last). Decoding FEWER fields than a
-    // return actually contains is safe (the trailing word is simply ignored) —
-    // decoding MORE than it contains is NOT (throws "buffer overrun while
-    // deserializing"), which is exactly what broke every launches() read, for
-    // EVERY factory, once this was briefly widened to 4 before any factory with
-    // a 4th field existed on-chain. FACTORY_ADDRESSES is a union of factories
-    // deployed at different times (see lib/contracts.ts) — the prior ones will
-    // NEVER have quoteAsset, so this shared ABI must stay the conservative
-    // (smallest-common) shape forever. Nothing today reads a 4th field; if that
-    // changes, read it via a SEPARATE call that tolerates failure per-factory
-    // (allowFailure), never by widening this one.
+    // source has a 4th (quoteAssets, an address[] — appended last). Solidity's
+    // auto-generated public getter for a struct with a dynamic-array member
+    // OMITS that member from the returned tuple entirely (not "returns it
+    // last" — it genuinely isn't in the ABI-encoded return data), so decoding
+    // only 3 fields here isn't a compatibility shim, it's the actual shape of
+    // EVERY factory's `launches(id)` return, old or new. FACTORY_ADDRESSES is a
+    // union of factories deployed at different times (see lib/contracts.ts) —
+    // this shared ABI is correct for all of them unchanged. To read a launch's
+    // quote assets, use `quoteAssetsOf(token)` below (only present on
+    // multi-quote-asset-capable factories — call with allowFailure per-factory,
+    // never assume every factory in FACTORY_ADDRESSES has it).
     type: "function",
     name: "launches",
     stateMutability: "view",
@@ -284,17 +284,56 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "uint256" }],
   },
   {
-    // Matches the CURRENTLY DEPLOYED factory's function selector exactly (4 args,
-    // no quoteAsset_) — every write always targets FACTORY_ADDRESS (see
-    // lib/contracts.ts), never a prior one, so there is exactly one live shape to
-    // match at any time, not "both". The contract source has a newer 5-arg version
-    // (quoteAsset_) ready for the NEXT factory deploy — when that ships and
-    // FACTORY_ADDRESS is repointed to it, widen this to 5 args AND the
-    // useLaunchRunner.ts call site TOGETHER, in the same change as the redeploy.
-    // Widening one without the other reverts every launch with no revert reason
-    // (wrong selector) — this is exactly the bug this comment exists to prevent
-    // recurring (2026-09-16: Discover/create both broke this way after the ABI was
-    // updated ahead of a deploy that hadn't happened yet).
+    // The quote asset(s) a launch's pool(s) are/will be paired against — only
+    // present on a multi-quote-asset-capable factory (see contracts/src/
+    // BallastFactory.sol's quoteAssetsOf). A PRIOR factory in FACTORY_ADDRESSES
+    // predating this function will simply fail this call — callers MUST use
+    // allowFailure per-factory (multicall) rather than assume every factory
+    // union member has it, exactly like `graduated`/`launchIdOf` already do.
+    type: "function",
+    name: "quoteAssetsOf",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ type: "address[]" }],
+  },
+  {
+    // Deploy-time-fixed allowlist of non-WETH quote assets this factory accepts
+    // in launch()'s quoteAssets_ array (see docs/exit-liquidity-table.md — never
+    // owner-settable post-deploy, promoting one is a re-run of that external-
+    // liquidity judgment). WETH itself isn't in this mapping — it's always
+    // valid separately, read from the `weth` immutable below.
+    type: "function",
+    name: "isGreenQuoteAsset",
+    stateMutability: "view",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "weth",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
+    type: "function",
+    name: "MAX_QUOTE_ASSETS",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    // ⚠️ DO NOT DEPLOY/PUSH-LIVE THIS 5-ARG SHAPE UNTIL A FACTORY WITH IT IS
+    // ACTUALLY DEPLOYED AND FACTORY_ADDRESS IS REPOINTED AT IT. Every write
+    // always targets FACTORY_ADDRESS (lib/contracts.ts) — there is exactly one
+    // live shape that matters at any time, and while FACTORY_ADDRESS still
+    // points at a 4-arg (no quoteAssets_) factory, THIS ABI MUST STILL DECLARE
+    // 4 ARGS, or every real launch() call gets a wrong-selector revert with no
+    // reason (2026-09-16 incident: this exact mistake broke Discover/create for
+    // everyone). This 5-arg version is prepared ahead of the next factory
+    // redeploy — widen this (already done) together with useLaunchRunner.ts's
+    // call site (already done) AND the FACTORY_ADDRESS env var update, as ONE
+    // atomic change, never as three separate ones landing at different times.
     type: "function",
     name: "launch",
     stateMutability: "nonpayable",
@@ -303,6 +342,7 @@ export const ballastFactoryAbi = [
       { name: "symbol_", type: "string" },
       { name: "noticePeriod", type: "uint256" },
       { name: "metadataURI", type: "string" },
+      { name: "quoteAssets_", type: "address[]" },
     ],
     outputs: [
       { name: "id", type: "uint256" },
@@ -330,13 +370,36 @@ export const ballastFactoryAbi = [
     ],
   },
   {
+    // Dropped `tickLower` vs the prior factory's Graduated (no longer a single
+    // meaningful value once one graduation can seed several pools at once, each
+    // with its own tick) — a PRIOR factory in FACTORY_ADDRESSES still emits the
+    // OLD 4-field shape on-chain; decoding it against this 3-field ABI is safe
+    // (extra trailing log data is simply ignored by viem's event decoder,
+    // matched by name/position from the front, same "fewer fields is safe"
+    // rule as `launches` above) — but never widen this back to 4 assuming
+    // every factory's Graduated matches, since a NEW factory genuinely doesn't
+    // have tickLower on-chain at all.
     type: "event",
     name: "Graduated",
     inputs: [
       { name: "token", type: "address", indexed: true },
       { name: "treasury", type: "address", indexed: false },
-      { name: "tickLower", type: "int24", indexed: false },
       { name: "backingUsd1e18", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    // Per-quote-asset pool-creation record — the only way to enumerate a
+    // token's pools, since v4 has no canonical "all pools for this token"
+    // lookup (PoolManager is a singleton keyed by the full PoolKey). Only
+    // emitted by a multi-quote-asset-capable factory.
+    type: "event",
+    name: "PoolSeeded",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "quoteAsset", type: "address", indexed: true },
+      { name: "poolId", type: "bytes32", indexed: false },
+      { name: "openTick", type: "int24", indexed: false },
+      { name: "amount", type: "uint256", indexed: false },
     ],
   },
 ] as const;

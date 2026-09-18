@@ -152,13 +152,12 @@ export function dexLabel(dexId: string): string {
 }
 
 // Plain-number USD (external prices are JS numbers, often tiny, e.g. $0.000005).
-export function formatSmallUsd(n: number): string {
-  if (!Number.isFinite(n)) return "—";
-  if (n === 0) return "$0.00";
-  if (n >= 1) return `$${n.toLocaleString("en", { maximumFractionDigits: 2 })}`;
-  if (n >= 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toPrecision(3)}`; // e.g. $0.00000500
-}
+// Re-exported from lib/format.ts — that's the single canonical small-dollar-
+// value formatter now (also used by formatBackingPerToken, so a token's price
+// and its backing/token never disagree about how to represent a fractional-
+// cent value). Kept as a named export here too since most of this file's
+// consumers already import it from "@/lib/market".
+export { formatSmallUsd } from "./format";
 
 export function formatCompactUsd(n: number): string {
   if (!Number.isFinite(n)) return "—";

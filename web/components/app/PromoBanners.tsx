@@ -38,9 +38,11 @@ function TreasuryBanner() {
       <div className="grid items-center gap-6 sm:grid-cols-[1fr_auto]">
         <div className="relative z-10 max-w-sm">
           <p className="eyebrow">Launchpad</p>
-          <h2 className="mt-2 font-serif text-2xl font-semibold tracking-tight text-bone">
+          {/* The page's ONLY h1 — DiscoverHero (which used to hold it) was
+              removed as a duplicate hero row; this is now the sole heading. */}
+          <h1 className="mt-2 font-serif text-2xl font-semibold tracking-tight text-bone">
             Launch a token backed by a real, verifiable treasury.
-          </h2>
+          </h1>
           <Link href="/app/create" className="mt-5 inline-block rounded-button bg-bone px-6 py-3 font-semibold text-bg transition-transform hover:-translate-y-0.5">
             Launch now
           </Link>

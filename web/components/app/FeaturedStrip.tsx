@@ -5,11 +5,9 @@ import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { AssetDisc } from "@/components/app/AssetDisc";
-import { formatUsd, shortAddress } from "@/lib/format";
+import { formatUsd, backingRatio, shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { cn } from "@/lib/cn";
-
-const WAD = 10n ** 18n;
 
 // The featured strip (Phase 4). Where Uniswap shows a bonding-curve progress bar we
 // show the BACKING bar — the locked vs creator-withdrawable split — because we have
@@ -78,10 +76,13 @@ function FeaturedCard({ project }: { project: Project }) {
   const { meta } = useProjectMeta(metadataURI);
 
   const mcap1e18 = marketCapUsd(marketPriceUsd, marketCapSupply(backing?.totalSupply));
-  const ratio =
-    mcap1e18 !== undefined && backing && backing.totalValueUsd > 0n
-      ? Number((mcap1e18 * WAD) / backing.totalValueUsd) / 1e18
-      : null;
+  // Per-token price ÷ per-token backing — the SAME derivation ProjectCard uses
+  // (lib/format.ts's backingRatio), not mcap÷totalValueUsd. Both are
+  // mathematically equivalent ONLY if the supply used for mcap matches the
+  // supply BackingLens used to derive backingPerToken; they aren't guaranteed
+  // to (see the bug this fixed — the two could drift). Per-token figures need
+  // no supply arithmetic at all, so there's no supply to disagree about.
+  const ratio = marketPriceUsd !== undefined && backing ? backingRatio(marketPriceUsd, backing.backingPerToken) : null;
 
   const locked = backing?.lockedValueUsd ?? 0n;
   const withdrawable = backing?.withdrawableValueUsd ?? 0n;

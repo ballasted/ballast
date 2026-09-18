@@ -32,11 +32,19 @@ export function DiscoverStats({
   const series = useAnalyticsSeries();
   const buyback = useBuyback();
 
-  // Locked = Σ the portion of each treasury that can never leave (the figure that
-  // actually backs the token), not total treasury value (which includes what a
-  // creator could still withdraw).
+  // Total = every treasury's full value; locked = the portion that can never
+  // leave (the figure that actually backs the token, a subset of total — a
+  // creator can still withdraw the rest, notice-period permitting). Showing
+  // ONLY locked reads as "no treasuries exist" the moment nothing has cleared
+  // notice yet, even when real treasury value is sitting right there — so the
+  // headline figure is total, with locked underneath, always both.
+  let totalUsd = 0n;
   let lockedUsd = 0n;
-  for (const p of projects) if (p.backing) lockedUsd += p.backing.lockedValueUsd;
+  for (const p of projects) {
+    if (!p.backing) continue;
+    totalUsd += p.backing.totalValueUsd;
+    lockedUsd += p.backing.lockedValueUsd;
+  }
 
   const volumeOk = series.available && series.volume24hUsd !== undefined;
   const burnedOk = buyback.configured && buyback.totalBurned !== undefined;
@@ -44,8 +52,9 @@ export function DiscoverStats({
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
-        label="Reserve value locked"
-        value={isLoading ? undefined : formatUsd(lockedUsd, { compact: true })}
+        label="Reserve value"
+        value={isLoading ? undefined : formatUsd(totalUsd, { compact: true })}
+        subFigure={isLoading ? undefined : `${formatUsd(lockedUsd, { compact: true })} locked`}
         sub="Live · on-chain"
         loading={isLoading}
         accent
@@ -89,12 +98,16 @@ function formatUsdBurned(totalBurned: bigint, totalSupply: bigint | undefined): 
 function StatCard({
   label,
   value,
+  subFigure,
   sub,
   loading,
   accent,
 }: {
   label: string;
   value: string | null | undefined;
+  // A second, smaller on-chain figure shown right under the headline value —
+  // e.g. "locked" under "Reserve value" — never a caption, always a number.
+  subFigure?: string;
   sub: string;
   loading?: boolean;
   accent?: boolean;
@@ -113,6 +126,7 @@ function StatCard({
           </span>
         </div>
       )}
+      {subFigure && !loading && <div className="metric-secondary mt-0.5">{subFigure}</div>}
       <div className="mt-1 flex items-center gap-1 text-xs text-text-faint">
         {loading ? (
           <span className="inline-block h-3 w-16 animate-pulse rounded bg-surface-raised align-middle" />

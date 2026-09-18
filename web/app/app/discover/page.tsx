@@ -13,7 +13,6 @@ import { FeaturedStrip } from "@/components/app/FeaturedStrip";
 import { MotionSection } from "@/components/app/MotionSection";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/SortRail";
-import { DiscoverHero } from "@/components/app/DiscoverHero";
 import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
 import { TopMovers } from "@/components/app/TopMovers";
@@ -193,11 +192,10 @@ export default function DiscoverPage() {
     <div className="relative overflow-hidden">
       <MeanderWatermark />
 
-      {isConfigured && !isLoading && (newestStrip.length > 0 || ballastedStrip.length > 0 || trendingStrip.length > 0) && (
-        <PromoBanners />
-      )}
-
-      <DiscoverHero />
+      {/* Always renders — it carries the page's only <h1> and its own content
+          (orbit icons, CTAs) doesn't depend on strip/project data being
+          loaded yet, so it never needs to wait on isConfigured/isLoading. */}
+      <PromoBanners />
 
       {isConfigured && !isLoading && (
         <div className="mt-6 space-y-8">
@@ -223,8 +221,8 @@ export default function DiscoverPage() {
       )}
 
       {/* Anchor for "Show more" from the strips above — no second page title here,
-          DiscoverHero's <h1> is the page's only one (two <h1>s also read as two
-          stacked apps, which is exactly the "acak-acakan" complaint this fixes). */}
+          PromoBanners' <h1> is the page's only one (two <h1>s also read as two
+          stacked apps). */}
       <div ref={gridRef} className="scroll-mt-28" />
 
       {/* Live rail (spec §5.6) sits at xl+ only, beside the main column — a narrower
