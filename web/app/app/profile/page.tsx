@@ -59,11 +59,6 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* X OAuth isn't wired — anchor to the wallet and say so plainly (spec §9). */}
-      <p className="text-xs text-text-faint">
-        Wallet identity. Linking an X account (harder to fake than a fresh wallet) comes with the social layer.
-      </p>
-
       {isLoading ? (
         <div className="card h-24 animate-pulse" />
       ) : (
@@ -76,7 +71,7 @@ export default function ProfilePage() {
           </section>
 
           {mine.length === 0 ? (
-            <Notice title="No launches yet" body="No launches from this wallet yet. Its track record will build here, publicly from chain." />
+            <Notice title="Nothing yet." />
           ) : (
             <section className="space-y-3">
               <div className="flex gap-2">
@@ -87,7 +82,7 @@ export default function ProfilePage() {
                 ))}
               </div>
               {filtered.length === 0 ? (
-                <Notice title="Nothing here" body="No launches match this filter." />
+                <Notice title="Nothing yet." />
               ) : (
                 filtered.map((p) => <ProfileLaunch key={p.token} p={p} />)
               )}
@@ -177,11 +172,11 @@ function ProfileLaunch({ p }: { p: Project }) {
   );
 }
 
-function Notice({ title, body }: { title: string; body: string }) {
+function Notice({ title, body }: { title: string; body?: string }) {
   return (
     <div className="card p-8 text-center">
       <h2 className="font-semibold text-text-primary">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+      {body && <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>}
     </div>
   );
 }

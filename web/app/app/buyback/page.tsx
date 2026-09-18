@@ -74,12 +74,6 @@ export default function BuybackPage() {
           {/* ── Trigger (the one write on this page) ────────────────────── */}
           <TriggerBuyback s={s} />
 
-          {/* ── How a buyback runs (mechanics observed on-chain) ───────── */}
-          <p className="max-w-2xl text-xs text-text-faint">
-            Each buyback is size-capped so one call can&apos;t swing the thin pool. Whatever a call can&apos;t buy
-            within its cap stays and funds the next — spent across many small buybacks, nothing lost between them.
-          </p>
-
           {/* ── Copy rules block (spec 2.4) ────────────────────────────── */}
           <p className="max-w-2xl text-xs text-text-faint">
             Burning reduces the circulating supply. What happens to price after that is not something we control or
@@ -89,9 +83,6 @@ export default function BuybackPage() {
           {/* ── Burn address ───────────────────────────────────────────── */}
           <section className="card p-5">
             <h2 className="section-label">The burn address</h2>
-            <p className="mt-2 text-sm text-text-secondary">
-              Every token bought lands here, unmovable. Confirm the total yourself — don&apos;t trust this page.
-            </p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <CopyAddress address={DEAD} />
               {s.ballast && (
@@ -125,13 +116,9 @@ export default function BuybackPage() {
               <Arrow />
               <Node accent>funds this buyback</Node>
             </div>
-            <p className="mt-3 text-xs text-text-faint">
-              Only the platform&apos;s fee share funds buybacks — no treasury assets. Each buyback is itself a 1% swap,
-              so a little WETH cycles back to fees and slightly less $BALLAST is burned than WETH accrued.{" "}
-              <Link href="/docs/how-ballast-works" className="text-green underline underline-offset-2">
-                How the fee works ↗
-              </Link>
-            </p>
+            <Link href="/docs/how-ballast-works" className="mt-3 inline-block text-xs text-green underline underline-offset-2">
+              How the fee works ↗
+            </Link>
           </section>
 
           {/* ── Who controls this ──────────────────────────────────────── */}
@@ -261,10 +248,6 @@ function SupplyEffect({ totalSupply, burned }: { totalSupply?: bigint; burned?: 
           <dd className="tabular-nums text-green">{amt(burned, 0)}</dd>
         </div>
       </dl>
-      <p className="mt-3 text-xs text-text-faint">
-        $BALLAST has no burn function, so <span className="font-mono">totalSupply</span> is unchanged — burned tokens
-        sit at the dead address. Circulating = supply − that balance.
-      </p>
     </section>
   );
 }
@@ -320,11 +303,9 @@ function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: bo
     <section className="card p-5">
       <h2 className="section-label">Burn history</h2>
       {error ? (
-        <p className="mt-3 text-sm text-warning">Couldn&apos;t read the burn events right now — the RPC may be busy. Retry shortly.</p>
+        <span className="chip chip-warning mt-3 inline-flex">RPC unavailable</span>
       ) : rows.length === 0 ? (
-        <p className="mt-3 text-sm text-text-muted">
-          {loading ? "Reading burn events…" : "No buybacks yet. The first one appears here — and on Blockscout — the moment it executes."}
-        </p>
+        <p className="mt-3 text-sm text-text-muted">{loading ? "Loading…" : "Nothing yet."}</p>
       ) : (
         <>
           {/* Table on desktop, cards on mobile. */}
@@ -376,9 +357,6 @@ function BurnHistory({ rows, error, loading, now }: { rows: BurnRow[]; error: bo
           </ul>
         </>
       )}
-      <p className="mt-4 text-[11px] text-text-faint">
-        Live from BuybackBurned events. Every row links to Blockscout — verify without trusting this page.
-      </p>
     </section>
   );
 }

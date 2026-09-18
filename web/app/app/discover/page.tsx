@@ -4,44 +4,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
-import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { useTrending } from "@/hooks/useTrending";
-import { useProtocolHolders } from "@/hooks/useProtocolHolders";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
-import { FeaturedStrip } from "@/components/app/FeaturedStrip";
 import { MotionSection } from "@/components/app/MotionSection";
-import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
-import { SortRail, type SortId, type GraduatedFilter } from "@/components/app/SortRail";
+import { SortRail, type SortId, type FilterId } from "@/components/app/SortRail";
 import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
 import { TopMovers } from "@/components/app/TopMovers";
+import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
-import { formatEt } from "@/lib/marketHours";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
-import { Meander } from "@/components/Meander";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { cn } from "@/lib/cn";
 
-type Category = "all" | "index" | "treasury" | "meme";
-
-const CATEGORIES: { id: Category; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "index", label: "Index" },
-  { id: "treasury", label: "Treasury" },
-  { id: "meme", label: "Meme" },
-];
-
-const WAD = 10n ** 18n;
 const PAGE_SIZE = 20;
 
 export default function DiscoverPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const [sort, setSort] = useState<SortId>("ballasted");
-  const [trendingView, setTrendingView] = useState(false);
-  const [category, setCategory] = useState<Category>("all");
-  const [graduatedFilter, setGraduatedFilter] = useState<GraduatedFilter>("all");
+  const [sort, setSort] = useState<SortId>("backing");
+  const [filter, setFilter] = useState<FilterId>("all");
 
   // Plain useState + a read-on-mount effect rather than useSearchParams, which
   // would force this statically-prerendered page into a Suspense boundary —
@@ -60,10 +43,10 @@ export default function DiscoverPage() {
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
-  // Any filter/sort/view change invalidates the current page — a stale page
-  // number could point past the end of the new, shorter list. Skips the
-  // mount-time run, which would otherwise stomp a deep-linked ?page= before
-  // the read-on-mount effect above even gets a chance to apply it.
+  // Any filter/sort change invalidates the current page — a stale page number
+  // could point past the end of the new, shorter list. Skips the mount-time
+  // run, which would otherwise stomp a deep-linked ?page= before the
+  // read-on-mount effect above even gets a chance to apply it.
   const mounted = useRef(false);
   useEffect(() => {
     if (!mounted.current) {
@@ -72,301 +55,84 @@ export default function DiscoverPage() {
     }
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, category, graduatedFilter, trendingView]);
+  }, [sort, filter]);
   const { projects, count, isLoading, isConfigured, hasLaunches } = useProjects();
   const trending = useTrending();
 
-  const tokens = useMemo(() => projects.map((p) => p.token), [projects]);
-  const holdersAgg = useProtocolHolders(tokens);
-
-  // Per-token external metrics for the volume / holders sorts, from the SAME sources
-  // the stats row and trending use — so an order and a headline never disagree.
+  // Per-token 24h volume, from the SAME source the stats row uses — so an
+  // order and a headline never disagree.
   const volumeByToken = useMemo(() => {
     const m = new Map<string, number>();
     for (const it of trending.data?.items ?? []) m.set(it.token.toLowerCase(), it.volume24hUsd);
     return m;
   }, [trending.data]);
-  const holdersByToken = useMemo(() => {
-    const c = holdersAgg.data.counts ?? {};
-    return new Map(Object.entries(c).map(([k, v]) => [k.toLowerCase(), v]));
-  }, [holdersAgg.data]);
 
-  // The protocol token is PINNED, not ranked — pull it out and rank everything else
-  // separately, so it never appears to have earned a spot in the sorted list.
+  // The protocol token is PINNED, not ranked — pull it out and rank everything
+  // else separately, so it never appears to have earned a spot in the list.
   const protocolProject = useMemo(() => projects.find((p) => isProtocolToken(p.token)), [projects]);
 
-  // Category lives in each project's pinned metadata (off-chain, no indexer). Fetch
-  // it for the whole board so the category filter works; a project is simply not
-  // matched until its metadata lands.
-  const metaByToken = useProjectsMeta(projects);
-  const matchesGraduated = (p: Project) =>
-    graduatedFilter === "all" || (graduatedFilter === "graduated" ? p.hasPool : !p.hasPool);
+  const matchesFilter = (p: Project) => {
+    if (filter === "all") return true;
+    if (filter === "ballasted") return p.ballasted;
+    return filter === "graduated" ? p.hasPool : !p.hasPool;
+  };
 
   const ranked = useMemo(
-    () =>
-      sortProjects(
-        projects.filter(
-          (p) =>
-            !isProtocolToken(p.token) &&
-            matchesGraduated(p) &&
-            (category === "all" ||
-              (metaByToken.get(p.token.toLowerCase())?.category ?? "").toLowerCase() === category),
-        ),
-        sort,
-        { volumeByToken, holdersByToken },
-      ),
-    [projects, sort, volumeByToken, holdersByToken, category, metaByToken, graduatedFilter],
+    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token) && matchesFilter(p)), sort, volumeByToken),
+    [projects, sort, filter, volumeByToken],
   );
-
-  // Trending order comes from the /api/trending aggregation (unique buyers + 24h
-  // volume). Map the ranked token list back onto our live projects, excluding the
-  // pinned protocol token. Falls back to a notice when thin/unavailable below.
-  const trendingRanked = useMemo(() => {
-    const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
-    return (trending.data?.items ?? [])
-      .map((it) => byToken.get(it.token.toLowerCase()))
-      .filter(
-        (p): p is Project =>
-          Boolean(p) &&
-          !isProtocolToken(p!.token) &&
-          matchesGraduated(p!) &&
-          (category === "all" ||
-            (metaByToken.get(p!.token.toLowerCase())?.category ?? "").toLowerCase() === category),
-      );
-  }, [trending.data, projects, category, metaByToken, graduatedFilter]);
-
-  // A wallet is "known" once it has launched before. First-time creators get an
-  // amber note (spec §9) — a new wallet is UNKNOWN, not safe.
-  const priorLaunches = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of projects) {
-      const k = p.creator.toLowerCase();
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [projects]);
-
-  // A chain-time sort shows launch-order, not a chart, on each card.
-  const chainTimeSort = sort === "newest" || sort === "oldest";
-
-  // ── Home strips (New / Trending / Ballasted) — independent of the sort rail's
-  // current filter state, exactly like Discover's stats row: an unfiltered global
-  // preview, not a live view of whatever the rail happens to be set to. "Show
-  // more" on each strip just points the SAME sort rail at that order and scrolls
-  // down to the grid it already renders — no second grid/view to keep in sync.
-  const gridRef = useRef<HTMLDivElement>(null);
-  const scrollToGrid = () => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  const newestStrip = useMemo(
-    () => [...projects].filter((p) => !isProtocolToken(p.token)).reverse().slice(0, 10),
-    [projects],
-  );
-  const ballastedStrip = useMemo(
-    () =>
-      [...projects]
-        .filter((p) => !isProtocolToken(p.token) && p.ballasted)
-        .sort((a, b) => cmpBigDesc(a.backing?.lockedValueUsd ?? 0n, b.backing?.lockedValueUsd ?? 0n))
-        .slice(0, 10),
-    [projects],
-  );
-  const trendingStrip = useMemo(() => {
-    const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p]));
-    return (trending.data?.items ?? [])
-      .map((it) => byToken.get(it.token.toLowerCase()))
-      .filter((p): p is Project => Boolean(p) && !isProtocolToken(p!.token))
-      .slice(0, 10);
-  }, [trending.data, projects]);
-
-  const showMore = (next: { sort?: SortId; trending?: boolean }) => {
-    setCategory("all");
-    setGraduatedFilter("all");
-    if (next.trending) setTrendingView(true);
-    else {
-      setTrendingView(false);
-      if (next.sort) setSort(next.sort);
-    }
-    scrollToGrid();
-  };
 
   return (
     <div className="relative overflow-hidden">
       <MeanderWatermark />
 
-      {/* Always renders — it carries the page's only <h1> and its own content
-          (orbit icons, CTAs) doesn't depend on strip/project data being
-          loaded yet, so it never needs to wait on isConfigured/isLoading. */}
       <PromoBanners />
 
-      {isConfigured && !isLoading && (
-        <div className="mt-6 space-y-8">
-          <TokenRow
-            title="Trending"
-            countLabel="GeckoTerminal"
-            projects={trendingStrip}
-            badge="trending"
-            onShowMore={() => showMore({ trending: true })}
-          />
-          <TokenRow
-            title="New"
-            projects={newestStrip}
-            badge="new"
-            onShowMore={() => showMore({ sort: "newest" })}
-          />
-          <TokenRow
-            title="Ballasted"
-            projects={ballastedStrip}
-            onShowMore={() => showMore({ sort: "ballasted" })}
-          />
-        </div>
-      )}
-
-      {/* Anchor for "Show more" from the strips above — no second page title here,
-          PromoBanners' <h1> is the page's only one (two <h1>s also read as two
-          stacked apps). */}
-      <div ref={gridRef} className="scroll-mt-28" />
-
-      {/* Live rail (spec §5.6) sits at xl+ only, beside the main column — a narrower
-          viewport has no room for a third column alongside a 2/3-col card grid. */}
+      {/* Live rail sits at xl+ only, beside the main column — a narrower
+          viewport has no room for a third column alongside the card grid. */}
       <div className="xl:grid xl:grid-cols-[1fr_320px] xl:items-start xl:gap-6">
       <div className="min-w-0">
 
-      {/* Stats row — four headline figures, Total ballast first. Derived from the
-          SAME projects listed below, so the totals reconcile by construction. Hidden
-          only when the app isn't configured (nothing to read). */}
       {isConfigured && (
         <MotionSection className="mt-5">
           <DiscoverStats projects={projects} count={count} isLoading={isLoading} />
         </MotionSection>
       )}
 
-      {/* Protocol token — pinned ABOVE the featured strip, labelled as a placement,
-          never inside the ranked strip below. */}
       {isConfigured && !isLoading && protocolProject && (
         <div className="mt-5">
           <PinnedProtocolCard project={protocolProject} />
         </div>
       )}
 
-      {/* Featured strip — beneath the stats/pinned, above the rail. Ranked by locked
-          backing; renders nothing until at least one ballasted project qualifies. */}
-      {isConfigured && !isLoading && (
-        <MotionSection className="mt-6">
-          <FeaturedStrip projects={ranked} />
-        </MotionSection>
-      )}
-
-      {/* Sort rail — chips for every order we can actually compute, plus the
-          separate Trending state. The rule beneath the rail states how the current
-          order is computed and from which source. */}
       <div className="mt-6">
-        <SortRail
-          sort={sort}
-          onSort={setSort}
-          trending={trendingView}
-          onTrending={setTrendingView}
-          graduatedFilter={graduatedFilter}
-          onGraduatedFilter={setGraduatedFilter}
-        />
-      </div>
-
-      {/* Category chips — a distinct SECOND row (leading label + pills) so a filter is
-          never confused with a sort. Category comes from each project's pinned
-          metadata JSON (off-chain, no indexer needed), fetched for the whole board. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <span className="mr-1 eyebrow">Category</span>
-        {CATEGORIES.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setCategory(c.id)}
-            className={cn("tab", category === c.id ? "tab-active" : "tab-idle")}
-          >
-            {c.label}
-          </button>
-        ))}
+        <SortRail sort={sort} onSort={setSort} filter={filter} onFilter={setFilter} />
       </div>
 
       <div className="mt-5">
         {!isConfigured ? (
-          <EmptyState
-            title="Not configured yet"
-            body="The core contracts (factory + lens) aren't set."
-          />
+          <EmptyState title="Not configured yet" />
         ) : isLoading ? (
           <SkeletonGrid />
         ) : !hasLaunches ? (
           <EmptyState
-            title="Nothing has launched yet"
-            body="The first projects appear here as they launch."
+            title="Nothing yet."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
               </Link>
             }
           />
-        ) : trendingView ? (
-          // Trending is ranked by unique buyers + 24h volume (see /api/trending), so
-          // wash-trading can't buy the top slot. When the data is thin or the source
-          // is unreachable we SAY so, rather than show an unsorted list dressed as a
-          // ranking (which reads identical to Ballasted and is quietly misleading).
-          trending.isLoading ? (
-            <SkeletonGrid />
-          ) : !trending.available ? (
-            <TrendingNotice reason="unreachable" />
-          ) : trending.data?.thin || trendingRanked.length === 0 ? (
-            <TrendingNotice reason="thin" />
-          ) : (
-            <div>
-              <p className="mb-3 text-xs text-text-faint">
-                Ranked by unique buyers, then 24h volume · GeckoTerminal
-                {trending.data?.fetchedAt ? ` · updated ${formatEt(trending.data.fetchedAt)}` : ""}
-              </p>
-              <CardGrid
-                projects={trendingRanked}
-                priorLaunches={priorLaunches}
-              />
-            </div>
-          )
         ) : sort === "volume" && trending.isLoading ? (
           <SkeletonGrid />
         ) : sort === "volume" && !trending.available ? (
-          <SourceUnavailableNotice metric="24h volume" source="GeckoTerminal" />
-        ) : sort === "holders" && holdersAgg.isLoading ? (
-          <SkeletonGrid />
-        ) : sort === "holders" && !holdersAgg.data.available ? (
-          <SourceUnavailableNotice metric="holders" source="Blockscout" />
+          <EmptyState title="24h volume unavailable" />
         ) : ranked.length === 0 ? (
-          category !== "all" || graduatedFilter !== "all" ? (
-            <EmptyState
-              title={
-                graduatedFilter !== "all"
-                  ? `Nothing ${graduatedFilter === "graduated" ? "graduated" : "on the curve"} yet${category !== "all" ? ` in ${category}` : ""}`
-                  : `No ${category} projects yet`
-              }
-              body="Clear the filter to see all."
-            />
-          ) : (
-            <EmptyState
-              title="Only the protocol token so far"
-              body="No other projects have launched yet."
-              action={
-                <Link href="/app/create" className="btn-primary inline-block px-5">
-                  Create a launch
-                </Link>
-              }
-            />
-          )
+          <EmptyState title="Nothing yet." />
         ) : (
           <>
-            <CardGrid
-              projects={ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)}
-              priorLaunches={priorLaunches}
-              hideSparkline={chainTimeSort}
-            />
-            <Pagination
-              page={page}
-              totalPages={Math.ceil(ranked.length / PAGE_SIZE)}
-              onPage={setPage}
-            />
+            <CardGrid projects={ranked.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)} />
+            <Pagination page={page} totalPages={Math.ceil(ranked.length / PAGE_SIZE)} onPage={setPage} />
           </>
         )}
       </div>
@@ -384,9 +150,8 @@ export default function DiscoverPage() {
   );
 }
 
-// Page numbers, URL-synced (spec §5.4, "1 2 … N"). Collapses to a short window
-// around the current page plus the first/last, so a 40-page list doesn't
-// render 40 buttons.
+// Page numbers, URL-synced. Collapses to a short window around the current
+// page plus the first/last, so a 40-page list doesn't render 40 buttons.
 function Pagination({ page, totalPages, onPage }: { page: number; totalPages: number; onPage: (p: number) => void }) {
   if (totalPages <= 1) return null;
   const keep = new Set<number>([1, totalPages, page, page - 1, page + 1].filter((p) => p >= 1 && p <= totalPages));
@@ -435,129 +200,46 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
   );
 }
 
-// Home strip — a horizontal-scroll row of cards under a row header ("EON-style"
-// section), with a "Show more ›" that hands off to the existing sort-rail grid
-// below rather than opening a second view. Renders nothing when there's
-// nothing to show (e.g. Trending before GeckoTerminal has data, or no
-// ballasted project yet) — an empty row reading as "coming soon" would be
-// exactly the kind of implied promise this app avoids.
-function TokenRow({
-  title,
-  countLabel,
-  projects,
-  badge,
-  onShowMore,
-}: {
-  title: string;
-  countLabel?: string;
-  projects: Project[];
-  badge?: "new" | "trending";
-  onShowMore: () => void;
-}) {
-  if (projects.length === 0) return null;
+// One grid, one card, for every token — 4/3/2/1 columns at xl/lg/md/sm, equal
+// heights (UI principles §5).
+function CardGrid({ projects }: { projects: Project[] }) {
   return (
-    <section aria-label={title}>
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
-          <span className="chip chip-neutral font-mono">{projects.length}</span>
-          {countLabel && <span className="text-xs text-text-faint">· {countLabel}</span>}
-        </div>
-        <button onClick={onShowMore} className="shrink-0 text-sm text-text-muted transition-colors hover:text-green">
-          Show more ›
-        </button>
-      </div>
-      <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-2 snap-x">
-        {projects.map((p) => (
-          <div key={p.token} className="w-[78%] shrink-0 snap-start sm:w-[46%] lg:w-[calc(25%-12px)]">
-            <ProjectCard project={p} badge={badge} />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// Responsive card grid: 1 / 2 / 3 columns. At very low counts (1) the card is
-// featured and centred rather than stranded small in a wide row (density §1).
-function CardGrid({
-  projects,
-  priorLaunches,
-  hideSparkline,
-}: {
-  projects: Project[];
-  priorLaunches: Map<string, number>;
-  hideSparkline?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid gap-4",
-        projects.length <= 1
-          ? "mx-auto max-w-xl grid-cols-1"
-          : projects.length === 2
-            ? "sm:grid-cols-2"
-            : "sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4",
-      )}
-    >
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {projects.map((p, i) => (
         <div key={p.token} className="anim-enter" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-          <ProjectCard
-            project={p}
-            hideSparkline={hideSparkline}
-            firstLaunch={(priorLaunches.get(p.creator.toLowerCase()) ?? 0) <= 1}
-            featured={projects.length <= 1}
-          />
+          <ProjectCard project={p} />
         </div>
       ))}
     </div>
   );
 }
 
-type SortCtx = { volumeByToken: Map<string, number>; holdersByToken: Map<string, number> };
+// Market cap = live pool price × supply, 1e18-scaled; 0 when there's no pool
+// price. Shared helper so the sort order matches the market cap shown on the
+// card and on the token page (one figure, one computation).
+function marketCap1e18(p: Project): bigint {
+  return marketCapUsd(p.marketPriceUsd, marketCapSupply(p.backing?.totalSupply)) ?? 0n;
+}
 
 function cmpBigDesc(a: bigint, b: bigint): number {
   return a > b ? -1 : a < b ? 1 : 0;
 }
 
-// Market cap = live pool price × supply, 1e18-scaled; 0 when there's no pool price.
-// Uses the shared helper so the ordering here matches the market cap shown on the
-// featured strip and on each token's page (spec 1.4 — one figure, one computation).
-function marketCap1e18(p: Project): bigint {
-  return marketCapUsd(p.marketPriceUsd, marketCapSupply(p.backing?.totalSupply)) ?? 0n;
-}
-// Backing ratio = market cap ÷ treasury value; -1 (sorts last) when unbacked.
-function backingRatioOf(p: Project): number {
-  const tv = p.backing?.totalValueUsd ?? 0n;
-  if (tv === 0n) return -1;
-  return Number((marketCap1e18(p) * WAD) / tv) / 1e18;
-}
-
-// Only orders computable from a real source (Phase 5). The registry is append-only,
-// so its index order IS launch order (Oldest as-is, Newest reversed) — chain only,
+// Only orders computable from a real source. The registry is append-only, so
+// its index order IS launch order (Newest is just the reverse) — chain only,
 // no indexer.
-function sortProjects(projects: Project[], sort: SortId, ctx: SortCtx): Project[] {
+function sortProjects(projects: Project[], sort: SortId, volumeByToken: Map<string, number>): Project[] {
   const copy = [...projects];
   switch (sort) {
-    case "oldest":
-      return copy;
     case "newest":
       return copy.reverse();
     case "mcap":
       return copy.sort((a, b) => cmpBigDesc(marketCap1e18(a), marketCap1e18(b)));
-    case "ratio":
-      return copy.sort((a, b) => backingRatioOf(b) - backingRatioOf(a));
     case "volume":
       return copy.sort(
-        (a, b) =>
-          (ctx.volumeByToken.get(b.token.toLowerCase()) ?? 0) - (ctx.volumeByToken.get(a.token.toLowerCase()) ?? 0),
+        (a, b) => (volumeByToken.get(b.token.toLowerCase()) ?? 0) - (volumeByToken.get(a.token.toLowerCase()) ?? 0),
       );
-    case "holders":
-      return copy.sort(
-        (a, b) =>
-          (ctx.holdersByToken.get(b.token.toLowerCase()) ?? 0) - (ctx.holdersByToken.get(a.token.toLowerCase()) ?? 0),
-      );
-    case "ballasted":
+    case "backing":
     default:
       // Ballasted first, then locked backing (the figure that cannot leave) descending.
       return copy.sort((a, b) => {
@@ -567,67 +249,30 @@ function sortProjects(projects: Project[], sort: SortId, ctx: SortCtx): Project[
   }
 }
 
-// Trending is ranked honestly (unique buyers + 24h volume) from GeckoTerminal
-// trades. When there isn't enough activity to rank, or the source is unreachable,
-// we say so rather than re-sorting the same list into a fake ranking.
-function TrendingNotice({ reason }: { reason: "thin" | "unreachable" }) {
+function EmptyState({ title, action }: { title: string; action?: React.ReactNode }) {
   return (
     <div className="card p-10 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif text-lg font-semibold text-bone">
-        {reason === "unreachable" ? "Trending unavailable" : "Not enough trading yet"}
-      </h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        {reason === "unreachable" ? "Paused, not faked. Try Ballasted or Newest." : "Too few real trades to rank — try Ballasted or Newest."}
-      </p>
-    </div>
-  );
-}
-
-// A sort backed by an external source we can't reach right now. We pause the order
-// rather than silently fall back to another one (which would read as a measurement
-// it isn't).
-function SourceUnavailableNotice({ metric, source }: { metric: string; source: string }) {
-  return (
-    <div className="card p-10 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-      <h2 className="font-serif text-lg font-semibold text-bone">Can’t sort by {metric}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{source} didn’t respond — on-chain orders still work.</p>
-    </div>
-  );
-}
-
-function EmptyState({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
-  return (
-    <div className="card p-10 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
 
-// Skeleton mirrors ProjectCard's layout exactly, so nothing shifts when the real
-// cards resolve (the biggest perceived-quality win for slow chain reads).
+// Skeleton mirrors ProjectCard's layout exactly, so nothing shifts when the
+// real cards resolve.
 function SkeletonGrid() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-hidden>
-      {[0, 1, 2, 3, 4, 5].map((i) => (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden>
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
         <div key={i} className="card overflow-hidden">
-          {/* Media band — matches the card's aspect so the grid doesn't reflow. */}
-          <div className="aspect-[16/10] w-full animate-pulse bg-surface-raised" />
+          <div className="aspect-square w-full animate-pulse bg-surface-raised" />
           <div className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1.5">
-                <div className="h-4 w-24 animate-pulse rounded bg-surface-raised" />
-                <div className="h-3 w-32 animate-pulse rounded bg-surface-raised" />
-              </div>
-              <div className="h-5 w-14 animate-pulse rounded bg-surface-raised" />
-            </div>
-            <div className="mt-3 border-t border-border pt-3">
-              <div className="h-4 w-40 animate-pulse rounded bg-surface-raised" />
-              <div className="mt-1.5 h-3 w-28 animate-pulse rounded bg-surface-raised" />
+            <div className="h-4 w-24 animate-pulse rounded bg-surface-raised" />
+            <div className="mt-1.5 h-3 w-32 animate-pulse rounded bg-surface-raised" />
+            <div className="mt-3 h-5 w-20 animate-pulse rounded bg-surface-raised" />
+            <div className="mt-4 flex justify-between">
+              <div className="h-5 w-24 animate-pulse rounded-full bg-surface-raised" />
+              <div className="h-5 w-16 animate-pulse rounded-full bg-surface-raised" />
             </div>
           </div>
         </div>

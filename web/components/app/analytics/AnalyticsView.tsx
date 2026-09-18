@@ -26,10 +26,6 @@ export function AnalyticsView() {
       <Panel center>
         <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
         <h2 className="font-serif font-semibold text-bone">Not configured yet</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-          Factory and BackingLens addresses aren&apos;t set. Deploy the core contracts and set
-          NEXT_PUBLIC_FACTORY_ADDRESS and NEXT_PUBLIC_LENS_ADDRESS to read the registry live.
-        </p>
       </Panel>
     );
   }
@@ -38,11 +34,7 @@ export function AnalyticsView() {
     return (
       <Panel center>
         <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
-        <h2 className="font-serif font-semibold text-bone">Nothing to measure yet</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-          No launches on this network yet — nothing to measure, not zeros. The first launch shows up here and in
-          Discover the moment it confirms.
-        </p>
+        <h2 className="font-serif font-semibold text-bone">Nothing yet.</h2>
       </Panel>
     );
   }
@@ -274,12 +266,7 @@ function ChartCard({
           children
         ) : (
           <div className="flex h-40 flex-col items-center justify-center rounded-input border border-dashed border-border text-center">
-            <p className="text-sm text-warning">{series.available ? "No activity in this window yet" : degradeLabel(series)}</p>
-            <p className="mt-1 max-w-xs text-xs text-text-faint">
-              {series.available
-                ? "Bars appear as pools trade — from GeckoTerminal daily OHLCV, never fabricated."
-                : "GeckoTerminal didn't respond; the series fills in once it's reachable. Totals above are chain-live."}
-            </p>
+            <p className="text-sm text-text-muted">{series.available ? "Nothing yet." : degradeLabel(series)}</p>
           </div>
         )}
       </div>

@@ -41,7 +41,7 @@ function TreasuryBanner() {
           {/* The page's ONLY h1 — DiscoverHero (which used to hold it) was
               removed as a duplicate hero row; this is now the sole heading. */}
           <h1 className="mt-2 font-serif text-2xl font-semibold tracking-tight text-bone">
-            Launch a token backed by a real, verifiable treasury.
+            Launch a token backed by a real treasury
           </h1>
           <Link href="/app/create" className="mt-5 inline-block rounded-button bg-bone px-6 py-3 font-semibold text-bg transition-transform hover:-translate-y-0.5">
             Launch now
@@ -87,11 +87,8 @@ function BuybackBanner() {
       <div className="relative z-10 flex h-full flex-col justify-center">
         <p className="eyebrow text-warning">Buyback & burn</p>
         <h2 className="mt-2 max-w-sm font-serif text-2xl font-semibold tracking-tight text-bone">
-          Every burn is verifiable on-chain.
+          Every burn, on-chain
         </h2>
-        <p className="mt-2 max-w-sm text-sm text-text-secondary">
-          Track the burn address balance and history directly — no dashboard to trust, just the chain.
-        </p>
         <Link href="/app/buyback" className="mt-5 inline-block w-fit rounded-button bg-bone px-6 py-3 font-semibold text-bg transition-transform hover:-translate-y-0.5">
           View the tracker
         </Link>

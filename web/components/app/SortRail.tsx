@@ -2,101 +2,69 @@
 
 import { cn } from "@/lib/cn";
 
-// Only sorts we can actually compute from a real source (Phase 5). No ATH, no Last
-// Trade — we have no reliable source, and a sort that silently falls back to another
-// order is worse than an absent one. Trending is deliberately NOT here (it needs
-// unique-buyer data and keeps its own honest state); it's a separate control.
-export type SortId = "ballasted" | "newest" | "oldest" | "mcap" | "ratio" | "volume" | "holders";
-export type SortSource = "on-chain" | "GeckoTerminal" | "Blockscout";
+// Only sorts computable from a real source (Phase 5): on-chain order or the
+// same GeckoTerminal read the volume figure elsewhere on the page already
+// uses. No ATH, no Last Trade — a sort that silently falls back to another
+// order is worse than an absent one.
+export type SortId = "mcap" | "newest" | "volume" | "backing";
+export type FilterId = "all" | "ballasted" | "graduated" | "curve";
 
-export const SORTS: { id: SortId; label: string; rule: string; source: SortSource }[] = [
-  { id: "ballasted", label: "Ballasted", rule: "Ballasted first, then locked backing, descending", source: "on-chain" },
-  { id: "newest", label: "Newest", rule: "Most recent launch first", source: "on-chain" },
-  { id: "oldest", label: "Oldest", rule: "Earliest launch first", source: "on-chain" },
-  { id: "mcap", label: "Market cap", rule: "Market cap (live price × supply), descending", source: "on-chain" },
-  { id: "ratio", label: "Backing ratio", rule: "Market cap ÷ treasury value, descending", source: "on-chain" },
-  { id: "volume", label: "24h volume", rule: "24h traded volume, descending", source: "GeckoTerminal" },
-  { id: "holders", label: "Holders", rule: "Unique holders, descending", source: "Blockscout" },
+const SORTS: { id: SortId; label: string }[] = [
+  { id: "mcap", label: "Market cap" },
+  { id: "newest", label: "Newest" },
+  { id: "volume", label: "24h volume" },
+  { id: "backing", label: "Backing" },
 ];
 
-export type GraduatedFilter = "all" | "graduated" | "curve";
+const FILTERS: { id: FilterId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "ballasted", label: "Ballasted" },
+  { id: "graduated", label: "Graduated" },
+  { id: "curve", label: "On curve" },
+];
 
+// One row, plain text — not pills, no horizontal scroll. Sort on the left,
+// filter on the right of a hairline divider.
 export function SortRail({
   sort,
   onSort,
-  trending,
-  onTrending,
-  graduatedFilter,
-  onGraduatedFilter,
+  filter,
+  onFilter,
 }: {
   sort: SortId;
   onSort: (s: SortId) => void;
-  trending: boolean;
-  onTrending: (v: boolean) => void;
-  graduatedFilter: GraduatedFilter;
-  onGraduatedFilter: (v: GraduatedFilter) => void;
+  filter: FilterId;
+  onFilter: (f: FilterId) => void;
 }) {
-  const current = SORTS.find((s) => s.id === sort);
   return (
-    <div>
-      <div className="flex items-center gap-2">
-        {/* The sort chip rail — scrolls horizontally on small screens. */}
-        <div className="-mx-1 flex flex-1 gap-2 overflow-x-auto px-1 pb-1">
-          {SORTS.map((s) => {
-            const active = !trending && sort === s.id;
-            return (
-              <button
-                key={s.id}
-                onClick={() => onSort(s.id)}
-                aria-pressed={active}
-                className={cn("tab shrink-0", active ? "tab-active" : "tab-idle")}
-              >
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Graduated/On curve — a FILTER (binary chain state, hasPool), not a sort or
-            a value judgement. Click again to clear back to All. */}
-        <div className="flex shrink-0 items-center gap-1.5 border-l border-border pl-2">
-          {(["graduated", "curve"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => onGraduatedFilter(graduatedFilter === f ? "all" : f)}
-              aria-pressed={graduatedFilter === f}
-              className={cn("tab shrink-0", graduatedFilter === f ? "tab-active" : "tab-idle")}
-            >
-              {f === "graduated" ? "Graduated" : "On curve"}
-            </button>
-          ))}
-        </div>
-
-        {/* Trending — set apart from the rail (dashed, divider) because it is its own
-            state, not a computed sort. */}
-        <div className="flex shrink-0 items-center gap-2 border-l border-border pl-2">
-          <button
-            onClick={() => onTrending(!trending)}
-            aria-pressed={trending}
-            className={cn(
-              "tab shrink-0 border-dashed",
-              trending ? "border-green text-green" : "border-border-strong text-text-muted hover:text-text-secondary",
-            )}
-          >
-            Trending
-          </button>
-        </div>
-      </div>
-
-      {/* Rule line — a ranking whose rule isn't stated is an editorial decision
-          pretending to be a measurement. */}
-      <p className="mt-2 text-xs text-text-faint">
-        {trending
-          ? "Ranked by unique buyers, then 24h volume · GeckoTerminal"
-          : current
-            ? `${current.rule} · ${current.source}`
-            : ""}
-      </p>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+      {SORTS.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => onSort(s.id)}
+          aria-pressed={sort === s.id}
+          className={cn(
+            "transition-colors",
+            sort === s.id ? "font-semibold text-text-primary" : "text-text-muted hover:text-text-secondary",
+          )}
+        >
+          {s.label}
+        </button>
+      ))}
+      <span className="hidden h-4 w-px bg-border sm:inline-block" aria-hidden />
+      {FILTERS.map((f) => (
+        <button
+          key={f.id}
+          onClick={() => onFilter(f.id)}
+          aria-pressed={filter === f.id}
+          className={cn(
+            "transition-colors",
+            filter === f.id ? "font-semibold text-green" : "text-text-muted hover:text-text-secondary",
+          )}
+        >
+          {f.label}
+        </button>
+      ))}
     </div>
   );
 }

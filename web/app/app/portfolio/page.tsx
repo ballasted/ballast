@@ -65,17 +65,15 @@ export default function PortfolioPage() {
         </div>
       </section>
 
-      {/* P&L is deliberately absent. Holdings and current value are exact (chain
-          balances × chain/market price). Cost basis would need your full buy
-          history at execution prices, which can't be reconstructed from public
-          data without guessing — transfers carry no price, gifts/OTC/self-moves
-          have no market price, and pre-graduation buys aren't in pool history. A
-          wrong P&L is worse than none. */}
-      <p className="text-xs text-text-faint">
-        Holdings and current value are exact. We don&apos;t show profit/loss: reconstructing what you paid needs your
-        full buy history at execution prices, which can&apos;t be derived from public data without guessing — and a
-        wrong number is worse than none.
-      </p>
+      {/* P&L is deliberately absent — see the tooltip. Holdings/value are exact
+          chain reads; cost basis can't be reconstructed from public data
+          without guessing, and a wrong P&L is worse than none. */}
+      <span
+        className="chip chip-neutral"
+        title="No P&L: reconstructing what you paid needs your full buy history at execution prices, which can't be derived from public data without guessing"
+      >
+        No P&amp;L shown
+      </span>
 
       {/* Headline counts — same numbers the exposure card and tabs below are
           built from, just surfaced at a glance (no new data source). */}
@@ -137,8 +135,7 @@ export default function PortfolioPage() {
         ) : tab === "holdings" ? (
           holdings.length === 0 ? (
             <Notice
-              title="You hold nothing yet"
-              body="No BALLAST tokens in this wallet on this network. Buy some and the exposure bar above fills with your real split."
+              title="Nothing yet."
               action={
                 <Link href="/app/discover" className="btn-primary inline-block px-5">
                   Find a project on Discover
@@ -152,8 +149,7 @@ export default function PortfolioPage() {
           )
         ) : myLaunches.length === 0 ? (
           <Notice
-            title="No launches yet"
-            body="No launches from this wallet yet. New ones appear here with live treasury value."
+            title="Nothing yet."
             action={
               <Link href="/app/create" className="btn-primary inline-block px-5">
                 Create a launch
@@ -227,12 +223,12 @@ function Stat({ label, value, balance }: { label: string; value: string; balance
   );
 }
 
-function Notice({ title, body, action }: { title: string; body: string; action?: React.ReactNode }) {
+function Notice({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
     <div className="card p-10 text-center">
       <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
+      {body && <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );

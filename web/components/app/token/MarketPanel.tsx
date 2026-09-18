@@ -36,12 +36,7 @@ export function MarketPanel({
     return (
       <section className="card p-5">
         <h2 className="section-label">Markets</h2>
-        <p className="mt-3 text-sm text-warning">{notIndexed ? "Not on GeckoTerminal yet" : "Market data unreachable"}</p>
-        <p className="mt-1 max-w-md text-xs text-text-faint">
-          {notIndexed
-            ? "GeckoTerminal lists a pool once it clears ~$1,000 liquidity. Until then there's no venue list — backing and price above are chain-read regardless."
-            : "GeckoTerminal didn't respond. Venues will appear when it's reachable again; backing and price above are unaffected (chain-read)."}
-        </p>
+        <span className="chip chip-neutral mt-3 inline-flex">{notIndexed ? "Not indexed yet" : "Unreachable"}</span>
       </section>
     );
   }
@@ -73,10 +68,12 @@ export function MarketPanel({
       <h2 className="section-label">Markets</h2>
 
       {disagree && (
-        <p className="mt-3 rounded-input border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning">
-          GeckoTerminal shows {smallUsd(gt!)}, off the on-chain price by &gt;1%. On-chain governs; treat this as
-          indicative.
-        </p>
+        <span
+          className="chip chip-warning mt-3 inline-flex"
+          title="On-chain price governs; GeckoTerminal is indicative only"
+        >
+          GeckoTerminal {smallUsd(gt!)} — off-chain &gt;1%
+        </span>
       )}
 
       {market.pools.length > 0 ? (
@@ -104,12 +101,11 @@ export function MarketPanel({
           })}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-text-muted">No external venues indexed yet.</p>
+        <p className="mt-3 text-sm text-text-muted">Nothing yet.</p>
       )}
 
-      <p className="mt-4 text-[11px] text-text-faint">
-        Venues via GeckoTerminal{market.fetchedAt ? ` · updated ${formatEt(market.fetchedAt)}` : ""}. Backing and price
-        are chain-read, independent of this.
+      <p className="mt-4 text-[11px] text-text-faint" title="Backing and price above are chain-read, independent of this">
+        GeckoTerminal{market.fetchedAt ? ` · ${formatEt(market.fetchedAt)}` : ""}
       </p>
     </section>
   );

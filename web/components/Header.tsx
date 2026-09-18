@@ -6,11 +6,7 @@ import { Container } from "@/components/Container";
 import { Wordmark } from "@/components/Wordmark";
 import { cn } from "@/lib/cn";
 
-const NAV = [
-  { href: "/docs", label: "Docs" },
-  { href: "/#how-it-works", label: "How it works" },
-  { href: "/#what-ballast-is", label: "What ballast is" },
-];
+const NAV = [{ href: "/docs", label: "Docs" }];
 
 export function Header() {
   // Past the hero the header gains its border + a denser background. Just a

@@ -117,28 +117,28 @@ export function ProjectLinks({
   }
 
   return (
-    <div className={className}>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {list.map((it) => (
-          // A real anchor (so middle-click / copy-link get the true URL), but a
-          // left-click is intercepted into the interstitial.
-          <a
-            key={it.key}
-            href={it.href}
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            onClick={(e) => {
-              e.preventDefault();
-              setPending(it);
-            }}
-            className="inline-flex items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
-          >
-            <SocialIcon name={it.icon} className="h-4 w-4 text-text-faint" />
-            {it.label}
-          </a>
-        ))}
-      </div>
-      <p className="mt-1.5 text-xs text-text-faint">Provided by the project. Not verified by BALLAST.</p>
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2", className)}>
+      {list.map((it) => (
+        // A real anchor (so middle-click / copy-link get the true URL), but a
+        // left-click is intercepted into the interstitial.
+        <a
+          key={it.key}
+          href={it.href}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          onClick={(e) => {
+            e.preventDefault();
+            setPending(it);
+          }}
+          className="inline-flex items-center gap-1.5 text-sm text-text-secondary transition-colors hover:text-text-primary"
+        >
+          <SocialIcon name={it.icon} className="h-4 w-4 text-text-faint" />
+          {it.label}
+        </a>
+      ))}
+      <span className="chip chip-neutral" title="Provided by the project — not verified by BALLAST">
+        Unverified
+      </span>
       <LeaveInterstitial item={pending} onClose={() => setPending(null)} />
     </div>
   );
