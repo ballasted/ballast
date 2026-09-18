@@ -4,6 +4,8 @@ import type { Address } from "viem";
 import { useMarket } from "@/hooks/useMarket";
 import { formatEt } from "@/lib/marketHours";
 import { geckoPoolUrl, dexscreenerUrl, dexLabel, formatSmallUsd as smallUsd, formatCompactUsd as compactUsd } from "@/lib/market";
+import { candidatePoolKeys } from "@/lib/pool";
+import { WETH_ADDRESS } from "@/lib/contracts";
 
 // Token-page "Markets" section. Price/volume now live in the stat row and the chart
 // is drawn natively, so this section is the cross-venue list plus the ONE thing it
@@ -48,6 +50,24 @@ export function MarketPanel({
   const disagree =
     chainPrice !== undefined && gt !== undefined && chainPrice > 0 && Math.abs(gt - chainPrice) / chainPrice > 0.01;
 
+  // A token can genuinely have several real Uniswap v4 pools indexed —
+  // one per hook generation (each hook redeploy strands the prior pool's
+  // liquidity behind, per lib/pool.ts's candidatePoolKeys). v4 pools have no
+  // deployed contract address, so GeckoTerminal indexes them by poolId
+  // (bytes32) — compare each listed pool's address against the SAME poolId
+  // computation this app already uses to resolve a token's pool across hook
+  // generations, newest-first. Index 0 is the current, active generation;
+  // anything after is real but fragmented liquidity left on a prior hook. A
+  // pool address that matches none of them (a different venue/DEX entirely)
+  // is left unlabeled rather than guessed at.
+  const hookGenerations = WETH_ADDRESS ? candidatePoolKeys(token, WETH_ADDRESS) : [];
+  function poolGeneration(poolAddress: string): "current" | "prior" | undefined {
+    const idx = hookGenerations.findIndex((c) => c.id.toLowerCase() === poolAddress.toLowerCase());
+    if (idx === 0) return "current";
+    if (idx > 0) return "prior";
+    return undefined;
+  }
+
   return (
     <section className="card p-5">
       <h2 className="section-label">Markets</h2>
@@ -61,10 +81,14 @@ export function MarketPanel({
 
       {market.pools.length > 0 ? (
         <ul className="mt-3 space-y-1.5">
-          {market.pools.map((p) => (
+          {market.pools.map((p) => {
+            const gen = poolGeneration(p.address);
+            return (
             <li key={p.address} className="flex items-center justify-between gap-3 text-sm">
               <span className="min-w-0 truncate">
                 <span className="text-text-primary">{dexLabel(p.dexId)}</span>
+                {gen === "current" && <span className="chip chip-accent ml-2">Current</span>}
+                {gen === "prior" && <span className="chip chip-neutral ml-2">Prior pool</span>}
                 <span className="metric-secondary ml-2">{compactUsd(p.reserveUsd)} liq · {compactUsd(p.volume24hUsd)} 24h</span>
               </span>
               <span className="flex shrink-0 gap-3 text-xs">
@@ -76,7 +100,8 @@ export function MarketPanel({
                 </a>
               </span>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <p className="mt-3 text-sm text-text-muted">No external venues indexed yet.</p>

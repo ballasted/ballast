@@ -48,19 +48,20 @@ describe("ballastFactoryAbi.launches — must decode every already-deployed fact
   });
 });
 
-describe("ballastFactoryAbi.launch — write calldata must match the currently-deployed selector", () => {
-  it("encodes with exactly 4 args (no quoteAsset_) — the deployed factory has no 5-arg overload", () => {
-    // encodeFunctionData throws if the arg count/types don't match the ABI's
-    // declared inputs, so this alone proves the ABI still expects 4 args. The
-    // stronger, on-chain-simulated proof (this exact calldata succeeds against
-    // the live factory; a 5-arg version reverts with no selector match) was
-    // run manually via `cast call` against the real deployed contract during
-    // triage and isn't repeated here since it needs network access this test
-    // suite doesn't have.
+describe("ballastFactoryAbi.launch — write calldata must match the CURRENTLY LIVE FACTORY_ADDRESS's selector", () => {
+  // ⚠️ This pins the multi-quote-asset (5-arg) shape, prepared AHEAD of the
+  // next factory redeploy — see the guard comment on ballastFactoryAbi's
+  // `launch` entry in abis.ts. Before merging/deploying whatever change made
+  // this test reflect 5 args, confirm FACTORY_ADDRESS actually points at a
+  // factory with a 5-arg launch(). If it still points at the old 4-arg
+  // factory, every real launch() call will revert with a wrong-selector
+  // error and no reason — this test only proves the ABI encodes cleanly, not
+  // that it matches whatever's actually deployed at FACTORY_ADDRESS right now.
+  it("encodes with exactly 5 args (quoteAssets_ appended) — the shape for the NEXT factory deploy", () => {
     const data = encodeFunctionData({
       abi: ballastFactoryAbi,
       functionName: "launch",
-      args: ["Name", "SYM", 604800n, "ipfs://x"],
+      args: ["Name", "SYM", 604800n, "ipfs://x", ["0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"]],
     });
     expect(data).toMatch(/^0x[0-9a-f]+$/);
   });

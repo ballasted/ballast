@@ -26,6 +26,11 @@ export type LaunchParams = {
   noticePeriod: bigint; // seconds (7/30/90 days)
   metadataURI: string; // ipfs://CID of the pinned metadata JSON (pinned before run)
   deposit?: { asset: Address; amount: bigint }; // undefined = unbacked
+  // 1-MAX_QUOTE_ASSETS pool-pairing assets (WETH and/or GREEN quote assets —
+  // see useQuoteAssets). Matches the CURRENTLY DEPLOYED factory's launch()
+  // exactly — see the guard comment on ballastFactoryAbi's `launch` entry in
+  // lib/abis.ts before this and that ABI entry can safely diverge.
+  quoteAssets: Address[];
 };
 
 // Steps must name exactly what executes on each path. An unbacked launch has no
@@ -130,15 +135,15 @@ export function useLaunchRunner() {
         if (token && treasury) {
           patch("launch", { status: "success" });
         } else {
-          // 4 args — matches the CURRENTLY DEPLOYED factory's launch() exactly (no
-          // quoteAsset_ param yet; it only ever supports WETH). See the comment on
-          // ballastFactoryAbi's `launch` entry in lib/abis.ts before widening this.
+          // 5 args, matching ballastFactoryAbi's CURRENT `launch` entry exactly —
+          // see the guard comment there before this call site and that ABI entry
+          // can safely diverge from each other.
           const receipt = await send("launch", () =>
             writeContractAsync({
               address: factory,
               abi: ballastFactoryAbi,
               functionName: "launch",
-              args: [params.name, params.symbol, params.noticePeriod, params.metadataURI],
+              args: [params.name, params.symbol, params.noticePeriod, params.metadataURI, params.quoteAssets],
               chainId: CHAIN_ID,
             }),
           );

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { parseUnits, formatUnits, type Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
+import { useQuoteAssets } from "@/hooks/useQuoteAssets";
 import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
@@ -154,6 +155,7 @@ export function CreateFlow() {
   const [amount, setAmount] = useState("");
   const [noticeDays, setNoticeDays] = useState<7 | 30 | 90>(30);
   const [advanced, setAdvanced] = useState(false);
+  const [quoteAssets, setQuoteAssets] = useState<Address[]>([]);
 
   // Submit lifecycle
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -165,9 +167,31 @@ export function CreateFlow() {
   const { address: account } = useAccount();
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { assets, isConfigured: registryReady, isLoading: assetsLoading, isError: assetsError, hasAssets } = useAssets();
+  const { options: quoteOptions, maxQuoteAssets, isConfigured: quoteAssetsReady, isLoading: quoteAssetsLoading } = useQuoteAssets();
   const { split: feeSplit, isLoading: feeLoading, configured: feeConfigured } = useFeeSplit();
   const openFdv = useOpeningFdv();
   const runner = useLaunchRunner();
+
+  // Default to WETH the moment it's available — a launch always needs at
+  // least one quote asset, and WETH is the one every launch can use.
+  useEffect(() => {
+    if (quoteAssets.length === 0 && quoteOptions.length > 0) {
+      const weth = quoteOptions.find((o) => o.isWeth);
+      setQuoteAssets(weth ? [weth.address] : [quoteOptions[0]!.address]);
+    }
+  }, [quoteOptions, quoteAssets.length]);
+
+  const maxQuotes = maxQuoteAssets ?? 4;
+  function toggleQuoteAsset(addr: Address) {
+    setQuoteAssets((prev) => {
+      if (prev.includes(addr)) {
+        // Never let the last one be deselected — a launch needs >=1.
+        return prev.length <= 1 ? prev : prev.filter((a) => a !== addr);
+      }
+      if (prev.length >= maxQuotes) return prev;
+      return [...prev, addr];
+    });
+  }
 
   const selected = assets.find((a) => a.address === assetAddr);
   const backed = mode === "ballast";
@@ -223,7 +247,8 @@ export function CreateFlow() {
   const treasuryValid = backed
     ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedBlocked
     : true;
-  const formValid = projectValid && treasuryValid;
+  const quoteAssetsValid = quoteAssets.length > 0;
+  const formValid = projectValid && treasuryValid && quoteAssetsValid;
 
   function openConfirm() {
     setPinError(undefined);
@@ -254,6 +279,7 @@ export function CreateFlow() {
         noticePeriod: BigInt(noticeDays) * 86400n,
         metadataURI,
         deposit: backed && selected ? { asset: selected.address, amount: amountRaw } : undefined,
+        quoteAssets,
       };
       // Remember the pinned params so a resume/retry re-runs WITHOUT re-pinning
       // (a new CID for the same metadata) — and the runner skips any step already
@@ -534,6 +560,43 @@ export function CreateFlow() {
             )}
           </section>
 
+          {/* Pool pairing — which quote asset(s) this token's pool(s) trade
+              against. Independent of the treasury mode above (a token can be
+              paired against several stock quote assets whether or not it also
+              holds a backing treasury). Always at least WETH; up to
+              maxQuoteAssets total. */}
+          <section className="card space-y-3 p-5">
+            <Field label={`Pool pairing${maxQuoteAssets !== undefined ? ` (up to ${maxQuoteAssets})` : ""}`}>
+              {!quoteAssetsReady ? (
+                <InlineNotice>Deploy the factory and set NEXT_PUBLIC_FACTORY_ADDRESS to enable pool pairing.</InlineNotice>
+              ) : quoteAssetsLoading ? (
+                <AssetPickerSkeleton />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {quoteOptions.map((o) => {
+                    const isSelected = quoteAssets.includes(o.address);
+                    const disabled = !isSelected && quoteAssets.length >= maxQuotes;
+                    return (
+                      <button
+                        key={o.address}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => toggleQuoteAsset(o.address)}
+                        className={cn("tab", isSelected ? "tab-active" : "tab-idle", disabled && "opacity-40")}
+                      >
+                        ${o.symbol ?? shortAddress(o.address)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="mt-1.5 text-xs text-text-faint">
+                Each one gets its own Uniswap pool, seeded with an equal share of the supply. Buyers can trade against
+                any of them. At least one is required.
+              </p>
+            </Field>
+          </section>
+
           {/* Advanced — creator wallet. See note: the factory records msg.sender as
               creator; there is no override parameter, so we surface the address as a
               read-only fact rather than a non-functional input. */}
@@ -623,6 +686,7 @@ export function CreateFlow() {
           feeLoading={feeLoading}
           feeConfigured={feeConfigured}
           openFdv={openFdv}
+          quoteAssetLabels={quoteAssets.map((a) => quoteOptions.find((o) => o.address === a)?.symbol ?? shortAddress(a))}
           account={account}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={confirmAndLaunch}
@@ -767,6 +831,7 @@ function ConfirmModal(p: {
   preview: { usd: bigint; perToken: bigint } | null; noticeDays: number;
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number };
   feeLoading?: boolean; feeConfigured?: boolean; openFdv?: OpenFdv;
+  quoteAssetLabels: string[];
   account?: Address; onCancel: () => void; onConfirm: () => void;
 }) {
   return (
@@ -792,6 +857,7 @@ function ConfirmModal(p: {
             }
           />
           <ConfirmRow label="Withdrawal notice" value={p.backed ? `${p.noticeDays} days (permanent)` : "n/a — unbacked"} />
+          <ConfirmRow label="Pool pairing" value={p.quoteAssetLabels.map((s) => `$${s}`).join(", ")} />
           <ConfirmRow label="Fee split" value={feeSplitText(p.feeSplit, p.feeLoading, p.feeConfigured)} />
           <ConfirmRow label="Creator" value={p.account ? shortAddress(p.account) : "—"} mono />
           <ConfirmRow label="Network" value={activeChain.name} />
