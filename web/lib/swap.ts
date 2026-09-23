@@ -119,6 +119,60 @@ export function buildV4SwapInput(args: {
   };
 }
 
+/**
+ * Build a single-hop exact-in swap for a NON-WETH quote asset (SGOV/NVDA/SPY —
+ * any GREEN quote asset a launch chose at graduation, per BallastFactory's
+ * isGreenQuoteAsset). Both directions pull the input via Permit2 and TAKE_ALL
+ * the output straight to the user — no native-ETH wrap/unwrap, because neither
+ * leg is ETH. This is the SAME action sequence (SWAP_EXACT_IN_SINGLE,
+ * SETTLE_ALL, TAKE_ALL) that docs/robinhood-chain-research.md §4 recorded as
+ * PROVEN BY EXECUTION on mainnet (the WETH input in that proof was itself
+ * pulled via Permit2 + SETTLE_ALL, not wrapped from native ETH) — this only
+ * generalizes which ERC-20 sits on the input/output side, not the shape.
+ *
+ * Buy:  quoteAsset -> token  (buyer already holds the stock token, e.g. NVDA).
+ * Sell: token -> quoteAsset  (mirror of buy; output is the ERC-20 quote asset,
+ *       never unwrapped to ETH).
+ */
+export function buildErc20SwapInput(args: {
+  token: Address;
+  quoteAsset: Address;
+  side: SwapSide;
+  amountIn: bigint;
+  amountOutMinimum: bigint;
+  hook?: Address;
+}): { commands: Hex; inputs: Hex[]; value: bigint } | null {
+  const key = poolKeyForToken(args.token, args.quoteAsset, args.hook);
+  if (!key) return null;
+
+  const isBuy = args.side === "buy";
+  const zeroForOne = isBuy
+    ? buyZeroForOne(args.token, args.quoteAsset)
+    : sellZeroForOne(args.token, args.quoteAsset);
+  const inputCurrency = isBuy ? args.quoteAsset : args.token;
+  const outputCurrency = isBuy ? args.token : args.quoteAsset;
+
+  const swapParams = encodeAbiParameters([exactInputSingleParamsAbi], [
+    {
+      poolKey: keyTuple(key),
+      zeroForOne,
+      amountIn: args.amountIn,
+      amountOutMinimum: args.amountOutMinimum,
+      minHopPriceX36: 0n,
+      hookData: "0x",
+    },
+  ]);
+  const settleAll = encodeAbiParameters(SETTLE_ALL_ABI, [inputCurrency, args.amountIn]);
+  const takeAll = encodeAbiParameters(TAKE_ALL_ABI, [outputCurrency, args.amountOutMinimum]);
+  const actions = concatHex([
+    toHex(V4_ACTIONS.SWAP_EXACT_IN_SINGLE, { size: 1 }),
+    toHex(V4_ACTIONS.SETTLE_ALL, { size: 1 }),
+    toHex(V4_ACTIONS.TAKE_ALL, { size: 1 }),
+  ]);
+  const v4Input = encodeAbiParameters(V4_SWAP_INPUT_ABI, [actions, [swapParams, settleAll, takeAll]]);
+  return { commands: CMD_V4_SWAP, inputs: [v4Input], value: 0n };
+}
+
 // viem wants the tuple as a plain object matching the ABI component order.
 function keyTuple(k: PoolKey) {
   return {

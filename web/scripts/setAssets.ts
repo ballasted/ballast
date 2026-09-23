@@ -88,6 +88,21 @@ const CANDIDATES: Candidate[] = [
   { ticker: "META", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
   { ticker: "SPY", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
   { ticker: "QQQ", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  // Batch 2 (treasury-allowlist only — none of these are quote-asset GREEN).
+  // TOKEN_/FEED_ are unset in .env.example on purpose (rule 17: not every stock
+  // token has an official Chainlink feed at all) — each SKIPs here until a human
+  // sources + verifies its address pair. Adding the entry ahead of the address
+  // costs nothing: an unresolved candidate never reaches setAsset().
+  { ticker: "AMD", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "AVGO", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "MSTR", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "PLTR", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "COIN", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "HOOD", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "NFLX", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "ORCL", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "CRCL", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
+  { ticker: "MCD", staleAfter: EQUITY_STALE, minDeposit: 10n ** 17n, marketHours: MH_US_EQUITIES },
 ];
 
 // ── Approval-time record ─────────────────────────────────────────────────────────
@@ -109,6 +124,16 @@ const APPROVED_DESCRIPTIONS: Record<string, { feed: string; description: string 
   META: { feed: "0x7C38C00C30BEe9378381E7B6135d7283356D71b1", description: "Robinhood META / USD" },
   SPY: { feed: "0x319724394D3A0e3669269846abE664Cd621f9f6A", description: "RHSPY / USD" },
   QQQ: { feed: "0x80901d846d5D7B030F26B480776EE3b29374C2ae", description: "Robinhood QQQ / USD" },
+  // Batch 2, approved 2026-09-23 — sourced from GeckoTerminal pool data +
+  // the canonical Chainlink feeds directory, independently re-verified live
+  // (symbol/decimals/beacon-proxy match for the token; description/decimals/
+  // positive price for the feed) before being added here.
+  AMD: { feed: "0x943A29E7ae51A4798823ca9eEd2ed533B2A22C72", description: "RHAMD / USD" },
+  COIN: { feed: "0xA3a468A452940B7D6b69991207B508c609a98Ef2", description: "Robinhood COIN / USD" },
+  PLTR: { feed: "0x820ABedFF239034956B7A9d2F0a331f9F075eB4c", description: "Robinhood PLTR / USD" },
+  ORCL: { feed: "0x0e6a64a2B58A6693a531E6c555f3A5d042eEA844", description: "Robinhood ORCL / USD" },
+  MSTR: { feed: "0x396118bdFB181e6240E74D243F266B061c0edc3D", description: "Robinhood MSTR / USD" },
+  CRCL: { feed: "0x6652eDf64bA3731C4F2D3ce821A0Fb1f1f6b482a", description: "Robinhood CRCL / USD" },
 };
 
 // ── ABIs (minimal) ───────────────────────────────────────────────────────────────

@@ -85,7 +85,7 @@ contract SetAssets is Script {
         AssetRegistry registry = AssetRegistry(vm.envAddress("ASSET_REGISTRY"));
         bool dryRun = vm.envOr("DRY_RUN", false);
 
-        Candidate[10] memory candidates = [
+        Candidate[20] memory candidates = [
             // The nine high-liquidity names requested, plus SGOV (already listed;
             // re-setting is idempotent and lets this script be the single source).
             Candidate("SGOV", SGOV_STALE, 1e18, MarketHours.UsEquities24_5), // ~$100/sh: 1 tok
@@ -97,7 +97,21 @@ contract SetAssets is Script {
             Candidate("AMZN", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
             Candidate("META", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
             Candidate("SPY", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
-            Candidate("QQQ", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5)
+            Candidate("QQQ", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            // Batch 2 (2026-09-23) — treasury-allowlist only, none are quote-asset
+            // GREEN. TOKEN_/FEED_ env is unset in .env.example on purpose (rule 17:
+            // not every stock token has an official Chainlink feed) — each SKIPs
+            // below until a human sources + verifies its address pair.
+            Candidate("AMD", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("AVGO", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("MSTR", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("PLTR", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("COIN", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("HOOD", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("NFLX", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("ORCL", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("CRCL", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5),
+            Candidate("MCD", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5)
         ];
 
         uint256 pk;
@@ -112,8 +126,8 @@ contract SetAssets is Script {
         uint256 toWrite;
 
         // First pass: resolve env, verify every resolvable candidate on-chain.
-        address[10] memory tok;
-        address[10] memory fd;
+        address[20] memory tok;
+        address[20] memory fd;
         for (uint256 i = 0; i < candidates.length; i++) {
             Candidate memory c = candidates[i];
             tok[i] = vm.envOr(string.concat("TOKEN_", c.ticker), address(0));

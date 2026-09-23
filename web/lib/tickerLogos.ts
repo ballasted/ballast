@@ -24,6 +24,8 @@ const SCALE_OVERRIDES: Record<string, number> = {
   SPY: 0.66,
   QQQ: 0.66,
   MSFT: 0.5,
+  AVGO: 0.5,
+  CRCL: 0.5,
 };
 
 // Wordmarks (not square icons) that read busier than a glyph at small sizes —
@@ -31,6 +33,8 @@ const SCALE_OVERRIDES: Record<string, number> = {
 export const WORDMARK_MIN_PX: Record<string, number> = {
   SPY: 32,
   QQQ: 32,
+  AVGO: 32,
+  CRCL: 32,
 };
 
 const FILES: Record<string, string> = {
@@ -49,6 +53,17 @@ const FILES: Record<string, string> = {
   USDC: "USDC.png",
   USDT: "USDT.png",
   WETH: "WETH.svg",
+  // Batch 2 — treasury-allowlist candidates, not (yet) quote-asset GREEN.
+  AMD: "AMD.png",
+  AVGO: "AVGO.png",
+  MSTR: "MSTR.png",
+  PLTR: "PLTR.png",
+  COIN: "COIN.png",
+  HOOD: "HOOD.png",
+  NFLX: "NFLX.png",
+  ORCL: "ORCL.png",
+  CRCL: "CRCL.png",
+  MCD: "MCD.png",
 };
 
 export const TICKER_LOGOS: Record<string, TickerLogo> = Object.fromEntries(
