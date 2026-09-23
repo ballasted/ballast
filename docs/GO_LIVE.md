@@ -42,12 +42,45 @@ superseded (see `ASSUMPTIONS.md`).
 
 ---
 
+## One launch, multiple quote assets — answered from code (`BallastFactory.sol`, unchanged since `605eb27`), not from docs
+
+- **Yes, simultaneously — not a choice between one or the other.**
+  `launch(..., address[] calldata quoteAssets_)` takes 1–4 entries
+  (`MAX_QUOTE_ASSETS = 4`), rejects duplicates, and stores the whole array on
+  ONE `Launch`. Picking `[WETH, NVDA]` means both, not either.
+- **Yes — one pool per quote asset, same token.** `graduate()` loops over
+  `l.quoteAssets` and calls `seeder.seed(token, quoteAsset, ...)` once per
+  entry, each producing a genuinely different `PoolKey` (the quote asset is
+  part of the key). N quote assets chosen at launch = N separate pools at
+  graduation, all trading the same token.
+- **Split: even, by count, remainder to the first pool.**
+  `share = supply / n; amount = i==0 ? supply - share*(n-1) : share;`. Two
+  quote assets → 500M/500M. Four → 250M each (first pool gets any leftover
+  from integer division, by design, so nothing is dust-lost — not because
+  the first pool is special otherwise).
+- **What stops fragmentation into three shallow books: nothing.** I read
+  `launch()` and `graduate()` end to end looking for a minimum-per-pool
+  check, a liquidity floor, anything. There isn't one.
+  `MAX_QUOTE_ASSETS = 4` is a gas/UI ceiling per its own comment ("bounds
+  graduate()'s loop gas... not an economic parameter"), not a guard against
+  thinness. A creator picking 4 quote assets gets 4 pools at 250M tokens
+  each, on-chain, with zero pushback. This is a real, live footgun in the
+  create flow today, not a hypothetical — worth a create-flow warning
+  ("more quote assets = thinner depth per pool") even though it's outside
+  tonight's scope.
+- **So "include WETH" in this plan means literally "add a WETH pool
+  alongside the NVDA/SPY/SGOV pool(s) already chosen,"** not "pick WETH
+  instead of the stock." Said plainly because getting this backwards would
+  have changed the advice completely, per your ask.
+
+---
+
 ## The plan
 
 | # | Step | Owner | Blocked by | Definition of done | Cost / time |
 |---|---|---|---|---|---|
 | 1 | Build WETH→quote→TOKEN multi-hop swap encoding + wire into `useSwap`/`SwapPanel` (the fix for "the buy side," per the answer above) | **AGENT** | Nothing — can start now | `contracts/src/interfaces/IRobinhoodV4Router.sol`'s documented multi-hop `ExactInputParams` shape implemented in `web/lib/swap.ts`; a `ProveMultiHopSwap.s.sol` script (mirroring `ProveMultiQuoteSwap.s.sol`) that runs a real WETH→NVDA(external pool)→TOKEN swap and asserts token balance increases | Free (my time). Tonight, code-only. **Cannot be verified tonight** — step 2 blocks the proof |
-| 2 | Prove step 1's multi-hop swap against real chain state | **HUMAN** | Step 1 code written | Run `forge script script/probe/ProveMultiHopSwap.s.sol --rpc-url $STABLE_RPC` against a fork of a **paid** RPC (NOT the free public one — it will hit the same "historical state not available" wall I hit this session). Expected output: `=== ALL CHECKS PASSED ===`, ending with a nonzero token balance delta | **Needed in hand:** an Alchemy/Infura-style RPC URL for chain 4663 with normal archive retention (a few dollars/month on any provider's free-to-low tier). No funds needed — this runs on a local fork, not mainnet. ~15 min once the RPC exists |
+| 2 | Prove step 1's multi-hop swap against real chain state | **HUMAN** | Step 1 code written | Run `forge script script/probe/ProveMultiHopSwap.s.sol --rpc-url $STABLE_RPC` against a fork of a **paid** RPC (NOT the free public one — it will hit the same "historical state not available" wall I hit this session). Expected output: `=== ALL CHECKS PASSED ===`, ending with a nonzero token balance delta | **Needed in hand:** a QuickNode Robinhood Chain (4663) mainnet endpoint, **Build tier, $49/month** — see §RPC provider spec below for why this specific tier, verified against the providers' own pricing pages tonight. No funds needed beyond the subscription — this runs on a local fork, not mainnet. ~15 min once the endpoint exists |
 | 3 | Deploy the new multi-quote-asset `BallastFactory` | **HUMAN** | Nothing (independent of 1–2) | `forge script script/DeployMainnet.s.sol:DeployMainnet --rpc-url $RH_RPC --account <deployer> --broadcast` prints a new factory address; `cast call <addr> "MAX_QUOTE_ASSETS()(uint256)"` returns `4` (today it reverts on both live factories — that's the proof this one is new) | **Needed in hand:** funded deployer wallet (gas only, in ETH — the chain's native gas token), `PROTOCOL_OWNER_ADDRESS`/`PROTOCOL_VAULT_ADDRESS`/`ETH_USD_FEED` env vars already documented in the script's header comment, RPC access (the free public one is fine for a single deploy tx — the retention problem is specific to multi-step local forks, not single broadcasts). **Cost:** unverified current gas price on this chain — run `cast gas-price --rpc-url $RH_RPC` immediately before deploying and multiply by ~4M gas (the factory's deploy cost, measured this session on a fork) rather than trust a number here; on any Arbitrum-Orbit L2 this has historically been low single-digit dollars, but confirm live, don't assume |
 | 4 | Verify the new factory's source on Blockscout | **AGENT** | Step 3 (needs the deployed address) | `forge verify-contract <addr> src/BallastFactory.sol:BallastFactory --chain-id 4663 --verifier blockscout --verifier-url $BLOCKSCOUT_URL --constructor-args $(cast abi-encode ...)` — Blockscout's contract page shows a populated "Code" tab, not "not verified." No private key needed for this step, only the address, which the human hands me after step 3 | Free, ~5 min, immediately after step 3 |
 | 5 | Add the new factory to the frontend's factory union | **AGENT** | Step 3 (needs the address) | Diff to `.env.example`/deployment notes showing `NEXT_PUBLIC_FACTORY_ADDRESS=<new>` and `NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES=<old current>,<old prior>` (newest-first) — this is a config diff I write, not something I can set on the live Vercel project myself | Free, ~5 min |
@@ -80,18 +113,20 @@ superseded (see `ASSUMPTIONS.md`).
   first buyer's NVDA payment IS the pool's entire NVDA-side depth immediately
   afterward. A tiny first buy leaves the pool extremely thin; price impact on
   the second buy could be large.
-- **The one lever you actually have, if you want the first buyer's experience
-  to not be "I moved the price 40%":** have the team itself be buyer zero.
-  Concretely: acquire some NVDA externally (Robinhood's own app, or the real
-  NVDA/WETH Uniswap pool already on this chain — ~$1.27M depth per
-  `docs/exit-liquidity-table.md`, so buying a few hundred to a couple thousand
-  dollars of NVDA there has negligible impact), then execute a normal Ballast
-  buy with it right after graduation. A reasonable seed amount to not look thin
-  on a Discover page: **$500–$2,000 of NVDA**, spent by the team as an ordinary
-  buyer, not as a protocol mechanism. This is a real money decision — **HUMAN
-  step**, not something I can size more precisely without knowing your risk
-  appetite, and not a step I've added a row for above because it's optional
-  polish, not a blocker to "pairs trading."
+- **No liquidity mitigation is proposed here, on purpose.** The obvious lever —
+  the team itself trading to seed initial depth — is off the table: **the team
+  deliberately does not take a position in any launch.** That's a standing
+  policy, not a gap I forgot to fill, so this document doesn't offer a "buyer
+  zero" workaround. The one real fix in this plan is step 1 (multi-hop
+  routing) — but be precise about what it fixes: routing makes a thin pool
+  *reachable* to an ordinary WETH holder instead of reachable only to someone
+  who already holds NVDA from elsewhere. It does **not** add a single unit of
+  depth to the NVDA side. Thinness at launch is a permanent, disclosed
+  property of one-sided seeding under this policy, not a bug this plan closes.
+  If that's an acceptable cold start, nothing further is needed; if it isn't,
+  the only compliant lever is a THIRD PARTY's independent decision to trade —
+  which is exactly the same "no floor, no guarantee" posture the rest of the
+  product already takes, applied consistently here too.
 
 ## §The buy side — the literal, current answer
 
@@ -110,14 +145,53 @@ is explicitly *not done tonight* — it needs the proof step (step 2), which
 needs a stable RPC I don't have access to from here.
 
 **Mitigation available with zero new code, if steps 1–2 slip:** creators can
-simply include WETH as one of their (up to 4) chosen quote assets alongside
-NVDA/SPY/SGOV. A token launched against both WETH and NVDA has a direct
-WETH-quoted pool too, and the buy-side problem disappears for that token
-specifically — at the cost of splitting the seeded token supply across one
-more pool (see §Liquidity: N pools means 1B/N tokens each, so more pools means
-thinner tokens-side depth per pool). This is a product-policy decision, not a
-code change — worth deciding explicitly, in writing, rather than leaving
-creators to discover the gap themselves.
+add WETH as one of their (up to 4) chosen quote assets *alongside*
+NVDA/SPY/SGOV — confirmed from code above, this is "both," not "instead of."
+A token launched against WETH and NVDA gets a direct WETH-quoted pool too, and
+the buy-side problem disappears for that token specifically. The cost is real,
+not free, and compounds with the fragmentation risk above: each additional
+quote asset is a full extra pool carved out of the SAME fixed token supply
+(§Liquidity), and nothing on-chain stops a creator from stacking all 4 and
+ending up with four thin pools instead of one usable one. This is a
+product-policy decision, not a code change — worth deciding explicitly, in
+writing (e.g. "the create flow defaults to WETH + up to one stock, not up to
+four"), rather than leaving creators to discover the tradeoff themselves.
+
+---
+
+## §RPC provider spec — the exact thing blocking step 2
+
+Verified tonight directly against each provider's own site (not an SEO
+roundup — those are noisy and unreliable for this), 2026-09-23.
+
+**Buy: QuickNode, Robinhood Chain (chain ID 4663) mainnet, Build plan, $49/month.**
+
+- QuickNode's own Robinhood Chain page states explicit support: "full archive
+  nodes for Robinhood Chain mainnet and testnet with no pruning, plus the
+  Debug API," 17+ regions, 99.99% uptime SLA.
+- Pricing page confirms Build ($49/mo, 80M API credits, 50 req/s) is the
+  cheapest tier with archive data AND Trace/Debug enabled — both are
+  explicitly gated to Build-and-above, not available on the free trial.
+- Setup: quicknode.com → create an endpoint → select "Robinhood" as the
+  chain, mainnet → copy the HTTPS URL into `RH_RPC_URL_PAID` (already a
+  documented env var in `.env.example`, unused until now).
+
+**Why not Alchemy**, despite being the provider `docs/robinhood-chain-research.md`
+already flagged as "Robinhood's recommended provider": Alchemy's own Robinhood
+Chain page explicitly lists Archive, Debug API, and Trace API as **"not
+currently supported"** for this chain — a chain-level gap, not something a
+higher tier buys you. Alchemy is still a fine choice later for ordinary
+production app traffic (their free tier alone is 30M CU/month), but it is the
+wrong pick for the specific job blocking tonight (a local `anvil --fork-url`
+proof, which needs a node that won't evict recent state mid-session — exactly
+what QuickNode explicitly guarantees and Alchemy explicitly does not for this
+chain).
+
+**dRPC** also lists Robinhood Chain support but its public pages don't state
+archive/debug support explicitly either way, and independent-operator
+networks like dRPC are less predictable for state retention consistency
+than a single vertically-integrated provider — not recommended for this
+specific need, though worth a look for cheap general-purpose reads later.
 
 ---
 
