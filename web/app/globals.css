@@ -201,18 +201,31 @@
 
   /* Landing-page hero orbit — NOT the same markup as .orbit-ring/.orbit-counter
      above. That pair only cancels the ring's ANIMATED rotation; each item's own
-     STATIC per-slot angle (used to place it around the circle via rotate, with
-     positioning-to-the-edge handled by an absolute+translate-x wrapper, kept
-     as-is) was never cancelled, so every disc except the one at angle 0
-     rendered permanently rotated by its own slot angle — visible immediately
-     at rest, not just as long-run drift. Four nested layers, each owning
-     exactly one transform:
-       .ring  — animates the whole ring (dynamic).
-       .slot  — STATIC: rotate(--a) sets this item's fixed angular position.
-       .face  — STATIC: rotate(-1 * --a) cancels .slot's OWN angle so its
-                content is upright relative to the ring's frame.
-       .spin  — animates the reverse of .ring (same --dur, same timing
-                function) so the ring's rotation is cancelled dynamically too.
+     STATIC per-slot angle (used to place it around the circle) was never
+     cancelled, so every disc except the one at angle 0 rendered permanently
+     rotated by its own slot angle — visible immediately at rest, not just as
+     long-run drift.
+     ⚠ CLASS NAMES ARE DELIBERATELY PREFIXED `hero-orbit-*`, never bare `ring`.
+     A previous version used a bare `.ring` class, which Tailwind ALSO defines
+     as a built-in utility (a blue-500 box-shadow "focus ring" trick) — with no
+     ring color/opacity override in tailwind.config, that utility silently
+     painted a blue box-shadow onto the (necessarily square, `inset-0`) ring
+     element and rotated it with it, i.e. a "blue rotating square" behind the
+     orbit. Never name a custom class exactly `ring`, `border`, `shadow`, or
+     any other bare Tailwind utility name for this same reason.
+     Four nested layers, each owning exactly one transform:
+       .hero-orbit-ring  — animates the whole ring (dynamic). No border, no
+                background, no outline of its own — purely a rotation frame.
+       .hero-orbit-slot  — STATIC: rotate(--a) then translate(--r) places this
+                item at angle --a, radius --r (the "clock hand" trick —
+                transforms apply right-to-left, so the translate happens first
+                in local space, then the rotate sweeps that point around the
+                circle). --a = i * (360 / n), one slot per live ticker.
+       .hero-orbit-face  — STATIC: rotate(-1 * --a) cancels .slot's OWN angle
+                so its content is upright relative to the ring's frame.
+       .hero-orbit-spin  — animates the reverse of .ring (same --dur, same
+                timing function) so the ring's rotation is cancelled
+                dynamically too.
      .face cancels the static slot angle; .spin cancels the animated ring
      angle — both are needed, neither alone is sufficient. .ring and .spin
      share one --dur custom property (set once on .hero-orbit) so they can
@@ -220,20 +233,37 @@
   .hero-orbit {
     --dur: 40s;
   }
-  .hero-orbit .ring {
+  .hero-orbit-ring {
     animation: ballast-spin var(--dur) linear infinite;
   }
-  .hero-orbit .slot {
-    transform: rotate(var(--a));
+  .hero-orbit-slot {
+    transform: rotate(var(--a)) translate(var(--r));
   }
-  .hero-orbit .face {
-    transform: rotate(calc(-1 * var(--a)));
+  .hero-orbit-face {
+    /* translate(-50%,-50%) self-centers this box on the zero-size .slot point
+       (it has real width/height — its child disc — unlike .slot); folded into
+       this ONE rule rather than paired with a Tailwind -translate-x/y-1/2
+       utility class, since mixing a Tailwind transform utility with a custom
+       `transform` property on the same element means one silently overwrites
+       the other's `transform` value instead of composing. */
+    transform: translate(-50%, -50%) rotate(calc(-1 * var(--a)));
   }
-  .hero-orbit .spin {
+  .hero-orbit-spin {
     animation: ballast-spin var(--dur) linear infinite reverse;
   }
   @keyframes ballast-spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* Ten full-colour brand marks at once reads as noise against a near-black
+     page — desaturate at rest, restore full colour on hover so the marks are
+     still individually identifiable on demand. */
+  .hero-orbit-disc-img {
+    filter: grayscale(0.35) brightness(1.05);
+    transition: filter 200ms ease;
+  }
+  .hero-orbit-disc:hover .hero-orbit-disc-img {
+    filter: grayscale(0) brightness(1);
   }
 
   /* Bottom ticker bar (spec §4) — a continuous leftward scroll. The track's
