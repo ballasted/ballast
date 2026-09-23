@@ -36,30 +36,58 @@ export default async function LandingPage() {
   );
 }
 
+// Disc + core sizing for the orbit. Radius is computed from the LIVE ticker
+// count so discs never overlap each other (chord distance >= disc diameter)
+// or the core mark at centre, regardless of whether the registry has 10
+// tickers today or grows to 16+ later — a fixed pixel radius tuned for one
+// count would start overlapping the moment the live list changes size.
+const ORBIT_DISC_SIZE = 56;
+const ORBIT_CORE_SIZE = 56; // matches the h-14 w-14 core-pulse circle
+
+function orbitRadius(n: number): number {
+  if (n <= 1) return ORBIT_CORE_SIZE / 2 + ORBIT_DISC_SIZE / 2 + 14;
+  const noOverlap = ORBIT_DISC_SIZE / (2 * Math.sin(Math.PI / n)) + 8;
+  const clearsCore = ORBIT_CORE_SIZE / 2 + ORBIT_DISC_SIZE / 2 + 14;
+  return Math.max(noOverlap, clearsCore);
+}
+
 function Hero({ stats, orbitTickers }: { stats: HeroStats; orbitTickers: string[] }) {
   const week = stats.available ? String(stats.launchesThisWeek) : "—";
+  const n = orbitTickers.length || 1;
+  const radius = orbitRadius(n);
+  const containerSize = Math.ceil(2 * (radius + ORBIT_DISC_SIZE / 2) + 16);
   return (
     <section className="relative overflow-hidden border-b border-border">
       <MeanderWatermark />
       <Container className="py-20 sm:py-32">
         <div className="flex flex-col items-center text-center">
-          <div className="anim-enter hero-orbit relative mx-auto h-40 w-40" aria-hidden>
+          <div
+            className="anim-enter hero-orbit relative mx-auto"
+            style={{ width: containerSize, height: containerSize }}
+            aria-hidden
+          >
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="core-pulse flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised">
+              <div
+                className="core-pulse flex items-center justify-center rounded-full bg-surface-raised"
+                style={{ width: ORBIT_CORE_SIZE, height: ORBIT_CORE_SIZE }}
+              >
                 <KeelMark size={28} />
               </div>
             </div>
-            <div className="ring absolute inset-0">
+            <div className="hero-orbit-ring absolute inset-0">
               {orbitTickers.map((symbol, i) => {
-                const angle = `${(360 / orbitTickers.length) * i}deg`;
-                const angleVar = { "--a": angle } as CSSProperties;
+                const angle = `${(360 / n) * i}deg`;
+                const slotStyle = { "--a": angle, "--r": `0px, -${radius}px` } as CSSProperties;
+                const faceStyle = { "--a": angle } as CSSProperties;
                 return (
-                  <div key={symbol} className="slot absolute inset-0" style={angleVar}>
-                    <div className="absolute left-1/2 top-0 -translate-x-1/2">
-                      <div className="face" style={angleVar}>
-                        <div className="spin">
-                          <OrbitDisc symbol={symbol} size={32} />
-                        </div>
+                  <div
+                    key={symbol}
+                    className="hero-orbit-slot absolute left-1/2 top-1/2 h-0 w-0"
+                    style={slotStyle}
+                  >
+                    <div className="hero-orbit-face" style={faceStyle}>
+                      <div className="hero-orbit-spin">
+                        <OrbitDisc symbol={symbol} size={ORBIT_DISC_SIZE} />
                       </div>
                     </div>
                   </div>
@@ -68,7 +96,7 @@ function Hero({ stats, orbitTickers }: { stats: HeroStats; orbitTickers: string[
             </div>
           </div>
 
-          <h1 className="anim-enter anim-d1 mt-8 max-w-2xl font-serif text-4xl font-bold tracking-tight text-bone sm:text-6xl">
+          <h1 className="anim-enter anim-d1 mt-12 max-w-2xl font-serif text-4xl font-bold tracking-tight text-bone sm:text-6xl">
             See exactly how much backs each token, live.
           </h1>
 

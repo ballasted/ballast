@@ -10,16 +10,23 @@ import { tickerLogoFor } from "@/lib/tickerLogos";
  * AssetDisc's generic treatment exactly; this is a separate, minimal component
  * (not a reuse of AssetDisc) because AssetDisc's own fallback truncates to 3
  * characters and its logo image fills the disc edge-to-edge — neither matches
- * this spec (54% contain-fit image, never-truncated fallback).
+ * this spec (per-symbol inset, contain-fit, never-truncated fallback).
+ *
+ * Logo inset is per-symbol (lib/tickerLogos.ts's `scale`, already tuned per
+ * mark — wide wordmarks like SPY/QQQ/AVGO run larger, square icons smaller),
+ * not a flat percentage — a flat size is exactly why logos read "tiny and
+ * inconsistent" before this.
  */
-export function OrbitDisc({ symbol, size = 32 }: { symbol: string; size?: number }) {
+export function OrbitDisc({ symbol, size = 56 }: { symbol: string; size?: number }) {
   const [failed, setFailed] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const logo = tickerLogoFor(symbol, size);
   // Use the real mapped file (correct extension — some marks are .svg, not
   // .png) when one exists; otherwise still attempt a plain <SYMBOL>.png guess
   // so every disc always renders an <img>, and an unmapped ticker degrades via
   // the same onError path rather than silently skipping the image entirely.
-  const file = tickerLogoFor(symbol, size)?.file ?? `${symbol}.png`;
+  const file = logo?.file ?? `${symbol}.png`;
+  const inset = logo?.scale ?? 0.56;
   const showImage = !failed;
 
   // This is server-rendered: the browser can start (and fail) loading the
@@ -41,7 +48,7 @@ export function OrbitDisc({ symbol, size = 32 }: { symbol: string; size?: number
 
   return (
     <span
-      className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-inset ring-bone/10"
+      className="hero-orbit-disc relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-inset ring-bone/10"
       style={{
         width: size,
         height: size,
@@ -55,8 +62,8 @@ export function OrbitDisc({ symbol, size = 32 }: { symbol: string; size?: number
           src={`/assets/tickers/${file}`}
           alt={symbol}
           onError={() => setFailed(true)}
-          style={{ width: "54%", height: "54%" }}
-          className="object-contain"
+          style={{ width: `${inset * 100}%`, height: `${inset * 100}%` }}
+          className="hero-orbit-disc-img object-contain"
         />
       ) : (
         <span

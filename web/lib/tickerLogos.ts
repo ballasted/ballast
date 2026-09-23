@@ -18,14 +18,20 @@ export type TickerLogo = {
 
 const DEFAULT_SCALE = 0.56;
 
+// Wide wordmarks (SPY's SPDR eagle+text, QQQ's Invesco wordmark, AVGO's
+// pulse-in-circle mark, CRCL's "CRCL" wordmark) sit small within their own
+// padded canvas, so they need a LARGER inset than a square icon to read at
+// the same visual weight — not a smaller one. AAPL/MSFT are dense square
+// icons and run smaller so they don't overpower their disc.
 const SCALE_OVERRIDES: Record<string, number> = {
   NVDA: 0.62,
   AMZN: 0.62,
   SPY: 0.66,
   QQQ: 0.66,
+  AVGO: 0.64,
+  CRCL: 0.64,
+  AAPL: 0.5,
   MSFT: 0.5,
-  AVGO: 0.5,
-  CRCL: 0.5,
 };
 
 // Wordmarks (not square icons) that read busier than a glyph at small sizes —
@@ -33,7 +39,6 @@ const SCALE_OVERRIDES: Record<string, number> = {
 export const WORDMARK_MIN_PX: Record<string, number> = {
   SPY: 32,
   QQQ: 32,
-  AVGO: 32,
   CRCL: 32,
 };
 
