@@ -1,10 +1,12 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Container } from "@/components/Container";
 import { Reveal } from "@/components/Reveal";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
-import { AssetDisc } from "@/components/app/AssetDisc";
+import { OrbitDisc } from "@/components/OrbitDisc";
 import { KeelMark } from "@/components/Wordmark";
 import { getHeroStats, type HeroStats } from "@/lib/heroStats";
+import { getOrbitTickers } from "@/lib/orbitTickers";
 import { formatCompactUsd } from "@/lib/market";
 
 // Landing page — UI principles: one headline, one line beneath it, motion, one
@@ -16,15 +18,11 @@ import { formatCompactUsd } from "@/lib/market";
 // a provider — the marketing tree stays free of the web3 bundle.
 export const revalidate = 60;
 
-// Decorative orbit only — not a claim about what's currently ballasted (that
-// lives on Discover, sourced live). Plain ticker discs, no logos needed.
-const ORBIT_TICKERS = ["SGOV", "NVDA", "AAPL", "SPY"];
-
 export default async function LandingPage() {
-  const stats = await getHeroStats();
+  const [stats, orbitTickers] = await Promise.all([getHeroStats(), getOrbitTickers()]);
   return (
     <>
-      <Hero stats={stats} />
+      <Hero stats={stats} orbitTickers={orbitTickers} />
       <FigureScreen
         value={stats.available ? formatCompactUsd(stats.totalBallastUsd ?? 0) : "—"}
         label="Total ballast, on-chain"
@@ -38,33 +36,35 @@ export default async function LandingPage() {
   );
 }
 
-function Hero({ stats }: { stats: HeroStats }) {
+function Hero({ stats, orbitTickers }: { stats: HeroStats; orbitTickers: string[] }) {
   const week = stats.available ? String(stats.launchesThisWeek) : "—";
   return (
     <section className="relative overflow-hidden border-b border-border">
       <MeanderWatermark />
       <Container className="py-20 sm:py-32">
         <div className="flex flex-col items-center text-center">
-          <div className="anim-enter relative mx-auto h-40 w-40" aria-hidden>
+          <div className="anim-enter hero-orbit relative mx-auto h-40 w-40" aria-hidden>
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="core-pulse flex h-14 w-14 items-center justify-center rounded-full bg-surface-raised">
                 <KeelMark size={28} />
               </div>
             </div>
-            <div className="orbit-ring absolute inset-0">
-              {ORBIT_TICKERS.map((symbol, i) => (
-                <div
-                  key={symbol}
-                  className="absolute inset-0"
-                  style={{ transform: `rotate(${(360 / ORBIT_TICKERS.length) * i}deg)` }}
-                >
-                  <div className="absolute left-1/2 top-0 -translate-x-1/2">
-                    <div className="orbit-counter">
-                      <AssetDisc symbol={symbol} size={32} />
+            <div className="ring absolute inset-0">
+              {orbitTickers.map((symbol, i) => {
+                const angle = `${(360 / orbitTickers.length) * i}deg`;
+                const angleVar = { "--a": angle } as CSSProperties;
+                return (
+                  <div key={symbol} className="slot absolute inset-0" style={angleVar}>
+                    <div className="absolute left-1/2 top-0 -translate-x-1/2">
+                      <div className="face" style={angleVar}>
+                        <div className="spin">
+                          <OrbitDisc symbol={symbol} size={32} />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
