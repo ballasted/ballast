@@ -14,7 +14,7 @@ import {
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { poolKeyForToken, candidatePoolKeys, buyZeroForOne, sellZeroForOne } from "@/lib/pool";
-import { buildV4SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
+import { buildV4SwapInput, buildErc20SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt, replayForRevert } from "@/lib/waitForReceipt";
@@ -41,7 +41,13 @@ export type SwapPhase = "idle" | "quoting" | "approving" | "swapping" | "success
  *     Permit2 — the two approvals (token -> Permit2, then Permit2 -> router) run
  *     once when needed, then execute() swaps and unwraps to ETH.
  */
-export function useSwap(token: Address | undefined, side: SwapSide, amountStr: string, slippageBps = 100) {
+export function useSwap(
+  token: Address | undefined,
+  side: SwapSide,
+  amountStr: string,
+  slippageBps = 100,
+  quoteAsset: Address | undefined = WETH_ADDRESS,
+) {
   const { address: account } = useAccount();
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
@@ -53,7 +59,12 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
   const [error, setError] = useState<string | undefined>();
 
-  const inputCurrency = side === "buy" ? WETH_ADDRESS : token;
+  // A native-ETH leg only exists when the trade is against the WETH quote asset
+  // (the router's WRAP_ETH/UNWRAP_WETH commands only make sense there); any other
+  // quote asset (SGOV/NVDA/SPY) is a plain ERC-20 on both sides, pulled/paid via
+  // Permit2 in both directions — see buildErc20SwapInput.
+  const isNativeEthBuy = side === "buy" && Boolean(quoteAsset) && quoteAsset === WETH_ADDRESS;
+  const inputCurrency = side === "buy" ? quoteAsset : token;
 
   // Decimals read LIVE from whatever `inputCurrency` actually is, never
   // hardcoded. Today that's always WETH (buy) or this launch's own token
@@ -92,13 +103,12 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   // still sits under the OLD hook — quoting/swapping with the current hook would
   // build a PoolKey for a pool that doesn't exist and revert. With a single deployed
   // hook (no priors) there's nothing to resolve and we skip the probe entirely.
-  // The launch's quote asset — always WETH today (BallastFactory rejects
-  // anything else). Hardcoded here for the same reason as everywhere else in
-  // this milestone: nothing downstream varies yet, and this is the one place
-  // that's still universally true.
+  // `quoteAsset` is a real, required parameter — a launch may pair its token
+  // against WETH and/or any GREEN asset (BallastFactory.isGreenQuoteAsset), each
+  // its own pool — so this is never hardcoded to one currency.
   const candidates = useMemo(
-    () => (token && WETH_ADDRESS ? candidatePoolKeys(token, WETH_ADDRESS) : []),
-    [token],
+    () => (token && quoteAsset ? candidatePoolKeys(token, quoteAsset) : []),
+    [token, quoteAsset],
   );
   const [resolvedHook, setResolvedHook] = useState<Address | undefined>(undefined);
   useEffect(() => {
@@ -133,12 +143,12 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
   // Quote via V4Quoter (revert-based; simulate to read the return value).
   useEffect(() => {
     let cancelled = false;
-    if (!token || !publicClient || !QUOTER_ADDRESS || !WETH_ADDRESS || amountIn === 0n || !hookForKey) {
+    if (!token || !publicClient || !QUOTER_ADDRESS || !quoteAsset || amountIn === 0n || !hookForKey) {
       setQuote(undefined);
       setQuoteError(undefined);
       return;
     }
-    const key = poolKeyForToken(token, WETH_ADDRESS, hookForKey);
+    const key = poolKeyForToken(token, quoteAsset, hookForKey);
     if (!key) return;
     setPhase("quoting");
     publicClient
@@ -149,7 +159,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
         args: [
           {
             poolKey: key,
-            zeroForOne: side === "buy" ? buyZeroForOne(token, WETH_ADDRESS) : sellZeroForOne(token, WETH_ADDRESS),
+            zeroForOne: side === "buy" ? buyZeroForOne(token, quoteAsset) : sellZeroForOne(token, quoteAsset),
             exactAmount: amountIn,
             hookData: "0x",
           },
@@ -170,7 +180,7 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
     return () => {
       cancelled = true;
     };
-  }, [token, publicClient, amountIn, side, hookForKey]);
+  }, [token, publicClient, amountIn, side, hookForKey, quoteAsset]);
 
   const minOut = quote !== undefined ? (quote * BigInt(10000 - slippageBps)) / 10000n : 0n;
 
@@ -204,12 +214,13 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
     };
 
     try {
-      // BUY (native ETH → token): the router WRAP_ETHs msg.value into WETH it holds
-      // and settles from its OWN balance, so the WETH never touches the wallet and
-      // there is NO Permit2 pull — the only signature is execute() itself.
-      // SELL (token → native ETH): the token lives in the wallet, so it's pulled via
-      // Permit2 (the two approvals, once) and the router unwraps the WETH to ETH.
-      if (side === "buy") {
+      // BUY against WETH (native ETH → token): the router WRAP_ETHs msg.value into
+      // WETH it holds and settles from its OWN balance, so the WETH never touches
+      // the wallet and there is NO Permit2 pull — the only signature is execute().
+      // Every other leg (SELL against WETH, or EITHER side against a non-WETH
+      // quote asset like SGOV/NVDA/SPY) is a plain ERC-20 input pulled via Permit2
+      // (the two approvals, once each).
+      if (isNativeEthBuy) {
         // The wrapped amount must be covered by native ETH (gas is on top).
         const nativeBalance = await publicClient.getBalance({ address: account });
         if (nativeBalance < amountIn) {
@@ -262,10 +273,16 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
         }
       }
 
-      // 3. Swap — the ETH wrap (buy) / unwrap (sell) happen INSIDE this one call
-      //    (see buildV4SwapInput). `value` is the native ETH to wrap on a buy, 0 on
-      //    a sell.
-      const built = buildV4SwapInput({ token, side, amountIn, amountOutMinimum: minOut, hook: hookForKey });
+      // 3. Swap. Against WETH, the ETH wrap (buy) / unwrap (sell) happen INSIDE
+      //    this one call (see buildV4SwapInput); `value` is the native ETH to wrap
+      //    on a buy, 0 on a sell. Against any other quote asset (SGOV/NVDA/SPY)
+      //    neither leg is ETH, so both directions are a plain Permit2-in / TAKE_ALL-out
+      //    swap (buildErc20SwapInput) with value always 0.
+      if (!token || !quoteAsset) throw new Error("Could not build swap");
+      const built =
+        quoteAsset === WETH_ADDRESS
+          ? buildV4SwapInput({ token, side, amountIn, amountOutMinimum: minOut, hook: hookForKey })
+          : buildErc20SwapInput({ token, quoteAsset, side, amountIn, amountOutMinimum: minOut, hook: hookForKey });
       if (!built) throw new Error("Could not build swap");
       setPhase("swapping");
       const hash = await send(() =>
@@ -287,7 +304,20 @@ export function useSwap(token: Address | undefined, side: SwapSide, amountStr: s
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [token, account, publicClient, inputCurrency, amountIn, minOut, side, writeContractAsync, hookForKey, invalidateChainReads]);
+  }, [
+    token,
+    account,
+    publicClient,
+    inputCurrency,
+    amountIn,
+    minOut,
+    side,
+    writeContractAsync,
+    hookForKey,
+    invalidateChainReads,
+    quoteAsset,
+    isNativeEthBuy,
+  ]);
 
   return {
     phase,

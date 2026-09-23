@@ -4,8 +4,10 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useAccount, useBalance, useReadContract, useGasPrice } from "wagmi";
 import { useSwap, type SwapPhase } from "@/hooks/useSwap";
+import { useTokenQuotePools } from "@/hooks/useTokenQuotePools";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { ActingAs } from "@/components/app/ActingAs";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
 import { isSwapConfigured } from "@/lib/contracts";
@@ -47,15 +49,35 @@ export function SwapPanel({
   const [amount, setAmount] = useState("");
   const [slippageBps, setSlippageBps] = useState<number>(100);
   const [customSlip, setCustomSlip] = useState("");
+  const [selectedQuote, setSelectedQuote] = useState<Address | undefined>(undefined);
   const { address: account } = useAccount();
   const { wrongNetwork } = useNetworkGuard();
-  const s = useSwap(hasPool ? token : undefined, side, amount, slippageBps);
 
-  // Balances for the active input leg: native ETH on a buy, the token on a sell.
+  // A launch may pair its token against WETH and/or up to 4 GREEN quote assets
+  // (SGOV/NVDA/SPY today) — each its own live pool. Default to WETH (the
+  // familiar "pay ETH" flow, unchanged for every single-pool token) when
+  // present, else whichever pool actually exists.
+  const { options: quotePools } = useTokenQuotePools(hasPool ? token : undefined);
+  const activeQuote =
+    quotePools.find((o) => o.quoteAsset === selectedQuote) ?? quotePools.find((o) => o.isWeth) ?? quotePools[0];
+  const isWethQuote = activeQuote?.isWeth ?? true; // assume WETH until pools resolve — zero flicker for the common case
+
+  const s = useSwap(hasPool ? token : undefined, side, amount, slippageBps, activeQuote?.quoteAsset);
+
+  // Balances for the active input leg: native ETH on a WETH buy, the quote
+  // asset's ERC-20 on a non-WETH buy (e.g. paying in NVDA), the token on a sell.
   const ethBal = useBalance({
     address: account,
     chainId: activeChain.id,
-    query: { enabled: Boolean(account) && hasPool && side === "buy", refetchInterval: 15_000 },
+    query: { enabled: Boolean(account) && hasPool && side === "buy" && isWethQuote, refetchInterval: 15_000 },
+  });
+  const quoteAssetBal = useReadContract({
+    address: activeQuote?.quoteAsset,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: account ? [account] : undefined,
+    chainId: activeChain.id,
+    query: { enabled: Boolean(account) && hasPool && side === "buy" && !isWethQuote && Boolean(activeQuote) },
   });
   const tokenBal = useReadContract({
     address: token,
@@ -65,7 +87,12 @@ export function SwapPanel({
     chainId: activeChain.id,
     query: { enabled: Boolean(account) && hasPool && side === "sell" },
   });
-  const balance = side === "buy" ? ethBal.data?.value : (tokenBal.data as bigint | undefined);
+  const balance =
+    side === "buy"
+      ? isWethQuote
+        ? ethBal.data?.value
+        : (quoteAssetBal.data as bigint | undefined)
+      : (tokenBal.data as bigint | undefined);
   const gasPrice = useGasPrice({ chainId: activeChain.id, query: { enabled: hasPool } });
 
   if (!isSwapConfigured) {
@@ -83,11 +110,14 @@ export function SwapPanel({
     );
   }
 
-  // Buys spend native ETH and receive the token; sells spend the token and receive
-  // native ETH. The wrap/unwrap to WETH happens inside the router, so the user only
-  // ever sees ETH — labelling the leg "WETH" would be misleading.
-  const inSym = side === "buy" ? "ETH" : symbol;
-  const outSym = side === "buy" ? symbol : "ETH";
+  // Against WETH, buys spend native ETH and sells receive native ETH — the
+  // wrap/unwrap happens inside the router, so the user only ever sees ETH
+  // (labelling the leg "WETH" would be misleading). Against any other quote
+  // asset (SGOV/NVDA/SPY), neither leg is ETH — the user pays/receives that
+  // ERC-20 directly, so its own symbol is shown instead.
+  const quoteSym = isWethQuote ? "ETH" : activeQuote?.symbol || "…";
+  const inSym = side === "buy" ? quoteSym : symbol;
+  const outSym = side === "buy" ? symbol : quoteSym;
   const busy = s.phase === "approving" || s.phase === "swapping";
 
   const insufficient = balance !== undefined && s.amountIn > 0n && s.amountIn > balance;
@@ -95,9 +125,12 @@ export function SwapPanel({
   const slipBlocked = slippageBps > BLOCK_BPS;
 
   // Price impact vs the pool mid: compare the quote's effective price to spot.
+  // spotPriceWeth (from useBacking, WETH-only) only applies when trading against
+  // WETH; any other active quote asset uses its OWN pool's mid from useTokenQuotePools.
+  const spotPrice = isWethQuote ? spotPriceWeth : activeQuote?.marketPriceInQuote;
   let priceImpactPct: number | undefined;
-  if (spotPriceWeth && spotPriceWeth > 0n && s.quote !== undefined && s.quote > 0n && s.amountIn > 0n) {
-    const spot = Number(spotPriceWeth) / 1e18;
+  if (spotPrice && spotPrice > 0n && s.quote !== undefined && s.quote > 0n && s.amountIn > 0n) {
+    const spot = Number(spotPrice) / 1e18;
     if (side === "buy") {
       priceImpactPct = (Number(s.amountIn) / Number(s.quote) / spot - 1) * 100;
     } else {
@@ -148,6 +181,35 @@ export function SwapPanel({
           </button>
         ))}
       </div>
+
+      {/* Quote-asset picker — only shown once a token has more than one live
+          pool (e.g. graduated against both WETH and NVDA). A single-pool token
+          never renders this row, so the default WETH flow is pixel-identical
+          to before. */}
+      {quotePools.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {quotePools.map((o) => (
+            <button
+              key={o.quoteAsset}
+              onClick={() => setSelectedQuote(o.quoteAsset)}
+              disabled={busy}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40",
+                o.quoteAsset === activeQuote?.quoteAsset
+                  ? "border-green bg-green-bg text-green"
+                  : "border-border text-text-muted hover:text-text-secondary",
+              )}
+            >
+              <AssetDisc
+                symbol={o.isWeth ? "WETH" : o.symbol}
+                size={16}
+                identity={{ status: "recognized", symbol: o.isWeth ? "WETH" : o.symbol }}
+              />
+              {o.isWeth ? "ETH" : o.symbol}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Pay */}
       <div className="mt-4 rounded-input border border-border bg-bg p-3">
@@ -297,8 +359,14 @@ export function SwapPanel({
           />
           <DetailRow
             label="Route"
-            hint="The venue, and how ETH is wrapped inside the swap."
-            value={side === "buy" ? "Uniswap v4 · ETH wrapped in-route" : "Uniswap v4 · unwrapped to ETH"}
+            hint={isWethQuote ? "The venue, and how ETH is wrapped inside the swap." : "The venue — a direct pool, no wrap involved."}
+            value={
+              isWethQuote
+                ? side === "buy"
+                  ? "Uniswap v4 · ETH wrapped in-route"
+                  : "Uniswap v4 · unwrapped to ETH"
+                : `Uniswap v4 · direct ${quoteSym} pool`
+            }
           />
           {highImpact && (
             <p className="pt-1 text-xs text-warning">
@@ -309,13 +377,16 @@ export function SwapPanel({
         </div>
       )}
 
-      {/* Approval story — a genuine advantage on buys, the explicit steps on sells. */}
-      {side === "buy" ? (
+      {/* Approval story — ETH-wrapped buys against WETH need no approval at all;
+          every other leg (a WETH sell, or EITHER side against a non-WETH quote
+          asset like NVDA/SPY/SGOV) pulls its input via Permit2, so it gets the
+          explicit two-step flow. */}
+      {side === "buy" && isWethQuote ? (
         <p className="mt-3 flex items-start gap-1.5 text-xs text-green">
           <span aria-hidden>✓</span> No approval needed — ETH is wrapped inside the swap.
         </p>
       ) : (
-        <SellSteps phase={s.phase} symbol={symbol} />
+        <ApprovalSteps phase={s.phase} paySymbol={inSym} receiveSymbol={outSym} unwrapsToEth={side === "sell" && isWethQuote} />
       )}
 
       {/* Action */}
@@ -348,10 +419,11 @@ export function SwapPanel({
             }
             onClick={s.swap}
           >
-            <span key={buttonLabel(s.phase, { side, symbol, wrongNetwork, insufficient, slipBlocked, amountIn: s.amountIn, quoting: s.phase === "quoting", noQuote: s.quote === undefined && s.amountIn > 0n })} className="anim-fade inline-block">
+            <span key={buttonLabel(s.phase, { side, symbol, paySymbol: inSym, wrongNetwork, insufficient, slipBlocked, amountIn: s.amountIn, quoting: s.phase === "quoting", noQuote: s.quote === undefined && s.amountIn > 0n })} className="anim-fade inline-block">
               {buttonLabel(s.phase, {
                 side,
                 symbol,
+                paySymbol: inSym,
                 wrongNetwork,
                 insufficient,
                 slipBlocked,
@@ -374,6 +446,7 @@ function buttonLabel(
   ctx: {
     side: Side;
     symbol: string;
+    paySymbol: string;
     wrongNetwork: boolean;
     insufficient: boolean;
     slipBlocked: boolean;
@@ -383,10 +456,12 @@ function buttonLabel(
   },
 ): string {
   if (ctx.wrongNetwork) return "Switch to Robinhood Chain";
-  if (phase === "approving") return ctx.side === "sell" ? `Approving ${ctx.symbol}…` : "Approving…";
+  // Approving is skipped entirely for a WETH-quoted buy (paySymbol === "ETH");
+  // every other leg pulls paySymbol via Permit2.
+  if (phase === "approving") return ctx.paySymbol === "ETH" ? "Approving…" : `Approving ${ctx.paySymbol}…`;
   if (phase === "swapping") return "Confirming…";
   if (ctx.amountIn === 0n) return "Enter an amount";
-  if (ctx.insufficient) return ctx.side === "buy" ? "Insufficient ETH" : `Insufficient ${ctx.symbol}`;
+  if (ctx.insufficient) return `Insufficient ${ctx.paySymbol}`;
   if (ctx.slipBlocked) return "Slippage too high";
   if (ctx.quoting) return "Fetching quote…";
   if (ctx.noQuote) return "No quote for this size";
@@ -422,9 +497,19 @@ function DetailRow({
   );
 }
 
-// Sells pull the token via Permit2, so they carry an explicit two-step flow. Each
-// step is marked done as it completes (buys have none — see the buy note).
-function SellSteps({ phase, symbol }: { phase: SwapPhase; symbol: string }) {
+// Any leg that isn't a WETH-quoted buy pulls its input via Permit2, so it carries
+// an explicit two-step flow. Each step is marked done as it completes.
+function ApprovalSteps({
+  phase,
+  paySymbol,
+  receiveSymbol,
+  unwrapsToEth,
+}: {
+  phase: SwapPhase;
+  paySymbol: string;
+  receiveSymbol: string;
+  unwrapsToEth: boolean;
+}) {
   const approveState = phase === "approving" ? "active" : phase === "swapping" || phase === "success" ? "done" : "todo";
   const swapState = phase === "swapping" ? "active" : phase === "success" ? "done" : "todo";
   const idle = phase === "idle" || phase === "quoting";
@@ -432,12 +517,14 @@ function SellSteps({ phase, symbol }: { phase: SwapPhase; symbol: string }) {
     <div className="mt-3 rounded-input border border-border bg-bg px-3 py-2">
       {idle ? (
         <p className="text-xs text-text-faint">
-          Sell = a one-time Permit2 approval, then the swap. WETH output is unwrapped to ETH for you.
+          {unwrapsToEth
+            ? "Sell = a one-time Permit2 approval, then the swap. WETH output is unwrapped to ETH for you."
+            : `A one-time Permit2 approval, then the swap — you receive ${receiveSymbol} directly.`}
         </p>
       ) : (
         <ol className="space-y-1.5">
-          <StepLine state={approveState} label={`Approve ${symbol} access (Permit2)`} />
-          <StepLine state={swapState} label="Swap & receive ETH" />
+          <StepLine state={approveState} label={`Approve ${paySymbol} access (Permit2)`} />
+          <StepLine state={swapState} label={`Swap & receive ${receiveSymbol}`} />
         </ol>
       )}
     </div>
