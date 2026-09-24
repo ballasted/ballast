@@ -144,25 +144,49 @@ export function useBacking(token?: Address) {
   const noticePeriod =
     treasuryStateRes.data?.[1]?.status === "success" ? (treasuryStateRes.data[1].result as bigint) : undefined;
 
+  // Which quote asset(s) this launch actually graduated against — read live via
+  // quoteAssetsOf, NOT assumed to be WETH. A launch may pair against NVDA/SPY/SGOV
+  // instead of (or alongside) WETH; a prior factory that predates quoteAssetsOf()
+  // simply fails this call (allowFailure) and falls back to its only possible
+  // shape: a single WETH pool. Without this, an NVDA-only launch (no WETH pool at
+  // all, e.g. HARUNA) reads hasPool=false forever regardless of the artifact fix
+  // below — SwapPanel gates its OWN pool lookup on this hook's hasPool, so a wrong
+  // hasPool here makes the token untradeable in the UI even though its real pool
+  // works fine on-chain.
+  const quoteAssetsRes = useReadContract({
+    address: ownerFactory,
+    abi: ballastFactoryAbi,
+    functionName: "quoteAssetsOf",
+    args: token ? [token] : undefined,
+    chainId: CHAIN_ID,
+    query: { ...liveQuery(Boolean(token && ownerFactory)), retry: false },
+  });
+  const quoteAssets: Address[] =
+    quoteAssetsRes.status === "success" && Array.isArray(quoteAssetsRes.data) && (quoteAssetsRes.data as Address[]).length > 0
+      ? (quoteAssetsRes.data as Address[])
+      : WETH_ADDRESS
+        ? [WETH_ADDRESS]
+        : [];
+
   // Market price via StateView(getSlot0/getLiquidity) + ETH/USD feed. Hook-aware: a
   // token's pool lives under exactly one of the deployed hooks (its own, fixed at
   // graduation), so probe every candidate and use the one with live liquidity. This
   // is why a prior-hook token ($BALLAST/CHRS) keeps an on-chain price after a hook
   // redeploy instead of silently reading the wrong (empty) poolId.
   // Pairing: once the owning factory is resolved, probe only ITS hook's pool (one
-  // read pair), not every deployed hook. Until ownerFactory resolves (or if it has no
-  // paired hook), fall back to probing all candidates so a prior-hook token still
-  // prices correctly.
+  // read pair) per quote asset, not every deployed hook. Until ownerFactory
+  // resolves (or if it has no paired hook), fall back to probing all candidates so
+  // a prior-hook token still prices correctly.
   const pairedHook = hookForFactory(ownerFactory);
-  const candidates =
-    !token || !WETH_ADDRESS
-      ? []
-      : pairedHook
-        ? (() => {
-            const key = poolKeyForToken(token, WETH_ADDRESS, pairedHook);
-            return key ? [{ hook: pairedHook, key, id: poolId(key) }] : [];
-          })()
-        : candidatePoolKeys(token, WETH_ADDRESS);
+  const candidates = !token
+    ? []
+    : quoteAssets.flatMap((quoteAsset) => {
+        if (pairedHook) {
+          const key = poolKeyForToken(token, quoteAsset, pairedHook);
+          return key ? [{ quoteAsset, hook: pairedHook, key, id: poolId(key) }] : [];
+        }
+        return candidatePoolKeys(token, quoteAsset).map((c) => ({ quoteAsset, ...c }));
+      });
   const poolRes = useReadContracts({
     allowFailure: true,
     contracts:
@@ -185,25 +209,36 @@ export function useBacking(token?: Address) {
     query: liveQuery(Boolean(ETH_USD_FEED_ADDRESS)),
   });
 
-  // Pick the first candidate hook whose pool has live liquidity (newest-first).
+  // hasPool is true the moment ANY quote asset resolves to a real, initialized
+  // pool (sqrtPriceX96 > 0, set permanently by PoolManager.initialize() at seed
+  // time) — NOT getLiquidity(poolId) > 0, which reads 0 exactly when the current
+  // tick sits on the seeded position's boundary (the half-open tick-range
+  // artifact, confirmed on real graduated pools 2026-09-25) even though the
+  // position is real and fully seeded. USD price/depth stay WETH-specific (the
+  // only quote asset this app can currently convert to USD) — an NVDA-only pool
+  // sets hasPool but leaves marketPriceUsd undefined, honestly.
   let hasPool = false;
   let marketPriceWeth: bigint | undefined;
   let poolLiquidity: bigint | undefined;
   let poolSqrtPriceX96: bigint | undefined;
+  const resolvedQuoteAssets = new Set<string>();
   for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]!;
+    const qaKey = c.quoteAsset.toLowerCase();
+    if (resolvedQuoteAssets.has(qaKey)) continue; // already found this quote asset's live pool
     const slot0 = poolRes.data?.[i * 2];
     const liq = poolRes.data?.[i * 2 + 1];
-    if (liq?.status === "success" && (liq.result as bigint) > 0n) {
-      hasPool = true;
-      poolLiquidity = liq.result as bigint;
-      if (slot0?.status === "success") {
-        const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-        if (sqrtPriceX96 > 0n && WETH_ADDRESS && token) {
+    if (slot0?.status === "success") {
+      const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
+      if (sqrtPriceX96 > 0n) {
+        hasPool = true;
+        resolvedQuoteAssets.add(qaKey);
+        if (WETH_ADDRESS && qaKey === WETH_ADDRESS.toLowerCase() && token) {
           marketPriceWeth = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, WETH_ADDRESS), 18);
           poolSqrtPriceX96 = sqrtPriceX96;
+          if (liq?.status === "success") poolLiquidity = liq.result as bigint;
         }
       }
-      break;
     }
   }
 

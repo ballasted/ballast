@@ -275,6 +275,20 @@ export const ballastFactoryAbi = [
     outputs: [{ type: "bool" }],
   },
   {
+    // Immutable BallastSeeder singleton this factory graduates through — it is
+    // the LP position OWNER for every pool this factory ever seeds (v4 identifies
+    // a position by (poolId, owner, tickLower, tickUpper, salt), salt=0 always
+    // here). A per-generation value, same shape as HOOK_ADDRESS/FACTORY_ADDRESS —
+    // read it live from each factory rather than tracking it in env, since it's
+    // already a public getter and this avoids one more historical address to keep
+    // in sync by hand (see lib/seededPosition.ts).
+    type: "function",
+    name: "seeder",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
     // token => id+1 (0 = this factory never launched it). The O(1) ownership test:
     // a token belongs to whichever factory returns non-zero here (see useProjectFactory).
     type: "function",
@@ -668,5 +682,40 @@ export const stateViewAbi = [
     stateMutability: "view",
     inputs: [{ name: "poolId", type: "bytes32" }],
     outputs: [{ type: "uint128" }],
+  },
+  {
+    // Raw v4 tick-initialized bitmap word (see lib/seededPosition.ts) — used to
+    // find a seeded position's real tickLower/tickUpper without needing the
+    // Seeded/PoolSeeded event log (blocked in this environment by the RPC's
+    // free-tier eth_getLogs range cap, confirmed 2026-09-25).
+    type: "function",
+    name: "getTickBitmap",
+    stateMutability: "view",
+    inputs: [
+      { name: "poolId", type: "bytes32" },
+      { name: "wordPos", type: "int16" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    // The actual LP position's live liquidity — correct at every price, unlike
+    // getLiquidity(poolId) (the pool-wide ACTIVE liquidity), which reads 0 when
+    // the current tick sits exactly on the position's boundary (the half-open
+    // tick-range artifact — confirmed on real graduated pools 2026-09-25).
+    type: "function",
+    name: "getPositionInfo",
+    stateMutability: "view",
+    inputs: [
+      { name: "poolId", type: "bytes32" },
+      { name: "owner", type: "address" },
+      { name: "tickLower", type: "int24" },
+      { name: "tickUpper", type: "int24" },
+      { name: "salt", type: "bytes32" },
+    ],
+    outputs: [
+      { name: "liquidity", type: "uint128" },
+      { name: "feeGrowthInside0LastX128", type: "uint256" },
+      { name: "feeGrowthInside1LastX128", type: "uint256" },
+    ],
   },
 ] as const;

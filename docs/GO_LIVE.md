@@ -96,8 +96,8 @@ Getting any of them wrong costs a full redeploy, not a config change:
 
 | # | Step | Owner | Blocked by | Definition of done | Cost / time |
 |---|---|---|---|---|---|
-| 1 | Build WETH→quote→TOKEN multi-hop swap encoding + wire into `useSwap`/`SwapPanel` (the fix for "the buy side," per the answer above) | **AGENT** | Nothing — can start now | `contracts/src/interfaces/IRobinhoodV4Router.sol`'s documented multi-hop `ExactInputParams` shape implemented in `web/lib/swap.ts`; a `ProveMultiHopSwap.s.sol` script (mirroring `ProveMultiQuoteSwap.s.sol`) that runs a real WETH→NVDA(external pool)→TOKEN swap and asserts token balance increases | Free (my time). Tonight, code-only. **Cannot be verified tonight** — step 2 blocks the proof |
-| 2 | Prove step 1's multi-hop swap against real chain state | **HUMAN** | Step 1 code written | Run `forge script script/probe/ProveMultiHopSwap.s.sol --rpc-url $STABLE_RPC` against a fork of a **paid** RPC (NOT the free public one — it will hit the same "historical state not available" wall I hit this session). Expected output: `=== ALL CHECKS PASSED ===`, ending with a nonzero token balance delta | **Needed in hand:** a QuickNode Robinhood Chain (4663) mainnet endpoint, **Build tier, $49/month** — see §RPC provider spec below for why this specific tier, verified against the providers' own pricing pages tonight. No funds needed beyond the subscription — this runs on a local fork, not mainnet. ~15 min once the endpoint exists |
+| 1 | ~~Build WETH→quote→TOKEN multi-hop swap encoding~~ — **ABANDONED, disproven tonight** | — | — | Probed StateView.getLiquidity for a real v4 WETH/SGOV, WETH/NVDA, and WETH/SPY pool across every standard fee tier (500/3000/10000/100 + dynamic-fee) × tick spacing × the Ballast hook and hookless, against the ALREADY-WORKING Alchemy RPC — **zero liquidity at every single candidate, all three assets.** The deepest real WETH/quote liquidity for all three (per `docs/exit-liquidity-table.md`) sits on Uniswap v3 or Ramses v3, not v4. This chain's UniversalRouter only has a VERIFIED v4 multi-hop encoding in this codebase (research §4) — routing the first leg through a different AMM protocol is a materially different, unverified integration (a second router-encoding-verification project, not a follow-on to this one), not attempted tonight. **The buy-side gap for a WETH-only holder on a stock-only-quoted token stands, with no code fix in this plan.** | Investigated, not built |
+| ~~2~~ | ~~Prove step 1~~ — moot, nothing to prove | — | — | — | — |
 | 3 | Deploy the new multi-quote-asset `BallastFactory` | **HUMAN** | Nothing (independent of 1–2) | `forge script script/DeployMainnet.s.sol:DeployMainnet --rpc-url $RH_RPC --account <deployer> --broadcast` prints a new factory address; `cast call <addr> "MAX_QUOTE_ASSETS()(uint256)"` returns `2` (today it reverts on both live factories — that's the proof this one is new) | **Needed in hand:** funded deployer wallet (gas only, in ETH — the chain's native gas token), `PROTOCOL_OWNER_ADDRESS`/`PROTOCOL_VAULT_ADDRESS`/`ETH_USD_FEED` env vars already documented in the script's header comment, RPC access (the free public one is fine for a single deploy tx — the retention problem is specific to multi-step local forks, not single broadcasts). **Cost:** unverified current gas price on this chain — run `cast gas-price --rpc-url $RH_RPC` immediately before deploying and multiply by ~4M gas (the factory's deploy cost, measured this session on a fork) rather than trust a number here; on any Arbitrum-Orbit L2 this has historically been low single-digit dollars, but confirm live, don't assume |
 | 4 | Verify the new factory's source on Blockscout | **AGENT** | Step 3 (needs the deployed address) | `forge verify-contract <addr> src/BallastFactory.sol:BallastFactory --chain-id 4663 --verifier blockscout --verifier-url $BLOCKSCOUT_URL --constructor-args $(cast abi-encode ...)` — Blockscout's contract page shows a populated "Code" tab, not "not verified." No private key needed for this step, only the address, which the human hands me after step 3 | Free, ~5 min, immediately after step 3 |
 | 5 | Add the new factory to the frontend's factory union | **AGENT** | Step 3 (needs the address) | Diff to `.env.example`/deployment notes showing `NEXT_PUBLIC_FACTORY_ADDRESS=<new>` and `NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES=<old current>,<old prior>` (newest-first) — this is a config diff I write, not something I can set on the live Vercel project myself | Free, ~5 min |
@@ -158,38 +158,40 @@ somewhere else (Robinhood's own app, or a third-party DEX swap against the real
 NVDA/WETH pool), bring it back to their wallet, and only then can they use
 Ballast's trade page — which, after this session's earlier work, already
 supports paying with NVDA directly for an NVDA-quoted pool. What's missing is
-purely the "start from WETH" convenience leg. Step 1 (the multi-hop routing
-code) still isn't written — that's unchanged tonight, this session went into
-`MAX_QUOTE_ASSETS` instead. **Correction to the RPC framing below**: the
-`.env` `RH_RPC_URL_PAID` key (Alchemy) already worked tonight for real forked
-contract tests — 10/10 `BallastGraduateFork.t.sol` tests passed against live
-mainnet state, including a brand-new one exercising a two-pool graduation
-end to end. Alchemy's documented lack of Archive/Debug/Trace support for this
-chain (§RPC provider spec) turned out not to matter for plain `forge test
---fork-url`/`anvil --fork-url` state access — only for deep historical reads
-and `debug_traceTransaction`, neither of which a fork test needs. So the
-step-2 proof script, once step 1 exists, can likely run against the
-**already-configured Alchemy key, tonight, at no additional cost** — don't
-buy QuickNode on my earlier say-so alone; try the existing key against
-`ProveMultiHopSwap.s.sol` first once it's written.
+the "start from WETH" convenience leg.
 
-**Mitigation available with zero new code, if steps 1–2 slip:** a creator can
-choose WETH as their SECOND quote asset *alongside* a stock — confirmed from
-code above, this is "both," not "instead of." A token launched against WETH
-and NVDA gets a direct WETH-quoted pool too, and the buy-side problem
-disappears for that token specifically. The cost is real, not free: at
-`MAX_QUOTE_ASSETS = 2` the tradeoff is now simple and bounded rather than the
-open-ended fragmentation risk this section originally flagged — exactly one
-choice, take half the depth in each pool to also get direct WETH reach, or
-keep full depth in one pool and require the buy-side fix (step 1) instead.
-The create flow now shows this tradeoff explicitly the moment a second quote
-asset is selected (not left implicit): "Each quote asset gets its own pool.
+**Tried the multi-hop fix tonight, found it isn't buildable the way this plan
+assumed.** Probed for a real v4 WETH/SGOV, WETH/NVDA, WETH/SPY pool (any fee
+tier, any tick spacing, hooked or not) against the already-working Alchemy
+RPC — none exist. Every real WETH↔quote-asset pool with meaningful depth
+(`docs/exit-liquidity-table.md`) sits on Uniswap v3 or Ramses v3. This
+chain's UniversalRouter fork only has a verified v4-multi-hop encoding in
+this codebase; routing the first leg through a different AMM is a distinct,
+unverified integration this session did not attempt (real user funds,
+zero ability to test carefully at this hour — the same bar that made single
+verified-first before shipping in the first place). **There is currently no
+code-only fix for the buy-side gap. The only real fix is the zero-code
+mitigation below.** The Alchemy-vs-QuickNode question from the previous
+session is moot for this specific proof, since there is nothing left to prove
+— but the underlying finding (Alchemy handled 10/10 real fork tests fine
+tonight) stands and is worth keeping for future work.
+
+**The only real mitigation: a creator chooses WETH as their SECOND quote
+asset** *alongside* a stock — confirmed from code above, this is "both," not
+"instead of." A token launched against WETH and NVDA gets a direct
+WETH-quoted pool too, and the buy-side problem disappears for that token
+specifically, with no routing needed at all. The cost is real: at
+`MAX_QUOTE_ASSETS = 2`, that's the whole tradeoff space now — one pool at full
+depth (stock-only, buy-side gap stands), or two pools at half depth each
+(stock + WETH, buy-side gap closed). The create flow states this plainly the
+moment a second quote asset is selected: "Each quote asset gets its own pool.
 Your supply is split evenly between them — two pools means half the depth in
-each."
+each." **`RUNBOOK.md`'s first real launch uses WETH + NVDA for exactly this
+reason — it's the only path that's actually proven end to end tonight.**
 
 ---
 
-## §RPC provider spec — the exact thing blocking step 2
+## §RPC provider spec — background (no longer blocking anything; kept for future reference)
 
 Verified tonight directly against each provider's own site (not an SEO
 roundup — those are noisy and unreliable for this), 2026-09-23.

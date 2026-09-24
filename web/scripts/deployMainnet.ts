@@ -12,7 +12,7 @@
  *   3. FeeConfig(owner, vault)
  *   4. BallastHook(poolManager, feeConfig, weth) // CREATE2 via the Arachnid proxy,
  *                                                //   salt mined for flags 0xCC
- *   5. BallastSeeder(poolManager, weth, hook)
+ *   5. BallastSeeder(poolManager, hook)
  *   6. BallastFactory(registry, weth, seeder, ethUsdFeed, ethUsdStaleWindow, greenQuoteAssets)
  *
  * It reads the COMPILED creation bytecode + ABI straight from Foundry's build output
@@ -323,7 +323,7 @@ async function main() {
     { step: "BackingLens", action: reuseLens ? "REUSE" : "deploy", args: [sequencer], predicted: addr.BackingLens },
     { step: "FeeConfig", action: reuseFeeConfig ? "REUSE" : "deploy", args: [owner, vault], predicted: addr.FeeConfig },
     { step: "BallastHook", action: "deploy (CREATE2)", args: [pm, addr.FeeConfig, weth], predicted: addr.BallastHook },
-    { step: "BallastSeeder", action: "deploy", args: [pm, weth, addr.BallastHook], predicted: addr.BallastSeeder },
+    { step: "BallastSeeder", action: "deploy", args: [pm, addr.BallastHook], predicted: addr.BallastSeeder },
     {
       step: "BallastFactory",
       action: "deploy",
@@ -403,7 +403,7 @@ async function main() {
   console.log(expectedHook);
 
   // 5–6
-  deployed.BallastSeeder = await deployCreate("BallastSeeder", [pm, weth, deployed.BallastHook]);
+  deployed.BallastSeeder = await deployCreate("BallastSeeder", [pm, deployed.BallastHook]);
   deployed.BallastFactory = await deployCreate("BallastFactory", [
     deployed.AssetRegistry,
     weth,

@@ -6,6 +6,7 @@ import { FACTORY_ADDRESSES, LENS_ADDRESS, STATE_VIEW_ADDRESS, QUOTER_ADDRESS, WE
 import { BLOCKSCOUT_URL } from "@/lib/blockscout";
 import { activeChain } from "@/lib/chain";
 import { poolKeyForToken, poolId, sellZeroForOne } from "@/lib/pool";
+import { seededPositionLiquidity } from "@/lib/seededPosition";
 import { resolveAssetIdentity, type RegistryAssetRef } from "@/lib/assetIdentity";
 
 // Live verification for a launched token — every field below is a fresh chain
@@ -169,8 +170,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
   }
 
   // -- Liquidity locked: BallastSeeder owns the LP position permanently (no
-  //    removal function exists on it) — checkable live via whether the pool
-  //    this token graduated into actually holds liquidity.
+  //    removal function exists on it) — checkable live via whether that EXACT
+  //    position (not just the pool as a whole) actually holds liquidity.
+  //    getLiquidity(poolId) alone isn't a safe proxy here: it reads 0 exactly
+  //    when the current tick sits on the position's boundary (the half-open
+  //    tick-range artifact, confirmed on real graduated pools 2026-09-25) even
+  //    though the position is real, locked, and holds real backing supply. This
+  //    is a claim users rely on to decide whether to buy, so it reads the real
+  //    position via StateView.getPositionInfo (lib/seededPosition.ts) instead of
+  //    trusting the coarser pool-wide liquidity figure.
   const hook = hookForFactory(ownerFactory);
   let liquidityLocked: LiquidityCheck = { status: "unavailable", value: "Not graduated yet" };
   if (!graduated) {
@@ -180,11 +188,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
     if (key) {
       const id = poolId(key);
       try {
-        const liq = await client.readContract({ address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getLiquidity", args: [id] });
+        const seeder = await client.readContract({ address: ownerFactory, abi: ballastFactoryAbi, functionName: "seeder" });
+        const slot0 = await client.readContract({ address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [id] });
+        const [, currentTick] = slot0 as readonly [bigint, number, number, number];
+        const posLiq = await seededPositionLiquidity(client, id, seeder as Address, currentTick);
         liquidityLocked =
-          (liq as bigint) > 0n
+          posLiq !== undefined && posLiq > 0n
             ? { status: "pass", value: "Locked permanently in BallastSeeder (no removal function exists)", hookAddress: hook }
-            : { status: "fail", value: "Graduated, but the pool currently reports zero liquidity", hookAddress: hook };
+            : posLiq === 0n
+              ? { status: "fail", value: "Graduated, but the seeded position reports zero liquidity", hookAddress: hook }
+              : { status: "unavailable", value: "Could not locate the seeded position", hookAddress: hook };
       } catch {
         liquidityLocked = { status: "unavailable", value: "Could not read pool liquidity" };
       }
@@ -229,9 +242,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
 
   // -- Sell simulation: a real V4Quoter call through the actual pool + hook —
   //    proves a sell path exists RIGHT NOW, not just that a pool was created
-  //    once. Only meaningful once graduated with real liquidity.
+  //    once. Gated on `graduated` (the real on-chain fact this question is
+  //    actually asking about), not on `liquidityLocked` — that check answers a
+  //    different question ("is liquidity really there"), and gating one real
+  //    read on another only compounds a wrong answer instead of independently
+  //    proving this one. A pool with no liquidity will simply fail (or revert)
+  //    the quoter call below on its own, honestly.
   let sellSimulation: SellCheck = { status: "unavailable", value: "Not graduated yet", method: "V4Quoter.quoteExactInputSingle" };
-  if (graduated && hook && WETH_ADDRESS && QUOTER_ADDRESS && liquidityLocked.status === "pass" && totalSupply) {
+  if (graduated && hook && WETH_ADDRESS && QUOTER_ADDRESS && totalSupply) {
     const key = poolKeyForToken(token, WETH_ADDRESS, hook);
     if (key) {
       const testAmount = totalSupply / 100_000n; // ~0.001% of supply — meaningful, but small enough to avoid an unrelated slippage revert

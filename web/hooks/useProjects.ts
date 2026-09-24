@@ -162,28 +162,54 @@ export function useProjects() {
     query: liveQuery(isLensConfigured && rows.some(Boolean)),
   });
 
+  // Which quote asset(s) each launch actually graduated against — read live via
+  // quoteAssetsOf, NOT assumed to be WETH. A launch may pair against NVDA/SPY/SGOV
+  // instead of (or alongside) WETH, and a prior factory that predates
+  // quoteAssetsOf() simply fails this call (allowFailure), falling back to its
+  // only possible shape: a single WETH pool. Without this, an NVDA-only launch
+  // (no WETH pool at all) reads hasPool=false forever, regardless of the artifact
+  // fix below — same pattern useTokenQuotePools already uses per-token.
+  const quoteAssetsRes = useReadContracts({
+    allowFailure: true,
+    contracts: sorted.map((e) => ({
+      address: factories[e.factoryIndex]!,
+      abi: ballastFactoryAbi,
+      functionName: "quoteAssetsOf",
+      args: [e.row[0]],
+      chainId: CHAIN_ID,
+    })),
+    query: liveQuery(isFactoryConfigured && sorted.length > 0),
+  });
+  const quoteAssetsByRow: Address[][] = sorted.map((_e, i) => {
+    const r = quoteAssetsRes.data?.[i];
+    if (r?.status === "success" && Array.isArray(r.result) && (r.result as Address[]).length > 0) {
+      return r.result as Address[];
+    }
+    return WETH_ADDRESS ? [WETH_ADDRESS] : [];
+  });
+
   // Live market price per token, read on-chain from the v4 StateView (getSlot0 +
   // getLiquidity) — the SAME source the token page uses, so Discover and the token
   // page never disagree. An on-chain price is always available once a pool exists;
   // Discover previously showed "—" only because it never asked (it read no pool
-  // state at all). Gated on isSwapConfigured (needs StateView + hook + WETH).
+  // state at all). Gated on isSwapConfigured (needs StateView + hook).
   // Hook-aware via PAIRING: a token's pool sits under the hook of the factory that
-  // launched it, so resolve that ONE hook (cands length 1) instead of probing every
-  // deployed hook per token — this is what keeps the Discover read O(tokens), not
-  // O(tokens × hooks). Fallback to probing all hooks only if a factory has no paired
-  // hook (config slip), so it degrades rather than breaks. cands[i] aligns with rows.
-  // Every launch's quote asset is WETH today (BallastFactory rejects anything
-  // else) — hardcoded here as the one place that's still true everywhere,
-  // rather than threaded through from each launch's own (currently-always-WETH)
-  // quoteAsset field, since nothing downstream varies yet either.
-  const cands = sorted.map((e) => {
-    if (!isSwapConfigured || !WETH_ADDRESS) return [];
+  // launched it, so resolve that ONE hook per quote asset (not every deployed hook)
+  // — this is what keeps the Discover read O(tokens × quoteAssets), not
+  // O(tokens × quoteAssets × hooks). Fallback to probing all hooks only if a
+  // factory has no paired hook (config slip), so it degrades rather than breaks.
+  // cands[i] aligns with rows; each entry is tagged with its quoteAsset so the
+  // render loop below can tell a WETH pool (USD-priceable) from any other.
+  const cands = sorted.map((e, i) => {
+    if (!isSwapConfigured) return [];
     const hook = hookForFactory(factories[e.factoryIndex]);
-    if (hook) {
-      const key = poolKeyForToken(e.row[0], WETH_ADDRESS, hook);
-      return key ? [{ hook, key, id: poolId(key) }] : [];
-    }
-    return candidatePoolKeys(e.row[0], WETH_ADDRESS);
+    return quoteAssetsByRow[i]!.flatMap((quoteAsset) => {
+      if (hook) {
+        const key = poolKeyForToken(e.row[0], quoteAsset, hook);
+        return key ? [{ quoteAsset, hook, key, id: poolId(key) }] : [];
+      }
+      return candidatePoolKeys(e.row[0], quoteAsset).map((c) => ({ quoteAsset, ...c }));
+    });
   });
   const poolRes = useReadContracts({
     allowFailure: true,
@@ -213,8 +239,17 @@ export function useProjects() {
 
     // Pool state is present only when isSwapConfigured (cands were built the same
     // way), so the cursor advances in lockstep with the contracts array. Each token
-    // contributed getSlot0+getLiquidity for EVERY candidate hook — scan them
-    // newest-first and take the one with live liquidity (its real pool).
+    // contributed getSlot0+getLiquidity for every (quoteAsset, candidate hook) pair.
+    // hasPool is true the moment ANY quote asset resolves to a real, initialized
+    // pool — a token graduated only against NVDA (no WETH pool at all) must still
+    // read hasPool=true. USD price/depth stay WETH-specific (the only quote asset
+    // this app can currently convert to USD) — an NVDA-only pool sets hasPool but
+    // leaves marketPriceUsd undefined, honestly, rather than fabricating a
+    // conversion. A pool "exists" iff sqrtPriceX96 > 0 (set permanently by
+    // PoolManager.initialize() at seed time) — NOT getLiquidity(poolId) > 0, which
+    // reads 0 exactly when the current tick sits on the seeded position's boundary
+    // (the half-open tick-range artifact, confirmed on real graduated pools
+    // 2026-09-25) even though the position is real and fully seeded.
     const cs = cands[rowIndex] ?? [];
     rowIndex += 1;
     let hasPool = false;
@@ -222,20 +257,25 @@ export function useProjects() {
     let marketPriceUsd: bigint | undefined;
     let depthToDoubleUsd: number | undefined;
     if (isSwapConfigured && STATE_VIEW_ADDRESS) {
+      const resolvedQuoteAssets = new Set<string>();
       for (let k = 0; k < cs.length; k++) {
+        const c = cs[k]!;
+        const qaKey = c.quoteAsset.toLowerCase();
+        if (resolvedQuoteAssets.has(qaKey)) continue; // already found this quote asset's live pool
         const slot0 = poolRes.data?.[poolCursor + k * 2];
         const liq = poolRes.data?.[poolCursor + k * 2 + 1];
-        if (liq?.status === "success" && (liq.result as bigint) > 0n) {
-          hasPool = true;
-          const liquidity = liq.result as bigint;
-          if (slot0?.status === "success" && WETH_ADDRESS) {
-            const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-            if (sqrtPriceX96 > 0n) {
+        if (slot0?.status === "success") {
+          const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
+          if (sqrtPriceX96 > 0n) {
+            hasPool = true;
+            resolvedQuoteAssets.add(qaKey);
+            if (WETH_ADDRESS && qaKey === WETH_ADDRESS.toLowerCase()) {
               marketPriceWeth = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, WETH_ADDRESS), 18);
-              depthToDoubleUsd = usdToDoublePrice(liquidity, sqrtPriceX96, ethUsd1e18);
+              if (liq?.status === "success") {
+                depthToDoubleUsd = usdToDoublePrice(liq.result as bigint, sqrtPriceX96, ethUsd1e18);
+              }
             }
           }
-          break;
         }
       }
       poolCursor += cs.length * 2;

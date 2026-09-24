@@ -45,8 +45,8 @@ const ALL: { name: string; address?: Address; ctorTypes: string[]; ctorArgs: () 
   { name: "BackingLens", address: A(process.env.NEXT_PUBLIC_LENS_ADDRESS), ctorTypes: ["address"], ctorArgs: () => [process.env.SEQUENCER_UPTIME_FEED_ADDRESS ?? "0x0000000000000000000000000000000000000000"] },
   { name: "FeeConfig", address: A(process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS), ctorTypes: ["address", "address"], ctorArgs: () => [reqEnv("PROTOCOL_OWNER_ADDRESS"), reqEnv("PROTOCOL_VAULT_ADDRESS")] },
   { name: "BallastHook", address: A(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS), ctorTypes: ["address", "address", "address"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_POOL_MANAGER_ADDRESS"), reqEnv("NEXT_PUBLIC_FEE_CONFIG_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS")] },
-  { name: "BallastSeeder", address: A(process.env.NEXT_PUBLIC_SEEDER_ADDRESS), ctorTypes: ["address", "address", "address"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_POOL_MANAGER_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_V4_HOOK_ADDRESS")] },
-  { name: "BallastFactory", address: A(process.env.NEXT_PUBLIC_FACTORY_ADDRESS), ctorTypes: ["address", "address", "address", "address", "uint256"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_SEEDER_ADDRESS"), reqEnv("NEXT_PUBLIC_ETH_USD_FEED_ADDRESS"), BigInt(process.env.ETH_USD_STALE_WINDOW ?? String(24 * 60 * 60))] },
+  { name: "BallastSeeder", address: A(process.env.NEXT_PUBLIC_SEEDER_ADDRESS), ctorTypes: ["address", "address"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_POOL_MANAGER_ADDRESS"), reqEnv("NEXT_PUBLIC_V4_HOOK_ADDRESS")] },
+  { name: "BallastFactory", address: A(process.env.NEXT_PUBLIC_FACTORY_ADDRESS), ctorTypes: ["address", "address", "address", "address", "uint256", "address[]"], ctorArgs: () => [reqEnv("NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS"), reqEnv("NEXT_PUBLIC_WETH_ADDRESS"), reqEnv("NEXT_PUBLIC_SEEDER_ADDRESS"), reqEnv("NEXT_PUBLIC_ETH_USD_FEED_ADDRESS"), BigInt(process.env.ETH_USD_STALE_WINDOW ?? String(24 * 60 * 60)), (process.env.GREEN_QUOTE_ASSETS ?? "").split(",").filter(Boolean)] },
 ];
 
 function reqEnv(k: string): string {
