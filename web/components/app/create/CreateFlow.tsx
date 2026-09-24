@@ -181,7 +181,10 @@ export function CreateFlow() {
     }
   }, [quoteOptions, quoteAssets.length]);
 
-  const maxQuotes = maxQuoteAssets ?? 4;
+  // Fallback while the live MAX_QUOTE_ASSETS() read hasn't resolved yet — kept
+  // in sync with the contract's own permanent value (BallastFactory.sol), 2,
+  // not used once the live read lands (maxQuoteAssets ?? this).
+  const maxQuotes = maxQuoteAssets ?? 2;
   function toggleQuoteAsset(addr: Address) {
     setQuoteAssets((prev) => {
       if (prev.includes(addr)) {
@@ -594,6 +597,12 @@ export function CreateFlow() {
                 Each one gets its own Uniswap pool, seeded with an equal share of the supply. Buyers can trade against
                 any of them. At least one is required.
               </p>
+              {quoteAssets.length > 1 && (
+                <p className="mt-1.5 text-xs text-warning">
+                  Each quote asset gets its own pool. Your supply is split evenly between them — two pools means half
+                  the depth in each.
+                </p>
+              )}
             </Field>
           </section>
 
