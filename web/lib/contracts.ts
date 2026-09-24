@@ -129,35 +129,61 @@ export const FACTORY_ADDRESSES: Address[] = FACTORIES.map((f) => f.address);
 //   • Pool price / swap routing resolve WHICH hook a given token's pool lives under
 //     (newest-first), so prior-hook tokens ($BALLAST, CHRS) stay priced and tradeable.
 //
-// Env: NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES — comma-separated OLDER hooks, newest-first.
-const PRIOR_HOOK_ADDRESSES = parseAddressList(process.env.NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES);
+// Checked-in history — see docs/seeded-hook-history.md, kept in sync manually on
+// every hook redeploy. This is the SOURCE OF TRUTH for prior generations' hooks,
+// not env: the previous design zipped NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES and
+// NEXT_PUBLIC_PRIOR_HOOK_ADDRESSES together BY INDEX, two independently-edited env
+// lists — one short entry silently made an entire generation's real, liquid pools
+// invisible with no error (BALLAST/CHRS/RCN, found + fixed 2026-09-25). A reviewed,
+// checked-in constant can't drift out of sync the same way an env var can.
+const HISTORICAL_HOOKS: { factory: Address; hook: Address }[] = [
+  { factory: "0x069974136c78Cf0F2162463B95321E59F56523D8", hook: "0x9C15c992E4De3711715C8B7D717EF46e474680CC" },
+  { factory: "0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1", hook: "0x743102aa1De955b5F0Fada1377B6E545Fdb080cc" },
+];
 
-// Ordered newest-first: current hook, then priors. Every hook-aware read enumerates
-// this; the pool resolver picks whichever hook actually holds the token's live pool.
+// Ordered newest-first: current hook, then every historical one. Every hook-aware
+// fallback (candidatePoolKeys) enumerates this when a factory→hook pairing is
+// missing, so a config slip degrades to "probe everything" rather than finding
+// nothing at all.
 export const HOOK_ADDRESSES: Address[] = [
   ...(HOOK_ADDRESS ? [HOOK_ADDRESS] : []),
-  ...PRIOR_HOOK_ADDRESSES,
+  ...HISTORICAL_HOOKS.map((h) => h.hook),
 ];
 
 // Factory↔hook pairing. A token's pool uses the hook of the factory that launched it
 // (1:1, fixed at graduation). Once a token's factory is known — from enumeration
 // (useProjects) or launchIdOf (useBacking) — we probe EXACTLY ONE pool instead of
-// every hook, removing the per-token × N_hooks blow-up on the Discover board. This
-// pairs NEXT_PUBLIC_FACTORY_ADDRESS↔V4_HOOK_ADDRESS and the PRIOR_* lists BY INDEX,
-// so those two prior lists MUST be kept in the same order. Reads fall back to probing
-// all hooks if a factory has no paired hook, so a config slip degrades, never breaks.
+// every hook, removing the per-token × N_hooks blow-up on the Discover board.
 export const FACTORY_HOOK_PAIRS: { factory: Address; hook: Address }[] = [
   ...(FACTORY_ADDRESS && HOOK_ADDRESS ? [{ factory: FACTORY_ADDRESS, hook: HOOK_ADDRESS }] : []),
-  ...PRIOR_FACTORY_ADDRESSES.flatMap((factory, i) => {
-    const hook = PRIOR_HOOK_ADDRESSES[i];
-    return hook ? [{ factory, hook }] : [];
-  }),
+  ...HISTORICAL_HOOKS,
 ];
 
-/** The hook a token's pool lives under, from the factory that launched it. */
+const loggedMissingHookFactories = new Set<string>();
+
+/**
+ * The hook a token's pool lives under, from the factory that launched it. Reads
+ * fall back to probing every hook in HOOK_ADDRESSES when this returns undefined
+ * for a KNOWN prior factory, so a config slip degrades, never silently breaks —
+ * but it also logs loudly (once per factory per session) so the gap is visible in
+ * the console instead of just rendering "—" with no explanation.
+ */
 export function hookForFactory(factory: Address | undefined): Address | undefined {
   if (!factory) return undefined;
-  return FACTORY_HOOK_PAIRS.find((p) => p.factory.toLowerCase() === factory.toLowerCase())?.hook;
+  const found = FACTORY_HOOK_PAIRS.find((p) => p.factory.toLowerCase() === factory.toLowerCase())?.hook;
+  if (!found && PRIOR_FACTORY_ADDRESSES.some((f) => f.toLowerCase() === factory.toLowerCase())) {
+    const key = factory.toLowerCase();
+    if (!loggedMissingHookFactories.has(key)) {
+      loggedMissingHookFactories.add(key);
+      console.error(
+        `[contracts] No hook mapped for known prior factory ${factory} — its pools cannot resolve directly ` +
+          `(falling back to probing every hook in HOOK_ADDRESSES). Add it to HISTORICAL_HOOKS in lib/contracts.ts ` +
+          `and docs/seeded-hook-history.md — read it live via \`cast call ${factory} "seeder()(address)"\` and the ` +
+          `factory's own launch/graduate transactions if the hook itself isn't already known.`,
+      );
+    }
+  }
+  return found;
 }
 
 // Core addresses the app cannot function without. `asAddress` already maps a

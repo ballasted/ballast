@@ -123,18 +123,22 @@ export function useTokenQuotePools(token: Address | undefined) {
     let marketPriceInQuote: bigint | undefined;
     for (const c of p.candidates) {
       const slot0 = poolRes.data?.[cursor];
-      const liq = poolRes.data?.[cursor + 1];
-      cursor += 2;
-      if (liq?.status === "success" && (liq.result as bigint) > 0n) {
-        hasPool = true;
-        hook = c.hook;
-        if (slot0?.status === "success" && token) {
-          const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
-          if (sqrtPriceX96 > 0n) {
-            marketPriceInQuote = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, p.quoteAsset), 18);
-          }
+      cursor += 2; // still advances past the paired getLiquidity read, unused for this gate now
+      // A pool that's genuinely never been initialized reads sqrtPriceX96 === 0
+      // (v4's real zero-state); ANY graduated Ballast pool has it set permanently
+      // by PoolManager.initialize() at seed time. This is a correct, always-real
+      // signal for "does a pool exist" — unlike getLiquidity(poolId), which reads
+      // 0 exactly when the current tick sits on the seeded position's boundary
+      // (the half-open tick-range artifact, confirmed on real graduated pools
+      // 2026-09-25) even though the position is real and fully seeded.
+      if (slot0?.status === "success" && token) {
+        const [sqrtPriceX96] = slot0.result as unknown as [bigint, number, number, number];
+        if (sqrtPriceX96 > 0n) {
+          hasPool = true;
+          hook = c.hook;
+          marketPriceInQuote = tokenPriceInQuote(sqrtPriceX96, tokenIsCurrency0(token, p.quoteAsset), 18);
+          break;
         }
-        break;
       }
     }
     if (hasPool && hook) {
