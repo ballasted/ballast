@@ -222,28 +222,19 @@ contract BallastFactoryTest is Test {
     // ── Multiple stock pairs: an array of several quote assets per launch ──
 
     function test_quoteAssets_multiple_storedInOrder() public {
-        address greenB = makeAddr("greenB");
-        // Not exposed as a setter on the deployed factory (isGreenQuoteAsset is
-        // deploy-time-fixed) — redeploy a factory with two green assets instead
-        // of trying to mutate the one from setUp().
-        address[] memory greens = new address[](2);
-        greens[0] = greenAsset;
-        greens[1] = greenB;
-        BallastSeeder seeder2 = new BallastSeeder(IPoolManager(address(1)), address(2));
-        BallastFactory f2 = new BallastFactory(address(registry), WETH, seeder2, address(3), 24 hours, greens);
-
-        address[] memory picked = new address[](3);
+        // MAX_QUOTE_ASSETS is 2 (docs/GO_LIVE.md: "one launch, multiple quote
+        // assets") — this test exercises the array-storage/ordering behavior
+        // at the most this contract will ever accept, not an arbitrary count.
+        address[] memory picked = new address[](2);
         picked[0] = WETH;
         picked[1] = greenAsset;
-        picked[2] = greenB;
         vm.prank(creator);
-        (, address token,) = f2.launch("P", "P", 30 days, "", picked);
+        (, address token,) = factory.launch("P", "P", 30 days, "", picked);
 
-        address[] memory qa = f2.quoteAssetsOf(token);
-        assertEq(qa.length, 3);
+        address[] memory qa = factory.quoteAssetsOf(token);
+        assertEq(qa.length, 2);
         assertEq(qa[0], WETH);
         assertEq(qa[1], greenAsset);
-        assertEq(qa[2], greenB);
     }
 
     function test_quoteAssets_empty_reverts() public {

@@ -42,12 +42,12 @@ superseded (see `ASSUMPTIONS.md`).
 
 ---
 
-## One launch, multiple quote assets — answered from code (`BallastFactory.sol`, unchanged since `605eb27`), not from docs
+## One launch, multiple quote assets — answered from code (`BallastFactory.sol`, `605eb27` through tonight), not from docs
 
 - **Yes, simultaneously — not a choice between one or the other.**
-  `launch(..., address[] calldata quoteAssets_)` takes 1–4 entries
-  (`MAX_QUOTE_ASSETS = 4`), rejects duplicates, and stores the whole array on
-  ONE `Launch`. Picking `[WETH, NVDA]` means both, not either.
+  `launch(..., address[] calldata quoteAssets_)` takes an array, rejects
+  duplicates, and stores the whole thing on ONE `Launch`. Picking
+  `[WETH, NVDA]` means both, not either.
 - **Yes — one pool per quote asset, same token.** `graduate()` loops over
   `l.quoteAssets` and calls `seeder.seed(token, quoteAsset, ...)` once per
   entry, each producing a genuinely different `PoolKey` (the quote asset is
@@ -55,23 +55,40 @@ superseded (see `ASSUMPTIONS.md`).
   graduation, all trading the same token.
 - **Split: even, by count, remainder to the first pool.**
   `share = supply / n; amount = i==0 ? supply - share*(n-1) : share;`. Two
-  quote assets → 500M/500M. Four → 250M each (first pool gets any leftover
-  from integer division, by design, so nothing is dust-lost — not because
-  the first pool is special otherwise).
-- **What stops fragmentation into three shallow books: nothing.** I read
-  `launch()` and `graduate()` end to end looking for a minimum-per-pool
-  check, a liquidity floor, anything. There isn't one.
-  `MAX_QUOTE_ASSETS = 4` is a gas/UI ceiling per its own comment ("bounds
-  graduate()'s loop gas... not an economic parameter"), not a guard against
-  thinness. A creator picking 4 quote assets gets 4 pools at 250M tokens
-  each, on-chain, with zero pushback. This is a real, live footgun in the
-  create flow today, not a hypothetical — worth a create-flow warning
-  ("more quote assets = thinner depth per pool") even though it's outside
-  tonight's scope.
+  quote assets → 500M/500M (first pool gets any leftover from integer
+  division, by design, so nothing is dust-lost — not because the first pool
+  is special otherwise). Reverified against a REAL fork run tonight at n=2
+  (`BallastGraduateFork.t.sol::test_multiQuoteAsset_graduate_seedsAllPools_equalSplit_isolatedFeeLedgers`,
+  passes against live mainnet state, not mocks) — both pools seeded with
+  the correct even split, isolated fee ledgers, no cross-pool leakage.
+- **What used to stop fragmentation into several shallow books: nothing.**
+  At `MAX_QUOTE_ASSETS = 4`, I read `launch()`/`graduate()` end to end
+  looking for a minimum-per-pool check, a liquidity floor, anything — there
+  wasn't one. A creator could pick 4 and get four 250M-token pools with zero
+  pushback, a real, live footgun, not a hypothetical.
+  **This finding directly motivated the fix, applied tonight: `MAX_QUOTE_ASSETS`
+  is now 2, in the contract, permanent before deploy** — see "Permanent
+  parameters" below for the full reasoning. 1 is the clean case (undiluted
+  depth); 2 is the legitimate case (one liquid quote for reach + one stock
+  quote for the thesis, each visibly at half depth); 3–4 had no real use case
+  and only fragmented further with no floor and no warning.
 - **So "include WETH" in this plan means literally "add a WETH pool
-  alongside the NVDA/SPY/SGOV pool(s) already chosen,"** not "pick WETH
-  instead of the stock." Said plainly because getting this backwards would
-  have changed the advice completely, per your ask.
+  alongside the NVDA/SPY/SGOV pool already chosen,"** not "pick WETH instead
+  of the stock" — and at MAX=2, "alongside" is now the ONLY other option:
+  a launch is either 1 pool, or exactly 2 (its stock quote + WETH, or two
+  stock quotes), never more.
+
+## Permanent parameters — decided before deploy, unconditional after
+
+Three values are fixed forever the moment a `ProjectTreasury` or
+`BallastFactory` is deployed, with no owner setter and no upgrade path.
+Getting any of them wrong costs a full redeploy, not a config change:
+
+| Parameter | Value | Where it's fixed | Why |
+|---|---|---|---|
+| Treasury asset | chosen per-project at launch | `ProjectTreasury` constructor | The whole backing claim depends on it never moving |
+| Notice period | 7 / 30 / 90 days, chosen per-project | `ProjectTreasury` constructor | The withdrawal-delay trust model collapses if a creator could shorten it later |
+| `MAX_QUOTE_ASSETS` | **2** (was 4, changed tonight) | `BallastFactory.sol` constant, baked into the not-yet-deployed factory | An economic parameter dressed as a gas ceiling: every additional quote asset is a full extra pool carved from the SAME fixed token supply, with zero on-chain floor against fragmentation (see finding above). 1 = clean, undiluted. 2 = one liquid quote for reach + one stock quote for the thesis, each openly at half depth. 3–4 had no articulated use case and only bought thinner books with no warning. Changed now because it's free before the first deploy and permanent after — the exact "one launch, multiple quote assets" analysis above is what surfaced it. |
 
 ---
 
@@ -81,7 +98,7 @@ superseded (see `ASSUMPTIONS.md`).
 |---|---|---|---|---|---|
 | 1 | Build WETH→quote→TOKEN multi-hop swap encoding + wire into `useSwap`/`SwapPanel` (the fix for "the buy side," per the answer above) | **AGENT** | Nothing — can start now | `contracts/src/interfaces/IRobinhoodV4Router.sol`'s documented multi-hop `ExactInputParams` shape implemented in `web/lib/swap.ts`; a `ProveMultiHopSwap.s.sol` script (mirroring `ProveMultiQuoteSwap.s.sol`) that runs a real WETH→NVDA(external pool)→TOKEN swap and asserts token balance increases | Free (my time). Tonight, code-only. **Cannot be verified tonight** — step 2 blocks the proof |
 | 2 | Prove step 1's multi-hop swap against real chain state | **HUMAN** | Step 1 code written | Run `forge script script/probe/ProveMultiHopSwap.s.sol --rpc-url $STABLE_RPC` against a fork of a **paid** RPC (NOT the free public one — it will hit the same "historical state not available" wall I hit this session). Expected output: `=== ALL CHECKS PASSED ===`, ending with a nonzero token balance delta | **Needed in hand:** a QuickNode Robinhood Chain (4663) mainnet endpoint, **Build tier, $49/month** — see §RPC provider spec below for why this specific tier, verified against the providers' own pricing pages tonight. No funds needed beyond the subscription — this runs on a local fork, not mainnet. ~15 min once the endpoint exists |
-| 3 | Deploy the new multi-quote-asset `BallastFactory` | **HUMAN** | Nothing (independent of 1–2) | `forge script script/DeployMainnet.s.sol:DeployMainnet --rpc-url $RH_RPC --account <deployer> --broadcast` prints a new factory address; `cast call <addr> "MAX_QUOTE_ASSETS()(uint256)"` returns `4` (today it reverts on both live factories — that's the proof this one is new) | **Needed in hand:** funded deployer wallet (gas only, in ETH — the chain's native gas token), `PROTOCOL_OWNER_ADDRESS`/`PROTOCOL_VAULT_ADDRESS`/`ETH_USD_FEED` env vars already documented in the script's header comment, RPC access (the free public one is fine for a single deploy tx — the retention problem is specific to multi-step local forks, not single broadcasts). **Cost:** unverified current gas price on this chain — run `cast gas-price --rpc-url $RH_RPC` immediately before deploying and multiply by ~4M gas (the factory's deploy cost, measured this session on a fork) rather than trust a number here; on any Arbitrum-Orbit L2 this has historically been low single-digit dollars, but confirm live, don't assume |
+| 3 | Deploy the new multi-quote-asset `BallastFactory` | **HUMAN** | Nothing (independent of 1–2) | `forge script script/DeployMainnet.s.sol:DeployMainnet --rpc-url $RH_RPC --account <deployer> --broadcast` prints a new factory address; `cast call <addr> "MAX_QUOTE_ASSETS()(uint256)"` returns `2` (today it reverts on both live factories — that's the proof this one is new) | **Needed in hand:** funded deployer wallet (gas only, in ETH — the chain's native gas token), `PROTOCOL_OWNER_ADDRESS`/`PROTOCOL_VAULT_ADDRESS`/`ETH_USD_FEED` env vars already documented in the script's header comment, RPC access (the free public one is fine for a single deploy tx — the retention problem is specific to multi-step local forks, not single broadcasts). **Cost:** unverified current gas price on this chain — run `cast gas-price --rpc-url $RH_RPC` immediately before deploying and multiply by ~4M gas (the factory's deploy cost, measured this session on a fork) rather than trust a number here; on any Arbitrum-Orbit L2 this has historically been low single-digit dollars, but confirm live, don't assume |
 | 4 | Verify the new factory's source on Blockscout | **AGENT** | Step 3 (needs the deployed address) | `forge verify-contract <addr> src/BallastFactory.sol:BallastFactory --chain-id 4663 --verifier blockscout --verifier-url $BLOCKSCOUT_URL --constructor-args $(cast abi-encode ...)` — Blockscout's contract page shows a populated "Code" tab, not "not verified." No private key needed for this step, only the address, which the human hands me after step 3 | Free, ~5 min, immediately after step 3 |
 | 5 | Add the new factory to the frontend's factory union | **AGENT** | Step 3 (needs the address) | Diff to `.env.example`/deployment notes showing `NEXT_PUBLIC_FACTORY_ADDRESS=<new>` and `NEXT_PUBLIC_PRIOR_FACTORY_ADDRESSES=<old current>,<old prior>` (newest-first) — this is a config diff I write, not something I can set on the live Vercel project myself | Free, ~5 min |
 | 6 | Set the new env vars on the actual Vercel project and redeploy | **HUMAN** | Step 5 | Vercel dashboard (or `vercel env add` / `vercel --prod`) shows `NEXT_PUBLIC_FACTORY_ADDRESS` updated for Production; the live site's `/app/create` quote-asset picker shows SGOV/NVDA/SPY as selectable (not just WETH) — this is the actual on-the-record proof, check it in a browser | **Needed in hand:** Vercel project access (you already have this — no new credential). ~10 min including redeploy wait |
@@ -100,8 +117,9 @@ superseded (see `ASSUMPTIONS.md`).
 
 - **Token side (what the creator supplies):** exactly `1,000,000,000 / N` tokens
   per quote-asset pool, where N is however many quote assets that launch chose
-  (1–4). This is enforced in code (`BallastFactory.graduate()`'s even split) —
-  not negotiable, not something either of us sets manually.
+  (1 or 2 — see "Permanent parameters"). This is enforced in code
+  (`BallastFactory.graduate()`'s even split) — not negotiable, not something
+  either of us sets manually.
 - **Quote-asset side (NVDA/SPY/SGOV):** **zero**, supplied by nobody, at
   graduation. `BallastSeeder`'s one-sided design means the pool opens with
   liquidity on ONE side only (the token), spanning from the opening price P0 up
@@ -140,22 +158,34 @@ somewhere else (Robinhood's own app, or a third-party DEX swap against the real
 NVDA/WETH pool), bring it back to their wallet, and only then can they use
 Ballast's trade page — which, after this session's earlier work, already
 supports paying with NVDA directly for an NVDA-quoted pool. What's missing is
-purely the "start from WETH" convenience leg. Step 1 above is that fix, and it
-is explicitly *not done tonight* — it needs the proof step (step 2), which
-needs a stable RPC I don't have access to from here.
+purely the "start from WETH" convenience leg. Step 1 (the multi-hop routing
+code) still isn't written — that's unchanged tonight, this session went into
+`MAX_QUOTE_ASSETS` instead. **Correction to the RPC framing below**: the
+`.env` `RH_RPC_URL_PAID` key (Alchemy) already worked tonight for real forked
+contract tests — 10/10 `BallastGraduateFork.t.sol` tests passed against live
+mainnet state, including a brand-new one exercising a two-pool graduation
+end to end. Alchemy's documented lack of Archive/Debug/Trace support for this
+chain (§RPC provider spec) turned out not to matter for plain `forge test
+--fork-url`/`anvil --fork-url` state access — only for deep historical reads
+and `debug_traceTransaction`, neither of which a fork test needs. So the
+step-2 proof script, once step 1 exists, can likely run against the
+**already-configured Alchemy key, tonight, at no additional cost** — don't
+buy QuickNode on my earlier say-so alone; try the existing key against
+`ProveMultiHopSwap.s.sol` first once it's written.
 
-**Mitigation available with zero new code, if steps 1–2 slip:** creators can
-add WETH as one of their (up to 4) chosen quote assets *alongside*
-NVDA/SPY/SGOV — confirmed from code above, this is "both," not "instead of."
-A token launched against WETH and NVDA gets a direct WETH-quoted pool too, and
-the buy-side problem disappears for that token specifically. The cost is real,
-not free, and compounds with the fragmentation risk above: each additional
-quote asset is a full extra pool carved out of the SAME fixed token supply
-(§Liquidity), and nothing on-chain stops a creator from stacking all 4 and
-ending up with four thin pools instead of one usable one. This is a
-product-policy decision, not a code change — worth deciding explicitly, in
-writing (e.g. "the create flow defaults to WETH + up to one stock, not up to
-four"), rather than leaving creators to discover the tradeoff themselves.
+**Mitigation available with zero new code, if steps 1–2 slip:** a creator can
+choose WETH as their SECOND quote asset *alongside* a stock — confirmed from
+code above, this is "both," not "instead of." A token launched against WETH
+and NVDA gets a direct WETH-quoted pool too, and the buy-side problem
+disappears for that token specifically. The cost is real, not free: at
+`MAX_QUOTE_ASSETS = 2` the tradeoff is now simple and bounded rather than the
+open-ended fragmentation risk this section originally flagged — exactly one
+choice, take half the depth in each pool to also get direct WETH reach, or
+keep full depth in one pool and require the buy-side fix (step 1) instead.
+The create flow now shows this tradeoff explicitly the moment a second quote
+asset is selected (not left implicit): "Each quote asset gets its own pool.
+Your supply is split evenly between them — two pools means half the depth in
+each."
 
 ---
 
@@ -163,6 +193,20 @@ four"), rather than leaving creators to discover the tradeoff themselves.
 
 Verified tonight directly against each provider's own site (not an SEO
 roundup — those are noisy and unreliable for this), 2026-09-23.
+
+**UPDATE, same night, after actually testing:** the reasoning below (Alchemy
+lacks Archive/Debug/Trace for this chain, so use QuickNode) is accurate as
+written, but I initially over-applied it. A `RH_RPC_URL_PAID` Alchemy key was
+already sitting in `.env`, and it ran 10/10 real `forge test --fork-url`
+fork tests against live mainnet state without issue tonight — Archive/Debug/
+Trace matter for deep historical reads and `debug_traceTransaction`, not for
+the standard state access a fork test or `anvil --fork-url` actually needs.
+The recommendation to buy QuickNode was made for the multi-hop routing proof
+specifically (step 2) on the assumption that a "won't-evict-recent-state"
+guarantee was needed — that's plausible for a longer, more complex proof
+script, but isn't confirmed necessary the way I stated it. Try the existing
+Alchemy key against `ProveMultiHopSwap.s.sol` first, once it exists, before
+spending the $49/month.
 
 **Buy: QuickNode, Robinhood Chain (chain ID 4663) mainnet, Build plan, $49/month.**
 

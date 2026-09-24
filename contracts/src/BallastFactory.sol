@@ -34,9 +34,20 @@ contract BallastFactory {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000e18;
 
     /// @notice Upper bound on how many quote-asset pools one launch can request.
-    ///         Bounds graduate()'s loop gas and keeps the create-flow picker
-    ///         simple — not a economic parameter, just a sanity ceiling.
-    uint256 public constant MAX_QUOTE_ASSETS = 4;
+    ///         PERMANENT once this factory is deployed — a constant, not owner-
+    ///         settable, same immutability class as ProjectTreasury.noticePeriod.
+    ///         Deliberately 2, not 4: this is an economic parameter after all,
+    ///         not just a gas ceiling — every additional quote asset is a FULL
+    ///         extra pool carved out of the SAME fixed token supply (graduate()'s
+    ///         even split), with no on-chain floor stopping a creator from
+    ///         picking several and ending up with N thin books instead of one
+    ///         usable one (see docs/GO_LIVE.md's "one launch, multiple quote
+    ///         assets" section — this was a live footgun in the create flow at
+    ///         MAX=4, not a hypothetical). At 2, the only choices are: one pool
+    ///         (undiluted depth), or two (one liquid quote for reach + one
+    ///         stock quote for the thesis, each at half depth, deliberately and
+    ///         visibly, not four-way fragmentation with no warning.
+    uint256 public constant MAX_QUOTE_ASSETS = 2;
 
     /// @notice Global asset allowlist every launched treasury reads from.
     address public immutable registry;
