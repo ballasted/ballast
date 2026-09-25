@@ -50,6 +50,7 @@ export type Project = {
   backing?: ProjectBacking;
   ballasted: boolean; // has any backing value
   hasPool: boolean; // a seeded v4 pool exists (liquidity > 0)
+  quoteAssets: Address[]; // real quoteAssetsOf(token) — [WETH] for a prior factory that predates it
   marketPriceWeth?: bigint; // WETH per token, 1e18 — pool mid
   marketPriceUsd?: bigint; // USD per token, 1e18 — pool mid × ETH/USD
   depthToDoubleUsd?: number; // USD of net buying to 2× the pool price (thin-liquidity note)
@@ -251,6 +252,7 @@ export function useProjects() {
     // (the half-open tick-range artifact, confirmed on real graduated pools
     // 2026-09-25) even though the position is real and fully seeded.
     const cs = cands[rowIndex] ?? [];
+    const qaForRow = quoteAssetsByRow[rowIndex] ?? [];
     rowIndex += 1;
     let hasPool = false;
     let marketPriceWeth: bigint | undefined;
@@ -296,6 +298,7 @@ export function useProjects() {
       backing,
       ballasted: Boolean(backing && backing.totalValueUsd > 0n),
       hasPool,
+      quoteAssets: qaForRow,
       marketPriceWeth,
       marketPriceUsd,
       depthToDoubleUsd,

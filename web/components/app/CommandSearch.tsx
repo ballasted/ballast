@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
+import { useAssets } from "@/hooks/useAssets";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply, formatCompactUsd } from "@/lib/market";
@@ -261,6 +263,8 @@ function ResultRow({
 }) {
   const cap = p.marketPriceUsd !== undefined ? marketCapUsd(p.marketPriceUsd, marketCapSupply(p.backing?.totalSupply)) : undefined;
   const capLabel = cap !== undefined ? formatCompactUsd(Number(cap) / 1e18) : p.ballasted ? "Not priced" : "Not ballasted";
+  const { assets: registry, isLoading: registryLoading } = useAssets();
+  const backingAsset = (p.backing?.assets as unknown as { asset: `0x${string}` }[] | undefined)?.[0];
   return (
     <button
       onMouseEnter={onMouseEnter}
@@ -274,7 +278,8 @@ function ResultRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-semibold text-text-primary">{p.symbol ?? shortAddress(p.token)}</span>
-          {p.ballasted && <span className="chip chip-accent">Ballasted</span>}
+          <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
+          <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
         </div>
         <span className="block truncate text-xs text-text-muted">{p.name ?? shortAddress(p.token)}</span>
       </div>

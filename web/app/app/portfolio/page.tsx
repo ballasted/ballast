@@ -7,6 +7,8 @@ import { useAccount } from "wagmi";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
 import { WalletGate } from "@/components/app/WalletGate";
 import { FeePanel } from "@/components/app/FeePanel";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
+import { useAssets } from "@/hooks/useAssets";
 import { Meander } from "@/components/Meander";
 import { CopyAddress } from "@/components/app/CopyAddress";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
@@ -166,6 +168,8 @@ export default function PortfolioPage() {
 
 function HoldingRow({ h }: { h: Holding }) {
   const { project: p } = h;
+  const { assets: registry, isLoading: registryLoading } = useAssets();
+  const backingAsset = (p.backing?.assets as unknown as { asset: `0x${string}` }[] | undefined)?.[0];
   const amount = Number(formatUnits(h.balance, 18)).toLocaleString("en", { maximumFractionDigits: 2 });
   const ratio =
     h.marketValueUsd !== undefined && h.backingValueUsd > 0n
@@ -174,7 +178,11 @@ function HoldingRow({ h }: { h: Holding }) {
   return (
     <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
       <div className="min-w-0">
-        <div className="font-semibold text-text-primary">{p.symbol ?? "—"}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+          <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
+          <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
+        </div>
         <div className="metric-secondary">{amount} tokens</div>
       </div>
       <div className="text-right">
@@ -192,10 +200,16 @@ function HoldingRow({ h }: { h: Holding }) {
 }
 
 function LaunchRow({ p }: { p: Project }) {
+  const { assets: registry, isLoading: registryLoading } = useAssets();
+  const backingAsset = (p.backing?.assets as unknown as { asset: `0x${string}` }[] | undefined)?.[0];
   return (
     <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
       <div className="min-w-0">
-        <div className="font-semibold text-text-primary">{p.symbol ?? "—"}</div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+          <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
+          <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
+        </div>
         <div className="metric-secondary">{p.name ?? "Unnamed project"}</div>
       </div>
       <div className="text-right">

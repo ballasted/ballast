@@ -276,6 +276,7 @@ export function useBacking(token?: Address) {
     graduated,
     ownerFactory,
     hasPool,
+    quoteAssets,
     marketPriceWeth,
     marketPriceUsd,
     depthToDoubleUsd,

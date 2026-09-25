@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
+import { useAssets } from "@/hooks/useAssets";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
@@ -17,8 +19,11 @@ const FLASH_MS = 900;
 // change24hPct ride along free from that pool fetch — see lib/geckoServer.ts
 // fetchTopPool), so this doesn't add a new request. A token with no change%
 // (GeckoTerminal hasn't priced its pool) is left out rather than shown at 0%.
+type BackingAssetView = { asset: `0x${string}` };
+
 export function TopMovers({ projects }: { projects: Project[] }) {
   const trending = useTrending();
+  const { assets: registry, isLoading: registryLoading } = useAssets();
   const byToken = new Map(projects.map((p) => [p.token.toLowerCase(), p] as const));
 
   const movers = (trending.data?.items ?? [])
@@ -72,6 +77,17 @@ export function TopMovers({ projects }: { projects: Project[] }) {
                   <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
                     {p?.symbol ?? shortAddress(m.token as `0x${string}`)}
                   </span>
+                  {p && (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <BackedByChip
+                        backingAsset={(p.backing?.assets as unknown as BackingAssetView[] | undefined)?.[0]?.asset}
+                        registry={registry}
+                        registryLoaded={!registryLoading}
+                        compact
+                      />
+                      <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
+                    </span>
+                  )}
                   <span className="shrink-0 font-mono text-xs tabular-nums text-text-secondary">
                     {formatSmallUsd(m.priceUsd!)}
                   </span>

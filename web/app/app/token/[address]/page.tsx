@@ -10,7 +10,7 @@ import { useDenylistEntry } from "@/hooks/useDenylist";
 import { useMarket } from "@/hooks/useMarket";
 import { useNow } from "@/hooks/useNow";
 import { useAssets } from "@/hooks/useAssets";
-import { resolveAssetIdentity } from "@/lib/assetIdentity";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { MarketPanel } from "@/components/app/token/MarketPanel";
@@ -68,6 +68,7 @@ export default function TokenDetailPage() {
     marketPriceUsd,
     marketPriceWeth,
     hasPool,
+    quoteAssets,
     depthToDoubleUsd,
     graduated,
     ownerFactory,
@@ -93,7 +94,6 @@ export default function TokenDetailPage() {
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
-  const identity = resolveAssetIdentity(backingAsset?.asset, undefined, registry, !registryLoading);
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -127,13 +127,8 @@ export default function TokenDetailPage() {
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <CopyAddress address={token!} label="Token contract" />
-            {ballasted ? (
-              <span className="chip chip-accent">
-                Backed by <AssetDisc identity={identity} size={16} /> {identity.status === "recognized" ? identity.symbol : "…"}
-              </span>
-            ) : (
-              <span className="chip chip-neutral">No treasury</span>
-            )}
+            <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
+            <PoolChips quoteAssets={quoteAssets ?? []} registry={registry} registryLoaded={!registryLoading} />
             <span className={cn("chip", hasPool ? "chip-accent" : "chip-neutral")}>{hasPool ? "Graduated" : "On curve"}</span>
             <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} />
             <Link
