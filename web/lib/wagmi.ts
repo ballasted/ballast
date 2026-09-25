@@ -37,16 +37,32 @@ export const RPC_TRANSPORT = isBrowser
     )
   : http(PUBLIC_RPC_URL, { batch: true, timeout: 12_000, retryCount: 2 });
 
-// AppKit needs the chain in its own CAIP-tagged shape; mirror lib/chain.ts exactly
-// so the wallet picker, the wagmi config, and wallet_addEthereumChain all describe
-// the same single network (4663).
+// AppKit needs the chain in its own CAIP-tagged shape; mirror lib/chain.ts so the
+// wallet picker, the wagmi config, and wallet_addEthereumChain all describe the
+// same single network (4663).
+//
+// rpcUrls here is DUAL-PURPOSE and that's the source of a real bug: it's both (a)
+// what wallet_addEthereumChain hands an external wallet (must be a real, absolute,
+// third-party-reachable URL — a relative "/api/rpc" is useless there, same
+// reasoning as lib/chain.ts) AND (b) what AppKit's OWN internal SDK code reads
+// directly for its pre-connection network checks, bypassing wagmi's `transports`
+// (the RPC_TRANSPORT proxy below) entirely — confirmed by tracing the exact fetch
+// call from Ballast's own production bundle (2026-09-25): AppKit hits
+// PUBLIC_RPC_URL directly even with no wallet connected, hitting the same
+// broken-CORS/rate-limited endpoint our own reads used to. Since (a) needs a real
+// absolute URL but doesn't require it to be the FREE public one, pointing both
+// purposes at our own `/api/rpc` (computed as a full origin URL, not a bare path,
+// so it's equally valid for an external wallet to fetch) fixes (b) for free while
+// still satisfying (a) — our proxy IS a real, working, absolute RPC endpoint.
+// Server-side this can't resolve `window.location`, but AppKit only runs client-side.
+const APPKIT_RPC_URL = isBrowser ? `${window.location.origin}/api/rpc` : PUBLIC_RPC_URL;
 export const robinhoodNetwork = defineAppKitChain({
   id: 4663,
   caipNetworkId: "eip155:4663",
   chainNamespace: "eip155",
   name: "Robinhood Chain",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [PUBLIC_RPC_URL] } },
+  rpcUrls: { default: { http: [APPKIT_RPC_URL] } },
   blockExplorers: { default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" } },
   contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
 }) as AppKitNetwork;
