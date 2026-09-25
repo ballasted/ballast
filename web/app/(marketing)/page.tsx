@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Container } from "@/components/Container";
 import { Reveal } from "@/components/Reveal";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
+import { KeelMark } from "@/components/Wordmark";
+import { ProofCard } from "@/components/marketing/ProofCard";
 import { getHeroStats, type HeroStats } from "@/lib/heroStats";
 import { formatCompactUsd } from "@/lib/market";
 
@@ -39,7 +41,8 @@ function Hero({ stats }: { stats: HeroStats }) {
       <MeanderWatermark />
       <Container className="py-24 sm:py-40">
         <div className="flex flex-col items-center text-center">
-          <h1 className="anim-enter anim-d1 max-w-2xl font-serif text-4xl font-bold tracking-tight text-bone sm:text-6xl">
+          <KeelMark size={28} className="anim-enter opacity-70" />
+          <h1 className="anim-enter anim-d1 mt-4 max-w-2xl font-serif text-4xl font-bold tracking-tight text-bone sm:text-6xl">
             See exactly how much backs each token, live.
           </h1>
 
@@ -60,6 +63,10 @@ function Hero({ stats }: { stats: HeroStats }) {
 
           <div className="anim-enter anim-d3 mt-10 font-mono text-sm text-text-faint">
             {week} launched this week
+          </div>
+
+          <div className="anim-enter anim-d3 mt-8 flex justify-center">
+            <ProofCard />
           </div>
         </div>
       </Container>
