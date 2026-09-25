@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import type { Address } from "viem";
 import { serverClient } from "@/lib/serverChain";
-import { ballastTokenAbi, backingLensAbi, ballastFactoryAbi, stateViewAbi, quoterAbi, erc20Abi, assetRegistryAbi } from "@/lib/abis";
+import { ballastTokenAbi, backingLensAbi, ballastFactoryAbi, quoterAbi, erc20Abi, assetRegistryAbi } from "@/lib/abis";
 import { FACTORY_ADDRESSES, LENS_ADDRESS, STATE_VIEW_ADDRESS, QUOTER_ADDRESS, WETH_ADDRESS, ASSET_REGISTRY_ADDRESS, hookForFactory } from "@/lib/contracts";
 import { BLOCKSCOUT_URL } from "@/lib/blockscout";
 import { activeChain } from "@/lib/chain";
-import { poolKeyForToken, poolId, sellZeroForOne } from "@/lib/pool";
-import { seededPositionLiquidity } from "@/lib/seededPosition";
+import { poolKeyForToken, poolId, sellZeroForOne, tokenIsCurrency0 } from "@/lib/pool";
+import { seededPositionState, isQuoteSideEmpty } from "@/lib/seededPosition";
 import { resolveAssetIdentity, type RegistryAssetRef } from "@/lib/assetIdentity";
 
 // Live verification for a launched token — every field below is a fresh chain
@@ -22,6 +22,17 @@ type LiquidityCheck = Check & { hookAddress?: Address };
 type SellCheck = Check & { block?: number; method: string };
 type BackingAssetRow = { address: Address; symbol?: string; status: CheckStatus };
 
+// One entry per real quoteAssetsOf() pool — a launch can have up to
+// MAX_QUOTE_ASSETS (2) live pools, and each needs its OWN liquidity-locked /
+// sell-simulation answer (WETH being locked says nothing about SPY).
+type PoolCheck = {
+  quoteAsset: Address;
+  symbol: string;
+  hookAddress?: Address;
+  liquidityLocked: LiquidityCheck;
+  sellSimulation: SellCheck;
+};
+
 export type VerificationResult = {
   address: Address;
   isBallastLaunch: boolean;
@@ -31,10 +42,10 @@ export type VerificationResult = {
     sourceVerifiedTreasury: SourceCheck;
     mintAuthority: Check;
     mutableParams: { status: "pass"; items: string[] };
-    liquidityLocked: LiquidityCheck;
+    graduated: boolean;
+    pools: PoolCheck[]; // empty when !graduated — nothing to check yet
     creatorAllocation: Check;
     backingAssets: BackingAssetRow[];
-    sellSimulation: SellCheck;
   };
 };
 
@@ -112,7 +123,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
     );
   }
 
-  const [tokenReads, graduated] = await Promise.all([
+  const [tokenReads, graduatedRaw, quoteAssetsRaw] = await Promise.all([
     client.multicall({
       allowFailure: true,
       contracts: [
@@ -122,10 +133,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
       ] as const,
     }),
     client.readContract({ address: ownerFactory, abi: ballastFactoryAbi, functionName: "graduated", args: [token] }),
+    client
+      .readContract({ address: ownerFactory, abi: ballastFactoryAbi, functionName: "quoteAssetsOf", args: [token] })
+      .catch(() => undefined),
   ]);
   const creator = tokenReads[0].status === "success" ? (tokenReads[0].result as Address) : undefined;
   const treasury = tokenReads[1].status === "success" ? (tokenReads[1].result as Address) : undefined;
   const totalSupply = tokenReads[2].status === "success" ? (tokenReads[2].result as bigint) : undefined;
+  const graduated = Boolean(graduatedRaw);
+  // A prior factory that predates quoteAssetsOf() simply fails the call — its
+  // only possible shape is a single WETH pool (matches useTokenQuotePools.ts).
+  const quoteAssets: Address[] =
+    Array.isArray(quoteAssetsRaw) && quoteAssetsRaw.length > 0 ? (quoteAssetsRaw as Address[]) : WETH_ADDRESS ? [WETH_ADDRESS] : [];
 
   const [sourceToken, sourceTreasury, creatorBal, backing, registryAddresses] = await Promise.all([
     sourceVerified(token),
@@ -169,40 +188,121 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
         : { status: "pass", value: `${pct.toFixed(2)}% held — launch grants 0%; this is market activity, not an allocation` };
   }
 
-  // -- Liquidity locked: BallastSeeder owns the LP position permanently (no
-  //    removal function exists on it) — checkable live via whether that EXACT
-  //    position (not just the pool as a whole) actually holds liquidity.
-  //    getLiquidity(poolId) alone isn't a safe proxy here: it reads 0 exactly
-  //    when the current tick sits on the position's boundary (the half-open
-  //    tick-range artifact, confirmed on real graduated pools 2026-09-25) even
-  //    though the position is real, locked, and holds real backing supply. This
-  //    is a claim users rely on to decide whether to buy, so it reads the real
-  //    position via StateView.getPositionInfo (lib/seededPosition.ts) instead of
-  //    trusting the coarser pool-wide liquidity figure.
+  // -- Per-pool checks: liquidity locked + sell simulation, once per REAL
+  //    quote asset (up to 2) — a launch's WETH pool being locked/sellable says
+  //    nothing about its SPY pool, so each gets its own independent answer.
   const hook = hookForFactory(ownerFactory);
-  let liquidityLocked: LiquidityCheck = { status: "unavailable", value: "Not graduated yet" };
-  if (!graduated) {
-    liquidityLocked = { status: "fail", value: "Not graduated — no pool exists yet" };
-  } else if (hook && WETH_ADDRESS && STATE_VIEW_ADDRESS) {
-    const key = poolKeyForToken(token, WETH_ADDRESS, hook);
-    if (key) {
-      const id = poolId(key);
-      try {
-        const seeder = await client.readContract({ address: ownerFactory, abi: ballastFactoryAbi, functionName: "seeder" });
-        const slot0 = await client.readContract({ address: STATE_VIEW_ADDRESS, abi: stateViewAbi, functionName: "getSlot0", args: [id] });
-        const [, currentTick] = slot0 as readonly [bigint, number, number, number];
-        const posLiq = await seededPositionLiquidity(client, id, seeder as Address, currentTick);
-        liquidityLocked =
-          posLiq !== undefined && posLiq > 0n
-            ? { status: "pass", value: "Locked permanently in BallastSeeder (no removal function exists)", hookAddress: hook }
-            : posLiq === 0n
-              ? { status: "fail", value: "Graduated, but the seeded position reports zero liquidity", hookAddress: hook }
-              : { status: "unavailable", value: "Could not locate the seeded position", hookAddress: hook };
-      } catch {
-        liquidityLocked = { status: "unavailable", value: "Could not read pool liquidity" };
-      }
-    }
-  }
+  const seederRes = graduated
+    ? await client.readContract({ address: ownerFactory, abi: ballastFactoryAbi, functionName: "seeder" }).catch(() => undefined)
+    : undefined;
+  const quoteSymbolReads =
+    graduated && quoteAssets.length > 0
+      ? await client.multicall({
+          allowFailure: true,
+          contracts: quoteAssets.map((qa) => ({ address: qa, abi: erc20Abi, functionName: "symbol" }) as const),
+        })
+      : [];
+
+  const pools: PoolCheck[] = graduated
+    ? await Promise.all(
+        quoteAssets.map(async (quoteAsset, i): Promise<PoolCheck> => {
+          const symbol =
+            WETH_ADDRESS && quoteAsset.toLowerCase() === WETH_ADDRESS.toLowerCase()
+              ? "WETH"
+              : quoteSymbolReads[i]?.status === "success"
+                ? (quoteSymbolReads[i].result as string)
+                : quoteAsset;
+
+          if (!hook || !STATE_VIEW_ADDRESS || !seederRes) {
+            const unavailable: LiquidityCheck = { status: "unavailable", value: "Could not read pool liquidity", hookAddress: hook };
+            return {
+              quoteAsset,
+              symbol,
+              hookAddress: hook,
+              liquidityLocked: unavailable,
+              sellSimulation: { status: "unavailable", value: "Could not read pool liquidity", method: "V4Quoter.quoteExactInputSingle" },
+            };
+          }
+
+          const key = poolKeyForToken(token, quoteAsset, hook);
+          if (!key) {
+            const unavailable: LiquidityCheck = { status: "unavailable", value: "Could not build pool key", hookAddress: hook };
+            return {
+              quoteAsset,
+              symbol,
+              hookAddress: hook,
+              liquidityLocked: unavailable,
+              sellSimulation: { status: "unavailable", value: "Could not build pool key", method: "V4Quoter.quoteExactInputSingle" },
+            };
+          }
+          const id = poolId(key);
+
+          // -- Liquidity locked: BallastSeeder owns the LP position permanently
+          //    (no removal function exists on it) — checkable live via whether
+          //    that EXACT position (not just the pool as a whole) actually
+          //    holds liquidity. getLiquidity(poolId) alone isn't a safe proxy:
+          //    it reads 0 exactly when the current tick sits on the position's
+          //    boundary (the half-open tick-range artifact, confirmed on real
+          //    graduated pools 2026-09-25) even though the position is real,
+          //    locked, and holds real backing supply. This is a claim users
+          //    rely on to decide whether to buy, so it reads the real position
+          //    via StateView.getPositionInfo (lib/seededPosition.ts) instead of
+          //    trusting the coarser pool-wide liquidity figure.
+          let liquidityLocked: LiquidityCheck;
+          let quoteEmpty: boolean | undefined;
+          try {
+            const state = await seededPositionState(client, id, seederRes as Address);
+            if (!state) {
+              liquidityLocked = { status: "unavailable", value: "Could not locate the seeded position", hookAddress: hook };
+            } else {
+              quoteEmpty = isQuoteSideEmpty(state.currentTick, state.ticks, !tokenIsCurrency0(token, quoteAsset));
+              liquidityLocked =
+                state.liquidity > 0n
+                  ? { status: "pass", value: "Locked permanently in BallastSeeder (no removal function exists)", hookAddress: hook }
+                  : { status: "fail", value: "Graduated, but the seeded position reports zero liquidity", hookAddress: hook };
+            }
+          } catch {
+            liquidityLocked = { status: "unavailable", value: "Could not read pool liquidity", hookAddress: hook };
+          }
+
+          // -- Sell simulation: a real V4Quoter call through the actual pool +
+          //    hook — proves a sell path exists RIGHT NOW, not just that a pool
+          //    was created once. A revert here is ambiguous by itself: on a
+          //    one-sided Ballast pool, the quote-asset side starts at EXACTLY
+          //    zero and is filled only by real buys (docs/GO_LIVE.md
+          //    §Liquidity) — so "nobody has bought this pool yet" reverts a
+          //    sell quote for a completely legitimate reason, not a honeypot.
+          //    isQuoteSideEmpty (an exact tick-boundary fact, not a guess)
+          //    disambiguates: empty quote side + revert = "nothing to sell
+          //    into yet"; real quote-side liquidity + revert = a genuine fail.
+          let sellSimulation: SellCheck = { status: "unavailable", value: "Not graduated yet", method: "V4Quoter.quoteExactInputSingle" };
+          if (QUOTER_ADDRESS && totalSupply) {
+            const testAmount = totalSupply / 100_000n; // ~0.001% of supply — meaningful, but small enough to avoid an unrelated slippage revert
+            try {
+              const block = await client.getBlockNumber();
+              const result = await client.simulateContract({
+                address: QUOTER_ADDRESS,
+                abi: quoterAbi,
+                functionName: "quoteExactInputSingle",
+                args: [{ poolKey: key, zeroForOne: sellZeroForOne(token, quoteAsset), exactAmount: testAmount, hookData: "0x" }],
+              });
+              const [amountOut] = result.result as readonly [bigint, bigint];
+              sellSimulation =
+                amountOut > 0n
+                  ? { status: "pass", value: "Sell quote succeeded — a sell path exists", block: Number(block), method: "V4Quoter.quoteExactInputSingle" }
+                  : { status: "fail", value: "Sell quote returned zero output", block: Number(block), method: "V4Quoter.quoteExactInputSingle" };
+            } catch {
+              sellSimulation =
+                quoteEmpty === true
+                  ? { status: "unavailable", value: "No buys on this pool yet — nothing to sell into", method: "V4Quoter.quoteExactInputSingle" }
+                  : { status: "fail", value: "Sell quote reverted", method: "V4Quoter.quoteExactInputSingle" };
+            }
+          }
+
+          return { quoteAsset, symbol, hookAddress: hook, liquidityLocked, sellSimulation };
+        }),
+      )
+    : [];
 
   // -- Backing assets: identity-checked, not just listed — the fold-in from the
   //    asset-identity work. Each asset the treasury actually holds is resolved
@@ -240,38 +340,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
     };
   });
 
-  // -- Sell simulation: a real V4Quoter call through the actual pool + hook —
-  //    proves a sell path exists RIGHT NOW, not just that a pool was created
-  //    once. Gated on `graduated` (the real on-chain fact this question is
-  //    actually asking about), not on `liquidityLocked` — that check answers a
-  //    different question ("is liquidity really there"), and gating one real
-  //    read on another only compounds a wrong answer instead of independently
-  //    proving this one. A pool with no liquidity will simply fail (or revert)
-  //    the quoter call below on its own, honestly.
-  let sellSimulation: SellCheck = { status: "unavailable", value: "Not graduated yet", method: "V4Quoter.quoteExactInputSingle" };
-  if (graduated && hook && WETH_ADDRESS && QUOTER_ADDRESS && totalSupply) {
-    const key = poolKeyForToken(token, WETH_ADDRESS, hook);
-    if (key) {
-      const testAmount = totalSupply / 100_000n; // ~0.001% of supply — meaningful, but small enough to avoid an unrelated slippage revert
-      try {
-        const block = await client.getBlockNumber();
-        const result = await client.simulateContract({
-          address: QUOTER_ADDRESS,
-          abi: quoterAbi,
-          functionName: "quoteExactInputSingle",
-          args: [{ poolKey: key, zeroForOne: sellZeroForOne(token, WETH_ADDRESS), exactAmount: testAmount, hookData: "0x" }],
-        });
-        const [amountOut] = result.result as readonly [bigint, bigint];
-        sellSimulation =
-          amountOut > 0n
-            ? { status: "pass", value: "Sell quote succeeded — a sell path exists", block: Number(block), method: "V4Quoter.quoteExactInputSingle" }
-            : { status: "fail", value: "Sell quote returned zero output", block: Number(block), method: "V4Quoter.quoteExactInputSingle" };
-      } catch {
-        sellSimulation = { status: "fail", value: "Sell quote reverted", method: "V4Quoter.quoteExactInputSingle" };
-      }
-    }
-  }
-
   const result: VerificationResult = {
     address: token,
     isBallastLaunch: true,
@@ -283,10 +351,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ add
         : { status: "unavailable", value: "No treasury found", explorerUrl: "" },
       mintAuthority,
       mutableParams,
-      liquidityLocked,
+      graduated,
+      pools,
       creatorAllocation,
       backingAssets,
-      sellSimulation,
     },
   };
 

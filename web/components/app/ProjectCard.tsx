@@ -6,9 +6,8 @@ import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useDenylist } from "@/hooks/useDenylist";
 import { useAssets } from "@/hooks/useAssets";
-import { resolveAssetIdentity } from "@/lib/assetIdentity";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { AssetDisc } from "@/components/app/AssetDisc";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { Meander } from "@/components/Meander";
@@ -21,7 +20,7 @@ type BackingAssetView = { asset: `0x${string}` };
 // Exactly five things, in this order, nothing else: image, $TICKER + name,
 // market cap, one backing chip, one state pill.
 export function ProjectCard({ project }: { project: Project }) {
-  const { symbol, name, backing, token, metadataURI, hasPool, marketPriceUsd } = project;
+  const { symbol, name, backing, token, metadataURI, hasPool, marketPriceUsd, quoteAssets } = project;
   const { meta } = useProjectMeta(metadataURI);
   // Denylisted tokens still appear (ticker + address, still link to the token
   // page) but their project-supplied metadata is withheld — no logo, no name.
@@ -35,9 +34,7 @@ export function ProjectCard({ project }: { project: Project }) {
   // trusting a claimed ticker string, so an impostor token can't borrow a real
   // asset's mark just by matching its symbol.
   const { assets: registry, isLoading: registryLoading } = useAssets();
-  const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
-  const identity = resolveAssetIdentity(backingAsset?.asset, undefined, registry, !registryLoading);
 
   const mcap1e18 = marketCapUsd(marketPriceUsd, marketCapSupply(backing?.totalSupply));
 
@@ -56,15 +53,11 @@ export function ProjectCard({ project }: { project: Project }) {
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-3">
-          {ballasted ? (
-            <span className="chip chip-accent">
-              Backed by <AssetDisc identity={identity} size={16} />{" "}
-              {identity.status === "recognized" ? identity.symbol : "…"}
-            </span>
-          ) : (
-            <span className="chip chip-neutral">No treasury</span>
-          )}
-          <span className={cn("chip", hasPool ? "chip-accent" : "chip-neutral")}>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
+            <PoolChips quoteAssets={quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
+          </span>
+          <span className={cn("chip shrink-0", hasPool ? "chip-accent" : "chip-neutral")}>
             {hasPool ? "Graduated" : "On curve"}
           </span>
         </div>

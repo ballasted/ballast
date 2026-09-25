@@ -33,9 +33,9 @@ export function VerificationPanel({ token }: { token?: Address }) {
   if (!data || !data.isBallastLaunch || !data.checks) return null;
 
   const c = data.checks;
-  const hookExplorer = c.liquidityLocked.hookAddress
-    ? `${activeChain.blockExplorers.default.url}/address/${c.liquidityLocked.hookAddress}`
-    : undefined;
+  // Label suffix only when there's more than one pool — a single-pool launch
+  // (the common case) keeps the exact same row labels as before.
+  const suffix = (symbol: string) => (c.pools.length > 1 ? ` (${symbol})` : "");
 
   return (
     <section className="card p-4">
@@ -67,13 +67,19 @@ export function VerificationPanel({ token }: { token?: Address }) {
           value={c.mutableParams.items.join("; ")}
           tip="Only project metadata can change post-launch."
         />
-        <Row
-          label="Liquidity locked"
-          status={c.liquidityLocked.status}
-          value={c.liquidityLocked.value}
-          tip="Pool position has no removal function."
-          href={hookExplorer}
-        />
+        {!c.graduated && (
+          <Row label="Liquidity locked" status="fail" value="Not graduated — no pool exists yet" tip="Pool position has no removal function." />
+        )}
+        {c.pools.map((p) => (
+          <Row
+            key={`liq-${p.quoteAsset}`}
+            label={`Liquidity locked${suffix(p.symbol)}`}
+            status={p.liquidityLocked.status}
+            value={p.liquidityLocked.value}
+            tip="Pool position has no removal function."
+            href={p.hookAddress ? `${activeChain.blockExplorers.default.url}/address/${p.hookAddress}` : undefined}
+          />
+        ))}
         <Row
           label="Creator allocation"
           status={c.creatorAllocation.status}
@@ -89,12 +95,18 @@ export function VerificationPanel({ token }: { token?: Address }) {
             tip="Checked by address against AssetRegistry, never ticker."
           />
         ))}
-        <Row
-          label="Sell simulation"
-          status={c.sellSimulation.status}
-          value={c.sellSimulation.value}
-          tip="Live quote through the real pool, not a cached assumption."
-        />
+        {!c.graduated && (
+          <Row label="Sell simulation" status="unavailable" value="Not graduated yet" tip="Live quote through the real pool, not a cached assumption." />
+        )}
+        {c.pools.map((p) => (
+          <Row
+            key={`sell-${p.quoteAsset}`}
+            label={`Sell simulation${suffix(p.symbol)}`}
+            status={p.sellSimulation.status}
+            value={p.sellSimulation.value}
+            tip="Live quote through the real pool, not a cached assumption. An empty quote side (nobody's bought yet) is not the same as a real failure."
+          />
+        ))}
       </ul>
       <p className="mt-3 text-xs text-text-faint">
         Live reads, refreshed every 30s.{" "}

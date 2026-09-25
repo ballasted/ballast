@@ -10,12 +10,13 @@ import { useDenylistEntry } from "@/hooks/useDenylist";
 import { useMarket } from "@/hooks/useMarket";
 import { useNow } from "@/hooks/useNow";
 import { useAssets } from "@/hooks/useAssets";
-import { resolveAssetIdentity } from "@/lib/assetIdentity";
+import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
+import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import {
@@ -40,7 +41,7 @@ import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
 
-type BackingAssetView = { asset: `0x${string}` };
+type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
 type TabId = "trades" | "holders" | "backing" | "about";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. Header + stat
@@ -63,9 +64,11 @@ export default function TokenDetailPage() {
     metadataChanged,
     creator,
     pending,
+    noticePeriod,
     marketPriceUsd,
     marketPriceWeth,
     hasPool,
+    quoteAssets,
     depthToDoubleUsd,
     graduated,
     ownerFactory,
@@ -91,7 +94,6 @@ export default function TokenDetailPage() {
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
-  const identity = resolveAssetIdentity(backingAsset?.asset, undefined, registry, !registryLoading);
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -125,13 +127,8 @@ export default function TokenDetailPage() {
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <CopyAddress address={token!} label="Token contract" />
-            {ballasted ? (
-              <span className="chip chip-accent">
-                Backed by <AssetDisc identity={identity} size={16} /> {identity.status === "recognized" ? identity.symbol : "…"}
-              </span>
-            ) : (
-              <span className="chip chip-neutral">No treasury</span>
-            )}
+            <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
+            <PoolChips quoteAssets={quoteAssets ?? []} registry={registry} registryLoaded={!registryLoading} />
             <span className={cn("chip", hasPool ? "chip-accent" : "chip-neutral")}>{hasPool ? "Graduated" : "On curve"}</span>
             <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} />
             <Link
@@ -203,7 +200,18 @@ export default function TokenDetailPage() {
         {tab === "holders" && <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />}
         {tab === "backing" &&
           (backing ? (
-            <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+            <div className="space-y-4">
+              <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+              <CreatorWithdrawalPanel
+                treasury={treasury}
+                creator={creator}
+                assets={(backing.assets as unknown as BackingAssetView[]) ?? []}
+                noticePeriod={noticePeriod}
+                pending={pending}
+                symbol={symbol}
+                now={now}
+              />
+            </div>
           ) : (
             <div className="card p-5 text-sm text-text-muted">No treasury</div>
           ))}

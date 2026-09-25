@@ -119,19 +119,49 @@ export async function findSeededTicks(
 }
 
 /**
- * The seeded LP position's real, live liquidity — reads the actual position
- * StateView.getPositionInfo, owned by `seeder` (BallastFactory.seeder()), salt 0
- * (the only salt BallastSeeder ever uses). Returns undefined on any failure
- * (never fabricates a value); 0n is a real, meaningful answer (drained/never
- * seeded), distinct from "couldn't check."
+ * True iff the position currently holds NO quote asset — i.e. no real buy has
+ * ever moved price off the seed-time boundary on the quote-asset side. This is
+ * an exact fact from tick comparison alone, not an approximation: mirroring
+ * v4-periphery's LiquidityAmounts.getAmountsForLiquidity, amount1 == 0 exactly
+ * when currentTick <= tickLower, and amount0 == 0 exactly when
+ * currentTick >= tickUpper — so no need to compute the actual token amounts,
+ * only which side of the boundary the current tick sits on.
  */
-export async function seededPositionLiquidity(
+export function isQuoteSideEmpty(
+  currentTick: number,
+  ticks: { tickLower: number; tickUpper: number },
+  quoteIsCurrency0: boolean,
+): boolean {
+  return quoteIsCurrency0 ? currentTick >= ticks.tickUpper : currentTick <= ticks.tickLower;
+}
+
+export type SeededPositionState = {
+  currentTick: number;
+  ticks: { tickLower: number; tickUpper: number };
+  liquidity: bigint;
+};
+
+/**
+ * The seeded LP position's full real, live state — current tick, the
+ * position's real tickLower/tickUpper, and its actual liquidity, read via
+ * StateView.getPositionInfo, owned by `seeder` (BallastFactory.seeder()),
+ * salt 0 (the only salt BallastSeeder ever uses). Returns undefined on any
+ * failure (never fabricates a value); liquidity 0n is a real, meaningful
+ * answer (drained/never seeded), distinct from "couldn't check."
+ */
+export async function seededPositionState(
   client: PublicClient,
   poolId: Hex,
   seeder: Address,
-  currentTick: number,
-): Promise<bigint | undefined> {
+): Promise<SeededPositionState | undefined> {
   if (!STATE_VIEW_ADDRESS) return undefined;
+  const slot0 = (await client.readContract({
+    address: STATE_VIEW_ADDRESS,
+    abi: stateViewAbi,
+    functionName: "getSlot0",
+    args: [poolId],
+  })) as readonly [bigint, number, number, number];
+  const currentTick = slot0[1];
   const ticks = await findSeededTicks(client, poolId, currentTick);
   if (!ticks) return undefined;
   const ZERO_SALT: Hex = `0x${"0".repeat(64)}`;
@@ -141,5 +171,5 @@ export async function seededPositionLiquidity(
     functionName: "getPositionInfo",
     args: [poolId, seeder, ticks.tickLower, ticks.tickUpper, ZERO_SALT],
   })) as readonly [bigint, bigint, bigint];
-  return liquidity;
+  return { currentTick, ticks, liquidity };
 }
