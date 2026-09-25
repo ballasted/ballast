@@ -79,6 +79,54 @@ export const projectTreasuryAbi = [
       { name: "unlockAt", type: "uint64" },
     ],
   },
+  {
+    // Creator's own deposits still available to withdraw (deposited via
+    // deposit(), never a third-party proposeDeposit/acceptDeposit — those are
+    // permanently locked in lockedBalance instead and can never move here).
+    type: "function",
+    name: "creatorWithdrawable",
+    stateMutability: "view",
+    inputs: [{ name: "asset", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "activeWithdrawalId",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    // Announce intent to withdraw a creator deposit — starts the public,
+    // immutable noticePeriod countdown. Only one withdrawal may be active at a
+    // time; amount must not exceed creatorWithdrawable(asset).
+    type: "function",
+    name: "announceWithdrawal",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "id", type: "uint256" }],
+  },
+  {
+    // Reverts if block.timestamp < unlockAt — the notice period is the whole
+    // point, enforced on-chain, not just in the UI.
+    type: "function",
+    name: "executeWithdrawal",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    // Can cancel at ANY time before execution — no notice-period restriction
+    // on cancelling (contracts/src/ProjectTreasury.sol).
+    type: "function",
+    name: "cancelWithdrawal",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
 ] as const;
 
 export const erc20Abi = [

@@ -16,6 +16,7 @@ import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
+import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import {
@@ -40,7 +41,7 @@ import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
 
-type BackingAssetView = { asset: `0x${string}` };
+type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
 type TabId = "trades" | "holders" | "backing" | "about";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. Header + stat
@@ -63,6 +64,7 @@ export default function TokenDetailPage() {
     metadataChanged,
     creator,
     pending,
+    noticePeriod,
     marketPriceUsd,
     marketPriceWeth,
     hasPool,
@@ -203,7 +205,18 @@ export default function TokenDetailPage() {
         {tab === "holders" && <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />}
         {tab === "backing" &&
           (backing ? (
-            <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+            <div className="space-y-4">
+              <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+              <CreatorWithdrawalPanel
+                treasury={treasury}
+                creator={creator}
+                assets={(backing.assets as unknown as BackingAssetView[]) ?? []}
+                noticePeriod={noticePeriod}
+                pending={pending}
+                symbol={symbol}
+                now={now}
+              />
+            </div>
           ) : (
             <div className="card p-5 text-sm text-text-muted">No treasury</div>
           ))}
