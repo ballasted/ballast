@@ -433,8 +433,10 @@ export function CreateFlow() {
               ))}
             </div>
 
+            <OpeningIsFixedNote openFdv={openFdv} />
+
             {mode === "none" ? (
-              <UnbackedOpening openFdv={openFdv} />
+              <UnbackedOpening />
             ) : !registryReady ? (
               <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS.</InlineNotice>
             ) : assetsLoading ? (
@@ -707,28 +709,35 @@ export function CreateFlow() {
 
 type OpenFdv = ReturnType<typeof useOpeningFdv>;
 
-// The unbacked-launch explainer + its LIVE opening valuation, so a creator sees a
-// number before they sign, not a description. The figure is read from the factory's
-// UNBACKED_TICK (opening ≈ 1 ETH) and the ETH/USD feed.
-function UnbackedOpening({ openFdv }: { openFdv: OpenFdv }) {
+// Every launch — backed or not, one quote asset or two — opens at the SAME
+// fixed ~1 ETH fully-diluted valuation (docs/phase2-combination-design.md
+// §1). A treasury deposit changes the backing figure shown elsewhere in this
+// flow, never this number. Shown once, above both the "Ballast this launch"
+// and "No treasury" branches, so a creator sees it regardless of which they
+// pick. The figure is read live from the factory's UNBACKED_TICK and the
+// ETH/USD feed — see useOpeningFdv.
+function OpeningIsFixedNote({ openFdv }: { openFdv: OpenFdv }) {
   const eth = openFdv.fdvWeth;
   const usd = fmtUsdApprox(openFdv.fdvUsd);
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-text-secondary">
-        No treasury, no backing figure. Opens at ~{" "}
-        <span className="text-text-primary">{eth !== undefined ? eth.toFixed(2) : "1"} ETH</span> fully diluted
-        {usd ? <> ({usd})</> : null}; priced in WETH, so the dollar figure moves with ETH. No oracle, so it can launch
-        any hour — and you can add a treasury later.
-      </p>
-      <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
-        <span className="eyebrow">Opening valuation</span>
-        <span className="text-right">
-          <span className="figure-primary block tabular-nums">{fmtEthFdv(eth)}</span>
-          {usd && <span className="metric-secondary tabular-nums">{usd}</span>}
-        </span>
-      </div>
+    <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
+      <span className="eyebrow">Opening valuation — fixed, regardless of treasury</span>
+      <span className="text-right">
+        <span className="figure-primary block tabular-nums">{fmtEthFdv(eth)}</span>
+        {usd && <span className="metric-secondary tabular-nums">{usd}</span>}
+      </span>
     </div>
+  );
+}
+
+// Unbacked-specific facts only — the fixed opening figure itself now lives in
+// OpeningIsFixedNote above, shown for both branches.
+function UnbackedOpening() {
+  return (
+    <p className="text-sm text-text-secondary">
+      No treasury. Priced in WETH, so the dollar figure above moves with ETH. No oracle, so it can launch any hour —
+      and you can add a treasury later.
+    </p>
   );
 }
 
