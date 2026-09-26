@@ -85,6 +85,16 @@ contract BallastHook {
     /// @notice Whoever deployed this hook — authorized ONLY to call setSeeder,
     ///         exactly once, immediately after BallastSeeder deploys. Not an
     ///         ongoing admin role; there is nothing else this address can do.
+    ///         Recorded from tx.origin, not msg.sender: a salt-mined hook address
+    ///         (required for v4's flag-encoded hook addresses) gets deployed via
+    ///         the canonical deterministic-deployment proxy when broadcast through
+    ///         Foundry's `new{salt}(...)`, so the constructor's real msg.sender is
+    ///         that proxy, not the deploying EOA — tx.origin is the only value
+    ///         that correctly survives the extra hop in both the real broadcast
+    ///         and a direct (non-broadcast) test deployment. Fine for a one-shot
+    ///         bootstrap check like this; not a pattern to reuse for anything
+    ///         recurring (tx.origin's usual phishing/relayed-call risk applies
+    ///         there, not here).
     address private immutable _deployer;
 
     /// @notice The one address beforeRemoveLiquidity ever blocks. Settable once
@@ -156,7 +166,7 @@ contract BallastHook {
         poolManager = poolManager_;
         feeConfig = feeConfig_;
         weth = weth_;
-        _deployer = msg.sender;
+        _deployer = tx.origin;
     }
 
     modifier onlyPoolManager() {
@@ -168,7 +178,7 @@ contract BallastHook {
     ///         BallastSeeder deploys (which needed THIS hook's address in ITS
     ///         OWN constructor, so the ordering can't be the other way around).
     function setSeeder(address seeder_) external {
-        if (msg.sender != _deployer) revert NotDeployer();
+        if (tx.origin != _deployer) revert NotDeployer();
         if (_seederSet) revert AlreadySet();
         if (seeder_ == address(0)) revert ZeroAddress();
         seeder = seeder_;

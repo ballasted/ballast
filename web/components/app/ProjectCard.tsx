@@ -12,6 +12,7 @@ import { formatUsd, shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
+import { isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
 
 type BackingAssetView = { asset: `0x${string}` };
 
@@ -37,6 +38,11 @@ export function ProjectCard({ project }: { project: Project }) {
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
 
   const mcap1e18 = marketCapUsd(marketPriceUsd, marketCapSupply(backing?.totalSupply));
+  // A formerly-pinned protocol token (e.g. $BALLAST v1 after v2 relaunches)
+  // stays a normal card, no separate row — but the state pill it already has
+  // is the one slot the "exactly five things" rule leaves for a status word,
+  // so this reuses it rather than adding a sixth element.
+  const migrated = isPriorPinnedToken(token);
 
   return (
     <Link href={`/app/token/${token}`} className="card card-hover group flex h-full flex-col overflow-hidden">
@@ -57,8 +63,8 @@ export function ProjectCard({ project }: { project: Project }) {
             <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
             <PoolChips quoteAssets={quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
           </span>
-          <span className={cn("chip shrink-0", hasPool ? "chip-accent" : "chip-neutral")}>
-            {hasPool ? "Graduated" : "On curve"}
+          <span className={cn("chip shrink-0", !migrated && hasPool ? "chip-accent" : "chip-neutral")}>
+            {migrated ? "v1 · migrated" : hasPool ? "Graduated" : "On curve"}
           </span>
         </div>
       </div>
