@@ -34,6 +34,7 @@ import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
+import { ProtocolControlsPanel } from "@/components/app/ProtocolControlsPanel";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
@@ -251,6 +252,7 @@ export default function TokenDetailPage() {
 
             <AllocationSlot />
             <VerificationPanel token={token} />
+            <ProtocolControlsPanel ownerFactory={ownerFactory} />
             <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
             <CreatorTrackRecord creator={creator} thisToken={token!} />
             <MarketPanel token={token!} chainPriceUsd={marketPriceUsd} />

@@ -241,6 +241,30 @@ specific need, though worth a look for cheap general-purpose reads later.
 
 ---
 
+## Queued for the Phase 2 design report: exact-out sell support
+
+Confirmed 2026-09-26 (`docs/PROTOCOL_CONTROLS.md`): `BallastHook` reverts
+every sell-exact-out swap with `SellExactOutNotSupported()` — a real,
+permanent limitation of the CURRENT hook, not a bug, and the most likely
+cause of "Honeypot: Unknown" on third-party scanners. The current hook takes
+its fee by reading the swap's own specified amount inside `beforeSwap`; for
+an exact-out swap, that specified amount is the OUTPUT, not the input, so
+collecting the fee the same way would either under- or over-collect on a
+partial fill — hence the deliberate revert instead of a wrong number.
+
+Fixing this needs a new hook generation with fee math that handles exact-out
+correctly (computing the fee from the actual settled input amount in
+`afterSwap` instead of the specified amount in `beforeSwap`, for that one
+case). **The tradeoff, plainly:** any new hook is a new address, meaning
+another `HISTORICAL_HOOKS` entry (`web/lib/contracts.ts`,
+`docs/seeded-hook-history.md`) and another prior-hook generation whose pools
+must keep resolving — exactly the class of bug found and fixed 2026-09-25
+(BALLAST/CHRS/RCN's pools going invisible because one historical hook was
+missing from the frontend's mapping). Scope this into the Phase 2
+design report (items 4/5/6) as a single combined hook redeploy, not a
+standalone change — redeploying the hook twice in one project for two
+separate reasons is two rounds of prior-hook risk instead of one.
+
 ## What's explicitly NOT in this plan
 
 - Batch-2 assets AVGO, HOOD, NFLX, MCD — permanently blocked until Chainlink

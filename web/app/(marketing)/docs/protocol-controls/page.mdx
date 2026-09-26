@@ -1,0 +1,46 @@
+export const metadata = {
+  title: "Protocol controls",
+  description: "Every remaining admin power in the BALLAST contracts, who holds it, and under what delay.",
+};
+
+# Protocol controls
+
+Most of BALLAST has no admin key at all. `BallastFactory`, `BallastSeeder`,
+and `BallastHook` have no owner-only function anywhere in their source — once
+deployed, nobody, including us, can change how a launch, its pool, or its fee
+mechanics work. `BackingLens` is the same.
+
+Two contracts do keep an owner, because a permanently frozen version of them
+would be worse than a governed one:
+
+## FeeConfig
+
+- **`setParams`** — the swap fee and its 3-way split. Hard-capped at 10% by
+  an immutable constant; cannot go higher no matter who holds the key.
+- **`setPlatformVault`** — where the platform's fee share is sent.
+- **`setReferrer`** — the referrer allowlist.
+
+## AssetRegistry
+
+- **`setAsset` / `removeAsset`** — which assets a treasury may hold. Removing
+  an asset never affects a treasury that already holds it — it only stops new
+  deposits of that asset.
+
+## Who holds these keys right now
+
+Read live, on this page, from chain — not a static claim. Until ownership
+moves to a timelock, both are held by a single wallet, and this page says so
+plainly rather than implying otherwise.
+
+## Where this is going
+
+A 7-day `TimelockController` (standard OpenZeppelin contract, no custom
+logic), proposer and executor both a multisig, admin renounced at deploy so
+the timelock only ever governs itself. Once ownership moves, any change to
+either contract becomes public the moment it's proposed, with 7 days before
+it can execute — long enough for anyone watching to react. This page will
+show the delay live once that transfer happens; until then it says "Direct
+EOA — not yet timelocked," honestly.
+
+Full technical accounting (contract addresses, verified on-chain reads, the
+exact transfer steps): see the project repository's `docs/PROTOCOL_CONTROLS.md`.
