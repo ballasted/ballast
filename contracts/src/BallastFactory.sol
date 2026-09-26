@@ -86,8 +86,14 @@ contract BallastFactory {
     uint256 public immutable ethUsdStaleWindow;
 
     int24 public constant TICK_SPACING = 60;
-    /// @notice Constant opening tick for UNBACKED launches (no oracle dependency).
-    ///         ~1e-9 WETH/token; tunable product parameter. Multiple of TICK_SPACING.
+    /// @notice Constant opening tick for every WETH-quoted pool, backed or not
+    ///         (see the "combination package" — every launch opens at exactly
+    ///         1 ETH fully-diluted, independent of treasury size). ~1e-9
+    ///         WETH/token for the 1B supply; multiple of TICK_SPACING.
+    ///         Kept under its original name (rather than renamed to reflect
+    ///         its now-universal role) to avoid an unrelated frontend rename —
+    ///         see web/hooks/useOpeningFdv.ts, which already reads this getter
+    ///         and already only ever meant "today's fixed opening tick."
     int24 public constant UNBACKED_TICK = -207240;
 
     mapping(address token => bool) public graduated;
@@ -140,14 +146,20 @@ contract BallastFactory {
     error TooManyQuoteAssets();
     /// @notice The same quote asset appeared twice in one launch's quoteAssets_.
     error DuplicateQuoteAsset();
-    /// @notice A backed launch's feed was stale beyond its outer bound at graduation
-    ///         (treasury asset: past AssetRegistry.staleAfter; the quote asset
-    ///         itself, WETH or otherwise: past ethUsdStaleWindow for WETH, or its
-    ///         own AssetRegistry.staleAfter for anything else), so P0 would be set
-    ///         from a dead price permanently. This is the coarse backstop — the
-    ///         off-chain create flow additionally gates on market hours, so in
-    ///         practice this only trips on a genuinely broken feed, not on an
-    ///         expected weekend/holiday rest.
+    /// @notice A STOCK-quoted pool's opening price depends on a feed that's
+    ///         stale beyond its outer bound at graduation (the ETH/USD feed,
+    ///         past ethUsdStaleWindow, or the quote asset's own feed, past its
+    ///         AssetRegistry.staleAfter) — opening would set an immutable price
+    ///         from a dead read permanently. WETH-quoted pools never trigger
+    ///         this: their tick is a fixed constant with no feed dependency
+    ///         (see UNBACKED_TICK). The treasury's OWN asset feeds never
+    ///         trigger this either — the treasury no longer has any influence
+    ///         on opening price (see _p0Tick), so a stale treasury feed only
+    ///         affects the Graduated event's informational figure, which
+    ///         degrades gracefully instead of reverting (see
+    ///         _informationalBackingUsd). The off-chain create flow additionally
+    ///         gates on market hours, so in practice this only trips on a
+    ///         genuinely broken feed, not an expected weekend/holiday rest.
     error FeedStaleAtLaunch(address asset);
     /// @notice quoteAsset_ must be `weth` or one of the GREEN assets fixed at
     ///         deploy (isGreenQuoteAsset). Seeder and Hook both handle any
@@ -179,15 +191,14 @@ contract BallastFactory {
     }
 
     /// @notice Seed one pool per this launch's quoteAssets and lock LP in each.
-    ///         Backed launches derive each pool's P0 from the SAME live backing
-    ///         figure (each treasury feed must be within its own outer staleness
-    ///         bound — see FeedStaleAtLaunch), converted through that pool's own
-    ///         quote-asset price; unbacked launches use a constant P0 in every
-    ///         pool. The full token supply splits EVENLY across the N pools
-    ///         (remainder from integer division goes to the first pool, so
-    ///         nothing is dust-lost) — a single atomic call, single graduated[]
-    ///         flip: either every pool seeds or the whole call reverts, no
-    ///         partial-graduation state to reason about.
+    ///         Every pool opens at the SAME fixed target: 1 ETH fully-diluted
+    ///         valuation, converted through that pool's own quote-asset price
+    ///         (see _p0Tick) — never the treasury's live backing, regardless of
+    ///         deposit size. The full token supply splits EVENLY across the N
+    ///         pools (remainder from integer division goes to the first pool,
+    ///         so nothing is dust-lost) — a single atomic call, single
+    ///         graduated[] flip: either every pool seeds or the whole call
+    ///         reverts, no partial-graduation state to reason about.
     function graduate(address token) external {
         uint256 idPlus1 = launchIdOf[token];
         if (idPlus1 == 0) revert NotLaunchToken();
@@ -200,12 +211,14 @@ contract BallastFactory {
 
         uint256 supply = IERC20(token).balanceOf(address(this));
         uint256 share = supply / n;
-        uint256 backingUsdForEvent;
+        // Informational only (see _informationalBackingUsd) — has zero effect
+        // on any openTick/amount below. Computed once: it doesn't vary by
+        // quote asset, unlike openTick.
+        uint256 backingUsdForEvent = _informationalBackingUsd(treasury);
 
         for (uint256 i = 0; i < n; i++) {
             address quoteAsset = l.quoteAssets[i];
-            (int24 openTick, uint256 backingUsd) = _p0Tick(token, treasury, quoteAsset);
-            if (i == 0) backingUsdForEvent = backingUsd;
+            int24 openTick = _p0Tick(token, quoteAsset);
 
             uint256 amount = i == 0 ? supply - share * (n - 1) : share;
             IERC20(token).transfer(address(seeder), amount);
@@ -253,47 +266,63 @@ contract BallastFactory {
         decimals = IERC20Metadata(quoteAsset).decimals();
     }
 
-    /// @dev Opening tick + backing USD. Reverts if any held treasury feed, or the
-    ///      quote asset's own feed, is stale beyond its outer bound (see
-    ///      _quotePrice). Age is NOT a proxy for inaccuracy on a
-    ///      deviation-threshold feed — a quiet-but-recent SGOV price is correct
-    ///      — so this bound is the asset's real cadence (e.g. 120h SGOV / 96h
-    ///      equities), not a blunt trading-hours window.
+    /// @dev Opening tick — ALWAYS exactly 1 ETH fully-diluted valuation, split
+    ///      evenly across every pool this launch has (graduate()'s loop), never
+    ///      the treasury's live backing. The treasury is not a parameter here on
+    ///      purpose: there is no code path by which a deposit of any size can
+    ///      reach this function, which is the literal enforcement of "the
+    ///      treasury deposit must never influence opening price."
     ///
+    ///      WETH-quoted pool: target FDV (1 ETH's USD value) divided by the
+    ///      ETH/USD price is identically 1 for ANY ETH/USD price — the feed
+    ///      cancels out algebraically. So this case reads no feed at all and
+    ///      can never revert on staleness: it is exactly UNBACKED_TICK, always.
     ///      UNBACKED_TICK is defined in token-as-currency0 terms (real price =
-    ///      raw tick directly); when the token sorts as currency1 against this
-    ///      launch's quote asset, the same real price is the tick's exact
-    ///      negation (currency1/currency0 = 1/(currency0/currency1), and tick
-    ///      negation is exact for a reciprocal ratio) — still tickSpacing-
-    ///      aligned since UNBACKED_TICK already is.
-    function _p0Tick(address token, address treasury, address quoteAsset)
-        internal
-        view
-        returns (int24 openTick, uint256 backingUsd1e18)
-    {
+    ///      raw tick directly); when the token sorts as currency1, the same
+    ///      real price is the tick's exact negation (currency1/currency0 =
+    ///      1/(currency0/currency1), exact for a reciprocal ratio) — still
+    ///      tickSpacing-aligned since UNBACKED_TICK already is.
+    ///
+    ///      Stock-quoted pool: reverts (FeedStaleAtLaunch) if the ETH/USD feed
+    ///      or the quote asset's own feed is stale beyond its outer bound —
+    ///      this is the one case where a feed genuinely sets an immutable
+    ///      price, so refusing to open on a dead feed is correct here (unlike
+    ///      a passive valuation read, which must never revert — rule 6 is about
+    ///      reads, not a one-time price-setting action).
+    function _p0Tick(address token, address quoteAsset) internal view returns (int24 openTick) {
         bool tokenIsCurrency0 = OrderingLib.tokenIsCurrency0(token, quoteAsset);
+        if (quoteAsset == weth) {
+            return tokenIsCurrency0 ? UNBACKED_TICK : -UNBACKED_TICK;
+        }
 
+        (uint256 oneEthUsd1e18,) = _quotePrice(weth);
+        (uint256 quotePrice1e18, uint8 quoteDecimals) = _quotePrice(quoteAsset);
+        // Permanent-effect P0 math, isolated + fuzzed in BackingMath. Feeding
+        // "USD value of 1 ETH" as the numerator (instead of treasury backing)
+        // is the entire mechanism — the library itself is untouched.
+        openTick =
+            BackingMath.p0Tick(oneEthUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING, tokenIsCurrency0);
+    }
+
+    /// @dev Best-effort, informational-only USD value of everything the
+    ///      treasury holds right now — feeds ONLY the Graduated event's display
+    ///      figure. Deliberately non-reverting (rule 6): since opening price no
+    ///      longer reads the treasury at all (see _p0Tick), a stale treasury
+    ///      feed has nothing left to protect by reverting — so a stale asset is
+    ///      simply left out of the sum instead of blocking graduation over a
+    ///      number nothing on-chain depends on.
+    function _informationalBackingUsd(address treasury) internal view returns (uint256 backingUsd1e18) {
         address[] memory assets = ProjectTreasury(treasury).assets();
-        bool backed;
         for (uint256 i = 0; i < assets.length; i++) {
             uint256 held = ProjectTreasury(treasury).heldBalance(assets[i]);
             if (held == 0) continue;
-            backed = true;
             address feed = IAssetRegistry(registry).feedOf(assets[i]);
             (, int256 ans,, uint256 updatedAt,) = AggregatorV3Interface(feed).latestRoundData();
-            require(ans > 0, "invalid price");
-            if (block.timestamp - updatedAt > IAssetRegistry(registry).staleAfter(assets[i])) {
-                revert FeedStaleAtLaunch(assets[i]);
-            }
+            if (ans <= 0) continue;
+            if (block.timestamp - updatedAt > IAssetRegistry(registry).staleAfter(assets[i])) continue;
             uint256 usd = FullMath.mulDiv(held, uint256(ans), 10 ** AggregatorV3Interface(feed).decimals());
             backingUsd1e18 += FullMath.mulDiv(usd, 1e18, 10 ** IERC20Metadata(assets[i]).decimals());
         }
-        if (!backed) return (tokenIsCurrency0 ? UNBACKED_TICK : -UNBACKED_TICK, 0);
-
-        (uint256 quotePrice1e18, uint8 quoteDecimals) = _quotePrice(quoteAsset);
-        // Permanent-effect P0 math, isolated + fuzzed in BackingMath.
-        openTick =
-            BackingMath.p0Tick(backingUsd1e18, TOTAL_SUPPLY, quotePrice1e18, quoteDecimals, TICK_SPACING, tokenIsCurrency0);
     }
 
     /// @notice Launch a project: deploy the token + treasury, wire them, register.

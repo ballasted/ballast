@@ -616,4 +616,133 @@ contract BallastHookForkTest is Test {
         vm.expectRevert(BallastHook.NotDeployer.selector);
         freshHook.setSeeder(makeAddr("seeder"));
     }
+
+    // ===================================================================== //
+    //  New-generation FeeConfig proof: creator 8000 / platform 2000 /       //
+    //  referrer 0 — the exact split planned for the fresh FeeConfig, before //
+    //  it's ever deployed for real. Confirms: no revert, no lost funds,     //
+    //  whether or not hookData supplies a referrer.                        //
+    // ===================================================================== //
+
+    /// @dev referrerBps=0 with NO referrer in hookData: creatorCut+platformCut
+    ///      must consume the ENTIRE fee (integer division leaves zero
+    ///      remainder here since 8000+2000=10000 splits fee/10000*8000 and
+    ///      fee/10000*2000 — remainder only appears when fee isn't a multiple
+    ///      of 10000, still swept to platform below either way).
+    function test_freshSplit_creator8000Platform2000Referrer0_noReferrerSupplied() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        (BallastHook h2, address platform2) = _freshHookWithSplit(8000, 2000, 0);
+        MockBallastToken t = _deployTokenOnSide(true);
+        (PoolKey memory key,) = _poolFor(h2, t);
+
+        Bal memory before = _wethFor(h2);
+        _doSwapOn(h2, key, true, -int256(1 ether));
+        uint256 fee = IERC20(WETH).balanceOf(address(h2)) - before.sh;
+        assertGt(fee, 0, "zero fee");
+
+        uint256 creatorOwed = h2.owed(creator);
+        uint256 platformOwed = h2.owed(platform2);
+        assertEq(creatorOwed + platformOwed, fee, "no lost funds: creator+platform must exactly equal the fee");
+        assertEq(creatorOwed, (fee * 8000) / 10_000, "creator cut wrong");
+    }
+
+    /// @dev referrerBps=0 but hookData DOES supply an allowlisted referrer —
+    ///      must still not revert, and the tiny rounding remainder (never a
+    ///      meaningful share, since referrerBps itself is 0) still goes
+    ///      somewhere real rather than vanishing.
+    function test_freshSplit_creator8000Platform2000Referrer0_withReferrerInHookData() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        (BallastHook h2, address platform2) = _freshHookWithSplit(8000, 2000, 0);
+        FeeConfig cfg2 = h2.feeConfig();
+        address ref = makeAddr("referrer");
+        cfg2.setReferrer(ref, true);
+
+        MockBallastToken t = _deployTokenOnSide(true);
+        (PoolKey memory key,) = _poolFor(h2, t);
+
+        Bal memory before = _wethFor(h2);
+        // hookData supplies the allowlisted referrer — must not revert.
+        _doSwapOnWithHookData(h2, key, true, -int256(1 ether), abi.encode(ref));
+        uint256 fee = IERC20(WETH).balanceOf(address(h2)) - before.sh;
+        assertGt(fee, 0, "zero fee");
+
+        uint256 creatorOwed = h2.owed(creator);
+        uint256 platformOwed = h2.owed(platform2);
+        uint256 referrerOwed = h2.owed(ref);
+        assertEq(
+            creatorOwed + platformOwed + referrerOwed,
+            fee,
+            "no lost funds: creator+platform+referrer must exactly equal the fee even with referrerBps=0"
+        );
+        assertEq(creatorOwed, (fee * 8000) / 10_000, "creator cut wrong");
+    }
+
+    function _freshHookWithSplit(uint16 creatorBps, uint16 platformBps, uint16 referrerBps)
+        internal
+        returns (BallastHook h2, address platform2)
+    {
+        platform2 = makeAddr("platform2");
+        FeeConfig cfg2 = new FeeConfig(address(this), platform2);
+        cfg2.setParams(100, creatorBps, platformBps, referrerBps);
+        (address hookAddr, bytes32 salt) =
+            HookMiner.find(address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, cfg2, WETH));
+        h2 = new BallastHook{salt: salt}(MANAGER, cfg2, WETH);
+        require(address(h2) == hookAddr, "h2 addr");
+        h2.setSeeder(seederStandIn);
+    }
+
+    function _poolFor(BallastHook h2, MockBallastToken t) internal returns (PoolKey memory key, bool wethIsC0) {
+        wethIsC0 = WETH < address(t);
+        Currency c0 = Currency.wrap(wethIsC0 ? WETH : address(t));
+        Currency c1 = Currency.wrap(wethIsC0 ? address(t) : WETH);
+        key = PoolKey({currency0: c0, currency1: c1, fee: FEE, tickSpacing: TS, hooks: IHooks(address(h2))});
+        MANAGER.initialize(key, uint160(79228162514264337593543950336));
+
+        t.mint(address(this), 1e27);
+        t.approve(address(lp), type(uint256).max);
+        t.approve(address(swap), type(uint256).max);
+        IERC20(WETH).approve(address(lp), type(uint256).max);
+        IERC20(WETH).approve(address(swap), type(uint256).max);
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e20, salt: 0}), ""
+        );
+    }
+
+    function _wethFor(BallastHook h2) internal view returns (Bal memory b) {
+        b.sw = IERC20(WETH).balanceOf(address(this));
+        b.sh = IERC20(WETH).balanceOf(address(h2));
+        b.mgr = IERC20(WETH).balanceOf(address(MANAGER));
+    }
+
+    function _doSwapOn(BallastHook, PoolKey memory key, bool zeroForOne, int256 amountSpecified) internal {
+        uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: amountSpecified, sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            ""
+        );
+    }
+
+    function _doSwapOnWithHookData(
+        BallastHook,
+        PoolKey memory key,
+        bool zeroForOne,
+        int256 amountSpecified,
+        bytes memory hookData
+    ) internal {
+        uint160 limit = zeroForOne ? TickMath.MIN_SQRT_PRICE + 1 : TickMath.MAX_SQRT_PRICE - 1;
+        swap.swap(
+            key,
+            IPoolManager.SwapParams({zeroForOne: zeroForOne, amountSpecified: amountSpecified, sqrtPriceLimitX96: limit}),
+            PoolSwapTest.TestSettings({takeClaims: false, settleUsingBurn: false}),
+            hookData
+        );
+    }
 }
