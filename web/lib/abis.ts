@@ -195,6 +195,16 @@ export const erc20Abi = [
 // exact same path (whoever controls that address calls claim()).
 export const ballastHookAbi = [
   {
+    // Immutable per hook generation — never reassignable. Used to find WHICH
+    // FeeConfig instance governs a given launch's pool (there are two live
+    // instances across generations — see docs/PROTOCOL_CONTROLS.md).
+    type: "function",
+    name: "feeConfig",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+  {
     type: "function",
     name: "owed",
     stateMutability: "view",
@@ -505,6 +515,30 @@ export const feeConfigAbi = [
       { name: "platformVault", type: "address" },
     ],
   },
+  {
+    // Ownable2Step — a two-step transfer (new owner must accept), not a delay.
+    // See docs/PROTOCOL_CONTROLS.md for the plan to move this to a timelock.
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
+  },
+] as const;
+
+// Minimal OpenZeppelin TimelockController surface — just enough to detect
+// "is this owner actually a timelock" and show its delay. See
+// docs/PROTOCOL_CONTROLS.md: pending-operation detection needs CallScheduled
+// event history, which this RPC's free tier can't scan (10-block eth_getLogs
+// cap) — deliberately NOT attempted here rather than faked.
+export const timelockAbi = [
+  {
+    type: "function",
+    name: "getMinDelay",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
 ] as const;
 
 // ── AssetRegistry ─────────────────────────────────────────────────────────────
@@ -515,6 +549,13 @@ export const assetRegistryAbi = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "address[]" }],
+  },
+  {
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "address" }],
   },
   {
     type: "function",
