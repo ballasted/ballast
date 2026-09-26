@@ -7,6 +7,7 @@
     "dev": "next dev",
     "prebuild": "tsx scripts/checkTickerLogos.ts",
     "build": "next build",
+    "vercel-build": "npm install @next/mdx@^15.1.6 --no-save --no-audit --no-fund --prefer-online && npm run prebuild && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
