@@ -1,0 +1,20 @@
+{
+  "token": "0x069a260370C61d91bd3e9842d81D378F9750F7F3",
+  "snapshotBlock": 73030228,
+  "snapshotBlockTimestampUtc": "2026-09-26T11:00:00.000Z",
+  "targetTimestampUtc": "2026-09-26T11:00:00.000Z",
+  "totalSupply": "1000000000000000000000000000",
+  "includedHolders": 71,
+  "excludedAddresses": 63,
+  "totalIncludedBalanceRaw": "262256309982629035399040444",
+  "totalIncludedBalanceTokens": "262256309.982629",
+  "priceUsdSource": "Real 05:00-11:00 UTC TWAP: v1's pool had zero swaps in the window (verified via eth_getLogs), so TWAP = the constant price from the last real swap before it, block 72511886 (2026-09-25T20:26:00Z). See twap.md.",
+  "priceUsd": 0.000007100633157926953,
+  "twapWindowUtc": [
+    "2026-09-26T05:00:00.000Z",
+    "2026-09-26T11:00:00.000Z"
+  ],
+  "twapAnchorSwapBlock": 72511886,
+  "twapAnchorSwapTimestampUtc": "2026-09-25T20:26:00.000Z",
+  "csvKeccak256": "0x2df33a31d21cf14be476ec7306e26af8c0e1cdcb3129c3a0d8a62679c6106cc6"
+}
