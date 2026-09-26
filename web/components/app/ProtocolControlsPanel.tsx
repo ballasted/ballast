@@ -6,6 +6,7 @@ import { ballastHookAbi, feeConfigAbi, assetRegistryAbi, timelockAbi } from "@/l
 import { ASSET_REGISTRY_ADDRESS, hookForFactory } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
+import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
 
 const CHAIN_ID = activeChain.id;
 
@@ -15,7 +16,15 @@ const CHAIN_ID = activeChain.id;
 // these behind a timelock. Pending-operation detection is deliberately NOT
 // attempted (needs CallScheduled event history the free-tier RPC can't scan
 // — see the note there) rather than faked.
-export function ProtocolControlsPanel({ ownerFactory }: { ownerFactory?: Address }) {
+export function ProtocolControlsPanel({
+  ownerFactory,
+  token,
+  creator,
+}: {
+  ownerFactory?: Address;
+  token?: Address;
+  creator?: Address;
+}) {
   const hook = hookForFactory(ownerFactory);
 
   const hookRes = useReadContract({
@@ -26,6 +35,22 @@ export function ProtocolControlsPanel({ ownerFactory }: { ownerFactory?: Address
     query: liveQuery(Boolean(hook)),
   });
   const feeConfig = hookRes.data as Address | undefined;
+
+  // This token's OWN generation's split (never the globally-pinned FeeConfig —
+  // an older-generation token must show its own hook's split, not the newest
+  // one's, since the split is retunable per-instance and generations differ
+  // for real: the pre-tonight FeeConfig is 50/35/15, tonight's fresh one is
+  // 80/20/0).
+  const splitRes = useReadContract({
+    address: feeConfig,
+    abi: feeConfigAbi,
+    functionName: "feeParams",
+    chainId: CHAIN_ID,
+    query: liveQuery(Boolean(feeConfig)),
+  });
+  const splitData = splitRes.data as readonly [number, number, number, number, Address] | undefined;
+  const creatorPct = splitData ? splitData[1] / 100 : undefined;
+  const platformPct = splitData ? splitData[2] / 100 : undefined;
 
   const ownerRes = useReadContracts({
     allowFailure: true,
@@ -67,6 +92,17 @@ export function ProtocolControlsPanel({ ownerFactory }: { ownerFactory?: Address
         hook&apos;s fee logic) has no admin function at all — verified from source.
       </p>
       <ul className="mt-3 space-y-3 text-sm">
+        <li className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-text-primary">Fee split</div>
+            <div className="text-xs text-text-faint">This token&apos;s own generation</div>
+          </div>
+          <span className="chip chip-neutral shrink-0">
+            {creatorPct !== undefined && platformPct !== undefined
+              ? `${creatorPct}% creator / ${platformPct}% protocol`
+              : "—"}
+          </span>
+        </li>
         <Row
           label="Swap fee + split"
           detail="Up to 10% (hard-capped), 3-way split"
@@ -77,6 +113,12 @@ export function ProtocolControlsPanel({ ownerFactory }: { ownerFactory?: Address
         <Row label="Referrer allowlist" detail="Who can earn the referrer share" owner={feeConfigOwner} delay={feeConfigDelay} />
         <Row label="Treasury asset allowlist" detail="Which assets can back a launch" owner={registryOwner} delay={registryDelay} />
       </ul>
+      {isProtocolToken(token) && creator && (
+        <p className="mt-3 text-xs text-text-faint">
+          Creator share goes to the Safe ({creator}). The buyback-and-burn is manual until FeeSplitter ships — there
+          is no on-chain mechanism enforcing it yet.
+        </p>
+      )}
       <a
         href="/docs/protocol-controls"
         className="mt-3 inline-block text-xs text-text-faint underline underline-offset-2 hover:text-text-secondary"

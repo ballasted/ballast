@@ -252,7 +252,7 @@ export default function TokenDetailPage() {
 
             <AllocationSlot />
             <VerificationPanel token={token} />
-            <ProtocolControlsPanel ownerFactory={ownerFactory} />
+            <ProtocolControlsPanel ownerFactory={ownerFactory} token={token} creator={creator} />
             <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
             <CreatorTrackRecord creator={creator} thisToken={token!} />
             <MarketPanel token={token!} chainPriceUsd={marketPriceUsd} />
