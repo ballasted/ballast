@@ -612,7 +612,14 @@ contract BallastHookForkTest is Test {
         );
         BallastHook freshHook = new BallastHook{salt: salt}(MANAGER, freshCfg, WETH);
         require(address(freshHook) == hookAddr, "hook");
-        vm.prank(makeAddr("notTheDeployer"));
+        // _deployer is recorded from tx.origin (see BallastHook.sol's comment: a
+        // salt-mined hook deploys via the canonical CREATE2 proxy when broadcast,
+        // so msg.sender at construction is that proxy, not the EOA — tx.origin is
+        // what survives the hop). A real distinct attacker has their OWN
+        // tx.origin, so simulate that with the two-arg prank (sets msg.sender AND
+        // tx.origin), not the single-arg form, which would leave tx.origin
+        // matching this test's own default and incorrectly NOT revert.
+        vm.prank(makeAddr("notTheDeployer"), makeAddr("notTheDeployer"));
         vm.expectRevert(BallastHook.NotDeployer.selector);
         freshHook.setSeeder(makeAddr("seeder"));
     }
