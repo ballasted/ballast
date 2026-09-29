@@ -2,7 +2,7 @@
   "name": "ballast-web",
   "version": "0.1.0",
   "private": true,
-  "description": "BALLAST — marketing site + app (ballasted.xyz). Marketing at root, app under /app.",
+  "description": "BALLAST — marketing site + app (ballasted.fun). Marketing at root, app under /app.",
   "scripts": {
     "dev": "next dev",
     "prebuild": "tsx scripts/checkTickerLogos.ts",
