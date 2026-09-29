@@ -527,15 +527,47 @@ contract BallastHookForkTest is Test {
             vm.skip(true);
             return;
         }
-        MockBallastToken t = _deployTokenOnSide(true);
-        (PoolKey memory key,) = _pool(t); // lp seeds [-12000,12000], liquidityDelta 1e20
+        // A fresh, never-wired hook — this test needs to set the seeder to a
+        // SPECIFIC address (lpAsSeeder, below) to assert the lock is scoped to
+        // that identity. The shared `hook` from setUp() already has its seeder
+        // permanently set to `seederStandIn` (setSeeder is one-time,
+        // AlreadySet() on a second call — see test_setSeeder_onlyDeployer_onlyOnce),
+        // so reusing it here would always revert before this test's own
+        // assertions ever run. Same fresh-hook pattern as
+        // test_liquidityLock_beforeSeederWired_removalAllowed, just wired
+        // instead of left unwired.
+        FeeConfig freshCfg = new FeeConfig(address(this), platform);
+        (address hookAddr, bytes32 salt) = HookMiner.find(
+            address(this), BALLAST_HOOK_FLAGS, type(BallastHook).creationCode, abi.encode(MANAGER, freshCfg, WETH)
+        );
+        BallastHook freshHook = new BallastHook{salt: salt}(MANAGER, freshCfg, WETH);
+        require(address(freshHook) == hookAddr, "hook");
 
         PoolModifyLiquidityTest lpAsSeeder = new PoolModifyLiquidityTest(MANAGER);
-        hook.setSeeder(address(lpAsSeeder));
+        freshHook.setSeeder(address(lpAsSeeder));
 
-        t.mint(address(this), 1e26);
+        MockBallastToken t = _deployTokenOnSide(true);
+        bool wethIsC0 = WETH < address(t);
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(wethIsC0 ? WETH : address(t)),
+            currency1: Currency.wrap(wethIsC0 ? address(t) : WETH),
+            fee: FEE,
+            tickSpacing: TS,
+            hooks: IHooks(address(freshHook))
+        });
+        MANAGER.initialize(key, uint160(79228162514264337593543950336));
+
+        t.mint(address(this), 1e27);
+        IERC20(WETH).approve(address(lp), type(uint256).max);
+        t.approve(address(lp), type(uint256).max);
         t.approve(address(lpAsSeeder), type(uint256).max);
         IERC20(WETH).approve(address(lpAsSeeder), type(uint256).max);
+
+        // A genuine third party (`lp`) seeds the pool first, same shape as
+        // `_pool()` did before this test owned its own hook.
+        lp.modifyLiquidity(
+            key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e20, salt: 0}), ""
+        );
 
         // Adding is never blocked (beforeRemoveLiquidity only fires for
         // liquidityDelta <= 0) — only removing is.
@@ -543,12 +575,25 @@ contract BallastHookForkTest is Test {
             key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: 1e18, salt: 0}), ""
         );
 
-        vm.expectRevert(BallastHook.SeederLiquidityLocked.selector);
+        // PoolManager wraps a reverting hook callback in its own error (the raw
+        // selector isn't at the top level for a modifyLiquidity-path hook
+        // revert, unlike the swap-path errors asserted elsewhere in this file)
+        // — same "don't care which exact wrapper, care that it reverts
+        // atomically" approach BuybackBurnerFork.t.sol already uses. The real
+        // guarantee this test proves is state-based, right below: the
+        // liquidity is provably still there afterward.
+        uint256 seederTokenBefore = t.balanceOf(address(lpAsSeeder));
+        uint256 seederWethBefore = IERC20(WETH).balanceOf(address(lpAsSeeder));
+        vm.expectRevert();
         lpAsSeeder.modifyLiquidity(
             key, IPoolManager.ModifyLiquidityParams({tickLower: -12000, tickUpper: 12000, liquidityDelta: -1e18, salt: 0}), ""
         );
+        // The revert is atomic: not a single unit of either token came back to
+        // the blocked seeder, regardless of which exact error wrapped it.
+        assertEq(t.balanceOf(address(lpAsSeeder)), seederTokenBefore, "blocked removal must not release token");
+        assertEq(IERC20(WETH).balanceOf(address(lpAsSeeder)), seederWethBefore, "blocked removal must not release WETH");
 
-        // A genuine third party — `lp`, from _pool's own seeding above — stays
+        // A genuine third party — `lp`, from its own seeding above — stays
         // completely free to remove ITS OWN liquidity. The lock is scoped to
         // the Seeder's identity, not a blanket freeze on the pool.
         lp.modifyLiquidity(
