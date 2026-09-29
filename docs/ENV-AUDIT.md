@@ -4,6 +4,26 @@ Generated 2026-07-27 (UI-density Phase 5). Source of truth: every `process.env.*
 / `vm.env*` / `env.*` read in `web/`, `indexer/`, and `contracts/script/`, cross-
 referenced against root `.env.example`, root `.env`, and `web/.env.local`.
 
+**Contract addresses below are stale (gen-2, 2026-07-30) — see `docs/BALLAST_STATE.md`
+for current gen-4 values. This doc's still-accurate part is the *shape*: which file
+reads which variable, which is exactly what's needed for the rotation below.**
+
+## 2026-09-29 — secrets rotation locations (PINATA_JWT, Alchemy key)
+
+Every place each secret currently lives, so nothing gets missed on rotation:
+
+**`PINATA_JWT`** (Pinata IPFS pinning key):
+- Root `.env` (local Foundry/scripts shell — not read by any script today, dead copy, safe to just replace)
+- `web/.env.local` (local Next.js dev — read by `web/app/api/pin/route.ts`)
+- Vercel → Settings → Environment Variables → Production/Preview/Development, server-only (no `NEXT_PUBLIC_` prefix)
+- Not used in CI (no CI pipeline reads it — repo has no `.github/workflows` that touches Pinata)
+
+**Alchemy key** — lives inside two different URL-shaped variables, both need the new key spliced in:
+- `RH_RPC_URL_PAID` — root `.env` only. Used by: `contracts/` fork tests (`forge test --fork-url`), every `contracts/script/*.s.sol` deploy/probe script, `web/scripts/*.ts` (deployMainnet, setAssets, preflight, inspectMainnet, checkTickerLogos), and would-be Ponder indexer env (`PONDER_RPC_URL_4663`/`RH_RPC_URL_PAID` fallback — indexer not deployed, so no live host to update). **Never set on Vercel.**
+- `RPC_UPSTREAM_URL` — `web/.env.local` + Vercel (server-only var, no `NEXT_PUBLIC_` prefix), read by `web/app/api/rpc/route.ts` (the proxy every client-side wagmi/viem read goes through) and `web/lib/serverChain.ts`.
+
+After rotating: update root `.env` (`RH_RPC_URL_PAID`), `web/.env.local` (`RPC_UPSTREAM_URL`, `PINATA_JWT`), and Vercel Production+Preview+Development for `RPC_UPSTREAM_URL` and `PINATA_JWT`. Confirmed both `.env` and `.env.local` are gitignored (`.gitignore` lines 2-3, 15) — neither secret has ever been committed (`git log -p` on both paths returns nothing, and both files are currently untracked/ignored in `git status`).
+
 **Secrets are never printed here.** Public `NEXT_PUBLIC_*` values (canonical chain
 addresses, the public reown id) are shown because they ship to the browser anyway;
 keys are shown as `<secret>`.

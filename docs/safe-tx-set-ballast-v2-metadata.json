@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Set $BALLAST v2 logo/metadata (fixes the missing-logo launch)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C",
+      "value": "0",
+      "data": "0x750521f500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000035697066733a2f2f516d546b784d504261675279466444643243766a69544e73444a4c79754871364c6f38554152587965505a464b660000000000000000000000",
+      "contractMethod": null,
+      "_comment": "setMetadataURI(\"ipfs://QmTkxMPBagRyFdDd2CvjiTNsDJLyuHq6Lo8UARXyePZFKf\") on the BALLAST v2 token. Creator-only (msg.sender must equal token.creator(), which is the Safe). Tonight's launch (2026-09-26) used an empty metadataURI as a deliberate shortcut via raw Safe calldata (docs/safe-tx-launch-ballast.json), bypassing the normal create-flow's pin-then-launch order -- not a code bug, but it left v2 with no logo anywhere the app reads metadataURI/logo. This transaction sets it after the fact using the SAME setMetadataURI(string) path a creator would use to update metadata post-launch (BallastToken.sol, creator-only, emits MetadataUpdated -- publicly logged, not hidden). Metadata JSON pinned to Pinata 2026-09-29, verified resolving at https://gateway.pinata.cloud/ipfs/QmTkxMPBagRyFdDd2CvjiTNsDJLyuHq6Lo8UARXyePZFKf: {name:'Ballast', symbol:'BALLAST', description:'The Ballast protocol's own token, relaunched on the multi-quote-asset generation, paired with NVDA and WETH.', category:'protocol', logo:'ipfs://Qmar8T7MFNPUX3Ya3obsfBuLgEfCeQnXgQwQPcxwFwScMW' (docs/assets-brand/icon-dark-512.png, pinned same session), website:'https://ballasted.xyz', x:'x.com/ballastedapp', telegram:'t.me/ballastedapp'}. After this confirms, every surface reading the token's live metadataURI (token page, Discover, search, Top Movers, portfolio, OG image) should show the real logo -- no further code change needed, since they already read metadataURI live, not launchMetadataURI."
+    }
+  ]
+}

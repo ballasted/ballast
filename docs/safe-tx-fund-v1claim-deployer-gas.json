@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund the new v1claim-deployer wallet with gas ETH only", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0x27EC8D16E5E2f5fcf7A41e87a25652773782C391",
+      "value": "1000000000000000",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Sends 0.001 ETH (plain transfer) to a BRAND NEW keystore ('v1claim-deployer', created this session specifically for this one deploy -- never the old compromised deployer). Dry-run estimated the actual deploy cost at ~0.0000253 ETH, so this is ~40x margin, still negligible on this L2. This wallet is gas-only: it deploys BallastV1Claim (one transaction, nonce 0) and does nothing else ever again."
+    }
+  ]
+}

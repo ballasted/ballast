@@ -1,0 +1,211 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "sequencerUptimeFeed_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "SEQUENCER_GRACE_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "backingOf",
+    "inputs": [
+      {
+        "name": "treasuryAddr",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "b",
+        "type": "tuple",
+        "internalType": "struct BackingLens.Backing",
+        "components": [
+          {
+            "name": "sequencerStatus",
+            "type": "uint8",
+            "internalType": "enum BackingLens.SequencerStatus"
+          },
+          {
+            "name": "totalSupply",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lockedValueUsd",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "withdrawableValueUsd",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "totalValueUsd",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "backingPerToken",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "lockedBackingPerToken",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "anyStale",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "anyUnpriced",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "assets",
+            "type": "tuple[]",
+            "internalType": "struct BackingLens.AssetBacking[]",
+            "components": [
+              {
+                "name": "asset",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "lockedBalance",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "withdrawableBalance",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "price",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "priceDecimals",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "assetDecimals",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "updatedAt",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "marketHours",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "lockedValueUsd",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "withdrawableValueUsd",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "priced",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "stale",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "oraclePaused",
+                "type": "bool",
+                "internalType": "bool"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "priceOf",
+    "inputs": [
+      {
+        "name": "registryAddr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "asset",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "price",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "updatedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "stale",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "sequencerUptimeFeed",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract AggregatorV3Interface"
+      }
+    ],
+    "stateMutability": "view"
+  }
+]

@@ -20,10 +20,44 @@ by anyone, ever, ownership or not.
 
 | Contract | Function | Effect | Current owner |
 |---|---|---|---|
-| `FeeConfig` | `setParams(feeBps, creatorBps, platformBps, referrerBps)` | Change the swap fee (hard-capped at `MAX_FEE_BPS = 1000`, i.e. 10%) and its 3-way split | `0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1` (hot EOA) |
-| `FeeConfig` | `setPlatformVault(address)` | Redirect where the platform's fee share is sent | same EOA |
-| `FeeConfig` | `setReferrer(address, bool)` | Add/remove an allowlisted referrer | same EOA |
+| `FeeConfig` (every instance) | `setParams(feeBps, creatorBps, platformBps, referrerBps)` | Change the swap fee (hard-capped at `MAX_FEE_BPS = 1000`, i.e. 10%) and its 3-way split | `0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1` (hot EOA) — see below |
+| `FeeConfig` (every instance) | `setPlatformVault(address)` | Redirect where the platform's fee share is sent | same EOA |
+| `FeeConfig` (every instance) | `setReferrer(address, bool)` | Add/remove an allowlisted referrer | same EOA |
 | `AssetRegistry` | `setAsset(...)` / `removeAsset(...)` | Add or remove which assets are treasury-eligible | same EOA |
+| `BuybackBurner` | (owner-gated admin fns; no fund-recovery path) | Operational control of the manual buyback | same EOA |
+| `BallastManatee` | owner-gated mint/admin surface on the 1000-piece NFT | same EOA |
+
+**UPDATE 2026-09-29 — full re-audit, all owner()-bearing contracts, verified live on-chain (not from docs):**
+There are now **six** contracts on the old EOA, not four — this doc's original list missed `BuybackBurner` and `BallastManatee` (both `Ownable2Step`, confirmed by reading `owner()`/`pendingOwner()` live and grepping the `acceptOwnership()` selector `0x79ba5097` in their deployed bytecode). And a **third `FeeConfig` instance** now exists from the 2026-09-26 combination-package deploy (gen-4, `0xE09F093595045E8765F420Cb12E0AA250910E5AD` — BALLAST v2 and TEST's hook reads this one). Full live table:
+
+| Contract | Address | `owner()` | `pendingOwner()` |
+|---|---|---|---|
+| `AssetRegistry` | `0x427764d0d19aB765c35A41A5aa4771580307dA81` | old EOA | — |
+| `BuybackBurner` | `0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be` | old EOA | — |
+| `BallastManatee` | `0xfd3534f2a6ca756e95e5d2ff7bd287954b856e4b` | old EOA | — |
+| `FeeConfig` (gen-1: BALLAST v1/CHRS/RCN) | `0xf814CA06aFfaBD1aa5Cd31aDB5F25D23E9871304` | old EOA | — |
+| `FeeConfig` (gen-2/3 shared: SYNTH/BILLIST/CLAP/MANATE/SAGE/PHIL/BCAT/HARUNA/BALLCAT) | `0xc0b895bc683bf4aca30c7277d42d068e0973a594` | old EOA | — |
+| `FeeConfig` (gen-4: BALLAST v2/TEST) | `0xE09F093595045E8765F420Cb12E0AA250910E5AD` | old EOA | **Safe** (2-step transfer already proposed 2026-09-26, not yet accepted) |
+
+`BallastFactory`, `BallastHook`, `BallastSeeder`, `BallastRouter`, `BackingLens`, `ManateeRenderer` confirmed **zero admin surface** across every generation including gen-4 (`owner()` reverts — no such function) — unchanged from the original finding above, re-verified live.
+
+### Ready to run now — five transfers + six accepts
+
+**Step 1 (you, old-deployer keystore, one last time):**
+```bash
+export RPC=$RH_RPC_URL_PAID
+export SAFE=0xEFC97e16a24d2434C7138a2634E554a0631aC079
+cast send 0x427764d0d19aB765c35A41A5aa4771580307dA81 "transferOwnership(address)" $SAFE --rpc-url $RPC --account <old-deployer-keystore>
+cast send 0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be "transferOwnership(address)" $SAFE --rpc-url $RPC --account <old-deployer-keystore>
+cast send 0xf814CA06aFfaBD1aa5Cd31aDB5F25D23E9871304 "transferOwnership(address)" $SAFE --rpc-url $RPC --account <old-deployer-keystore>
+cast send 0xc0b895bc683bf4aca30c7277d42d068e0973a594 "transferOwnership(address)" $SAFE --rpc-url $RPC --account <old-deployer-keystore>
+cast send 0xfd3534f2a6ca756e95e5d2ff7bd287954b856e4b "transferOwnership(address)" $SAFE --rpc-url $RPC --account <old-deployer-keystore>
+```
+(`FeeConfig` gen-4 already has the Safe as `pendingOwner` from 2026-09-26 — no transfer call needed for it, skip straight to accepting.)
+
+**Step 2 (Safe, 2-of-3, one batched transaction):** import `docs/safe-tx-accept-ownership-batch.json` (5 `acceptOwnership()` calls, for the five above) plus the pre-existing `docs/safe-tx-accept-feeconfig.json` (the gen-4 `FeeConfig` accept) — either as one combined batch or two separate Safe transactions, your call.
+
+**Proof after:** `cast call <each address> "owner()(address)"` should return the Safe for all six.
 
 Both contracts use OpenZeppelin `Ownable2Step` (a two-step transfer — the new
 owner must accept — so a typo'd address can't accidentally take over. It does
@@ -61,8 +95,29 @@ takes effect.
 proposer and executor, admin renounced at deploy (the `admin` constructor
 param is `address(0)`, OZ's own recommended pattern — the timelock
 self-administers via `address(this)` only, so no key outside the timelock's
-own delayed process can ever change who holds proposer/executor). **Not yet
-run** — needs your Safe address first.
+own delayed process can ever change who holds proposer/executor).
+
+**UPDATE 2026-09-29: the Safe address is now known** (`0xEFC97e16a24d2434C7138a2634E554a0631aC079`,
+used throughout the 2026-09-26 combination-package launch) — the only blocker
+this doc originally cited is gone. **Still not run** — this is a genuinely new
+piece of infrastructure (not a redeploy of anything existing), and per the
+project's own rule, moving admin control behind a 7-day delay is your call on
+timing, not mine to trigger. The command below is ready exactly as-is,
+`SAFE_ADDRESS` filled in, nothing left to fill in:
+
+```bash
+cd contracts
+export DEPLOYER_PRIVATE_KEY=<the funded deployer key>
+export SAFE_ADDRESS=0xEFC97e16a24d2434C7138a2634E554a0631aC079
+forge script script/DeployTimelock.s.sol:DeployTimelock --rpc-url $RH_RPC_URL_PAID          # dry run
+forge script script/DeployTimelock.s.sol:DeployTimelock --rpc-url $RH_RPC_URL_PAID --broadcast   # then this
+```
+
+Do this AFTER the six ownership transfers above land, not before — transferring
+straight to the timelock in one step is fine too (it's just `transferOwnership(timelock)`
+instead of `transferOwnership(Safe)`), but doing the Safe transfer first means the
+Safe already fully controls everything even if the timelock deploy is delayed
+for any reason.
 
 Verified on a fork before writing this doc: deployed with a placeholder Safe
 address, confirmed `hasRole(PROPOSER_ROLE, safe) == true`,

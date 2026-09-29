@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund BallastV1Claim with the full migration ETH budget", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE",
+      "value": "693084308357578318",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Sends exactly 0.693084308357578318 ETH -- the sum of every one of the 71 snapshot holders' full entitlement (data/snapshot/v1_claim_eth_meta.json totalEthWei), no more, no less. This address (0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE) is the DETERMINISTIC CREATE address of the v1claim-deployer wallet's first-ever transaction (nonce 0) -- confirmed via `cast compute-address` before deployment and matched exactly by the deploy script's own dry-run. IMPORTANT: only send this AFTER the deploy transaction has actually confirmed on-chain (check the address has code first: `cast code 0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE`) -- if that wallet's nonce-0 tx hasn't landed yet, or landed differently, this address could be wrong or the funds could be sent to a not-yet-existent contract. The contract's receive() has no logic, so any amount sent is simply held for claims -- there's no way to recover an overpayment except through the normal claim/sweep paths, so get the number right before signing."
+    }
+  ]
+}

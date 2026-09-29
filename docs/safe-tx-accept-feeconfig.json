@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Accept FeeConfig ownership (gen-4, tonight's deploy)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xE09F093595045E8765F420Cb12E0AA250910E5AD",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "acceptOwnership() on the fresh FeeConfig deployed tonight (0xE09F093595045E8765F420Cb12E0AA250910E5AD). No args, selector 0x79ba5097 = keccak256(\"acceptOwnership()\"), verified against the real hash. Confirmed on-chain right now: owner()=deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1, pendingOwner()=Safe 0xEFC97e16a24d2434C7138a2634E554a0631aC079, feeParams()=(100,8000,2000,0,Safe). This tx completes the 2-step transfer so owner()==Safe too. Non-blocking for tonight's launch either way."
+    }
+  ]
+}

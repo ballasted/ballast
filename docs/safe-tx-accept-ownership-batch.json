@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Accept ownership — 5 contracts moving off the old deployer EOA", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0x427764d0d19aB765c35A41A5aa4771580307dA81",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "AssetRegistry.acceptOwnership() — run AFTER the old-deployer transferOwnership(SAFE) tx below has confirmed."
+    },
+    {
+      "to": "0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "BuybackBurner.acceptOwnership()."
+    },
+    {
+      "to": "0xf814CA06aFfaBD1aa5Cd31aDB5F25D23E9871304",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "FeeConfig (gen-1, BALLAST v1/CHRS/RCN's hook reads this one).acceptOwnership()."
+    },
+    {
+      "to": "0xc0b895bc683bf4aca30c7277d42d068e0973a594",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "FeeConfig (gen-2/gen-3 shared instance — SYNTH/BILLIST/CLAP/MANATE/SAGE/PHIL/BCAT/HARUNA/BALLCAT's hooks read this one).acceptOwnership()."
+    },
+    {
+      "to": "0xfd3534f2a6ca756e95e5d2ff7bd287954b856e4b",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": null,
+      "_comment": "BallastManatee (the 1000-piece NFT mint).acceptOwnership()."
+    }
+  ]
+}

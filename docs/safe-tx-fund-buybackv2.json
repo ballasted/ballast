@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund BuybackBurnerV2 with 20% of a claimed fee batch (TEMPLATE)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "PASTE_BUYBACKBURNERV2_ADDRESS_HERE",
+      "value": "0",
+      "data": "PASTE_WETH_TRANSFER_CALLDATA_HERE",
+      "contractMethod": null,
+      "_comment": "Template for the documented routine: each time the Safe claims creator fees (docs/safe-tx-claim-all-fees.json is one example), send 20% of what was claimed, per asset, to BuybackBurnerV2. This is a plain ERC20 transfer(BuybackBurnerV2address, amount) on the WETH contract (0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73) and/or the NVDA contract (0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC) -- NOT a native ETH send. Compute calldata with: cast calldata \"transfer(address,uint256)\" <BuybackBurnerV2address> <amount>. Fill in the real BuybackBurnerV2 address (printed by DeployBuybackV2.s.sol once run) and the real 20% amounts before signing -- this file is a template, not ready to sign as-is."
+    }
+  ]
+}

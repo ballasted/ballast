@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Claim all creator fees owed to the Safe (WETH + NVDA, gen-4 hook)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0x4eb2dd759f4d6524e66057d1adc10c26e40142cc",
+      "value": "0",
+      "data": "0x4e71d92d",
+      "contractMethod": null,
+      "_comment": "claim() on the gen-4 BallastHook. Sweeps owed(Safe) in WETH -- confirmed live on-chain 2026-09-29: 0.010731903449378843 WETH owed (from BALLAST v2's WETH-quoted pool's creator share). No args; pulls to msg.sender, i.e. the Safe."
+    },
+    {
+      "to": "0x4eb2dd759f4d6524e66057d1adc10c26e40142cc",
+      "value": "0",
+      "data": "0x86f2e791000000000000000000000000d0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "contractMethod": null,
+      "_comment": "claimIn(0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC) -- NVDA -- on the gen-4 BallastHook. Sweeps owedIn(Safe, NVDA) -- confirmed live on-chain 2026-09-29: 1.646034308531764250 NVDA owed (from BALLAST v2's NVDA-quoted pool's creator share). This is the NEW non-WETH claim path (contracts/src/BallastHook.sol claimIn()) -- the app's FeePanel/useAccruedFees was WETH-only before this session's fix and silently never showed or claimed this balance; both are fixed now (web/hooks/useAccruedFees.ts, web/lib/abis.ts)."
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+name: Auto-verify new launches
+
+# Runs verify-all.sh on a schedule so every new token+treasury launched
+# through any BallastFactory generation gets verified on Sourcify (and
+# opportunistically Blockscout) within ~30 minutes of launching, with zero
+# manual step. Fully idempotent — enumerate-rpc.sh re-derives the launch
+# list fresh from chain every run, and verify-all.sh skips anything Sourcify
+# already has recorded, so re-running constantly costs nothing but the
+# workflow minutes.
+#
+# Needs one repo secret: RH_RPC_URL (any working Robinhood Chain 4663 RPC —
+# the free public one at https://rpc.mainnet.chain.robinhood.com works for
+# this; it's read-only, no funded key involved anywhere in this workflow).
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Re-enumerate every launch from chain
+        working-directory: contracts
+        env:
+          RPC: ${{ secrets.RH_RPC_URL || 'https://rpc.mainnet.chain.robinhood.com' }}
+        run: bash script/verify/enumerate-rpc.sh
+      - name: Verify anything not yet on Sourcify
+        working-directory: contracts
+        run: bash script/verify/verify-all.sh
+      - name: Commit refreshed tokens.json/treasuries.json if changed
+        run: |
+          git config user.name "ballast-verify-bot"
+          git config user.email "actions@github.com"
+          git add contracts/script/verify/tokens.json contracts/script/verify/treasuries.json
+          git diff --cached --quiet || git commit -m "chore: refresh verify enumeration [skip ci]"
+          git push || true

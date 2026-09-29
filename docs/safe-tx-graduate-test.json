@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Graduate TEST token (0x3Fec2b...0e335) on gen-4 factory", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67",
+      "value": "0",
+      "data": "0xff6d8d050000000000000000000000003fec2b548755d53fd8db97cac0c14dfa99f0e335",
+      "contractMethod": null,
+      "_comment": "graduate(0x3Fec2b548755d53fD8DB97CAc0C14DFA99F0e335) -- the real TEST token from tx 0xeb2022...ccfc6c, launch()'s Launched event, id=0, creator=Safe, treasury=0x3a1F64760824Fef3E84C231175b44C442aE3dA6a. Seeds both pools (WETH-quoted + NVDA-quoted) in one call, locks LP permanently. Simulated as the Safe just now via cast call -- returns cleanly (no revert)."
+    }
+  ]
+}
