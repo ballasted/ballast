@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useProjectsMeta } from "@/hooks/useProjectMeta";
+import { isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
+import { isHiddenToken } from "@/lib/contracts";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { useAssets } from "@/hooks/useAssets";
@@ -28,7 +30,15 @@ export function CommandSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const { projects, isLoading, isConfigured } = useProjects();
+  const { projects: allProjects, isLoading, isConfigured } = useProjects();
+  // Same delist rule as Discover: a superseded pinned token (v1) or an
+  // explicitly hidden token (e.g. a test launch) never appears as a browsable
+  // result. Direct address paste still opens the token page regardless — that
+  // path resolves on-chain state directly, not through this list.
+  const projects = useMemo(
+    () => allProjects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token)),
+    [allProjects],
+  );
   const metaByToken = useProjectsMeta(projects);
 
   const trimmed = q.trim();

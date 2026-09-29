@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
+import { useQuoteAssets, type QuoteAssetCandidate } from "@/hooks/useQuoteAssets";
 import { ProjectCard } from "@/components/app/ProjectCard";
 import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { MotionSection } from "@/components/app/MotionSection";
@@ -13,9 +14,13 @@ import { PromoBanners } from "@/components/app/PromoBanners";
 import { LiveRail } from "@/components/app/LiveRail";
 import { TopMovers } from "@/components/app/TopMovers";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
-import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
+import { isProtocolToken, isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
+import { isHiddenToken } from "@/lib/contracts";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
+import { PairingScroller, type PairingItem } from "@/components/PairingScroller";
+import { ETH_ROUTE_TICKERS } from "@/lib/pairingAssets";
+import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const PAGE_SIZE = 20;
@@ -56,8 +61,21 @@ export default function DiscoverPage() {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sort, filter]);
-  const { projects, count, isLoading, isConfigured, hasLaunches } = useProjects();
+  const { projects, isLoading, isConfigured, hasLaunches } = useProjects();
   const trending = useTrending();
+  const { candidates: quoteCandidates } = useQuoteAssets();
+
+  // Every listing surface (grid, stats, Top Movers, live rail) excludes a
+  // superseded pinned token (v1 — still reachable by direct URL, per its own
+  // "relaunched" banner) and any explicitly hidden token (e.g. a throwaway
+  // test launch). The current pinned token is handled separately below (it's
+  // pinned, not delisted). Portfolio/useProjects itself stay unfiltered —
+  // v1 balances must still resolve for the migration pill.
+  const listedProjects = useMemo(
+    () => projects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token)),
+    [projects],
+  );
+  const count = listedProjects.length;
 
   // Per-token 24h volume, from the SAME source the stats row uses — so an
   // order and a headline never disagree.
@@ -78,8 +96,8 @@ export default function DiscoverPage() {
   };
 
   const ranked = useMemo(
-    () => sortProjects(projects.filter((p) => !isProtocolToken(p.token) && matchesFilter(p)), sort, volumeByToken),
-    [projects, sort, filter, volumeByToken],
+    () => sortProjects(listedProjects.filter((p) => !isProtocolToken(p.token) && matchesFilter(p)), sort, volumeByToken),
+    [listedProjects, sort, filter, volumeByToken],
   );
 
   return (
@@ -88,6 +106,12 @@ export default function DiscoverPage() {
 
       <PromoBanners />
 
+      {isConfigured && quoteCandidates.length > 0 && (
+        <MotionSection className="mt-5">
+          <PairsStrip candidates={quoteCandidates} />
+        </MotionSection>
+      )}
+
       {/* Live rail sits at xl+ only, beside the main column — a narrower
           viewport has no room for a third column alongside the card grid. */}
       <div className="xl:grid xl:grid-cols-[1fr_320px] xl:items-start xl:gap-6">
@@ -95,7 +119,7 @@ export default function DiscoverPage() {
 
       {isConfigured && (
         <MotionSection className="mt-5">
-          <DiscoverStats projects={projects} count={count} isLoading={isLoading} />
+          <DiscoverStats projects={listedProjects} count={count} isLoading={isLoading} />
         </MotionSection>
       )}
 
@@ -105,8 +129,13 @@ export default function DiscoverPage() {
         </div>
       )}
 
-      <div className="mt-6">
+      <div className="mt-6 flex items-center justify-between gap-3">
         <SortRail sort={sort} onSort={setSort} filter={filter} onFilter={setFilter} />
+        {isConfigured && (
+          <Link href="/app/security" className="shrink-0 text-xs text-text-faint underline underline-offset-2 hover:text-text-secondary">
+            Security ↗
+          </Link>
+        )}
       </div>
 
       <div className="mt-5">
@@ -141,8 +170,8 @@ export default function DiscoverPage() {
 
       {isConfigured && (
         <aside className="mt-6 hidden space-y-4 xl:sticky xl:top-20 xl:mt-0 xl:block">
-          <LiveRail projects={projects} />
-          <TopMovers projects={projects} />
+          <LiveRail projects={listedProjects} />
+          <TopMovers projects={listedProjects} />
         </aside>
       )}
       </div>
@@ -247,6 +276,27 @@ function sortProjects(projects: Project[], sort: SortId, volumeByToken: Map<stri
         return cmpBigDesc(a.backing?.lockedValueUsd ?? 0n, b.backing?.lockedValueUsd ?? 0n);
       });
   }
+}
+
+// Same pool-pairing card language as the create flow's picker
+// (components/PairingScroller) — GREEN candidates real, everything else an
+// honest, inert "coming soon". Live on-chain isGreenQuoteAsset() reads, not a
+// hardcoded list — this is the same source of truth the create flow uses.
+function PairsStrip({ candidates }: { candidates: QuoteAssetCandidate[] }) {
+  const items: PairingItem[] = candidates.map((c) => ({
+    key: c.address,
+    symbol: c.symbol ?? shortAddress(c.address),
+    isGreen: c.isGreen,
+    hasEthRoute: c.isWeth || ETH_ROUTE_TICKERS.has((c.symbol ?? "").toUpperCase()),
+  }));
+  return (
+    <div className="card p-4">
+      <h2 className="section-label">Pairs</h2>
+      <div className="mt-3">
+        <PairingScroller items={items} size="lg" />
+      </div>
+    </div>
+  );
 }
 
 function EmptyState({ title, action }: { title: string; action?: React.ReactNode }) {

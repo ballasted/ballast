@@ -226,6 +226,35 @@ export const ballastHookAbi = [
       { name: "amount", type: "uint256", indexed: false },
     ],
   },
+  // Non-WETH quote-asset fees (e.g. NVDA) — gen-4+ hooks only. Older hooks simply
+  // lack this function; reads/writes against them fail and are ignored
+  // (allowFailure), never assumed to be zero-by-design vs. unsupported.
+  {
+    type: "function",
+    name: "owedIn",
+    stateMutability: "view",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "currency", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "claimIn",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "currency", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "ClaimedIn",
+    inputs: [
+      { name: "recipient", type: "address", indexed: true },
+      { name: "currency", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
 ] as const;
 
 // WETH — on this chain WETH is an ERC-20 (18 dec) and the pools are token/WETH,

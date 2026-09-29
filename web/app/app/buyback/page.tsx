@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatUnits } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { useBuyback, type BurnRow, type BuybackState } from "@/hooks/useBuyback";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
@@ -13,6 +13,11 @@ import { activeChain } from "@/lib/chain";
 import { formatEt } from "@/lib/marketHours";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { erc20Abi } from "@/lib/abis";
+import { PROTOCOL_TOKEN_ADDRESS } from "@/components/app/token/ProtocolTokenNotice";
+import { liveQuery } from "@/lib/refresh";
+import { useBuybackV2 } from "@/hooks/useBuybackV2";
+import { BUYBACK_V2_ADDRESS } from "@/lib/contracts";
 
 // The burn address is a compile-time constant of BuybackBurner. Shown here so anyone
 // can look up its balance and confirm the burn total independently of this interface.
@@ -36,6 +41,33 @@ export default function BuybackPage() {
   const s = useBuyback();
   const now = useNow();
 
+  // $BALLAST v2's own burned total — read directly from the dead-address
+  // balance of the CURRENT pinned token, independent of the v1-only
+  // BuybackBurner contract below. This is the headline figure; there is no
+  // automated v2 burner yet (FeeSplitter v2 hasn't shipped — see "Where the
+  // money comes from" below), so today it reads 0 until the Safe runs a
+  // manual buyback. Never summed with v1's total: two different tokens,
+  // two different mechanisms, shown separately on purpose.
+  const v2Burned = useReadContract({
+    address: PROTOCOL_TOKEN_ADDRESS,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [DEAD],
+    query: liveQuery(Boolean(PROTOCOL_TOKEN_ADDRESS)),
+  });
+  const v2Supply = useReadContract({
+    address: PROTOCOL_TOKEN_ADDRESS,
+    abi: erc20Abi,
+    functionName: "totalSupply",
+    query: liveQuery(Boolean(PROTOCOL_TOKEN_ADDRESS)),
+  });
+  const v2BurnedVal = v2Burned.data as bigint | undefined;
+  const v2SupplyVal = v2Supply.data as bigint | undefined;
+  const v2BurnedPct =
+    v2BurnedVal !== undefined && v2SupplyVal !== undefined && v2SupplyVal > 0n
+      ? Number((v2BurnedVal * 10_000n) / v2SupplyVal) / 100
+      : undefined;
+
   return (
     <div className="relative space-y-5">
       <header>
@@ -47,24 +79,48 @@ export default function BuybackPage() {
         </p>
       </header>
 
+      {/* ── $BALLAST v2 — the current, manual mechanism ─────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Figure
+          label="$BALLAST v2 burned"
+          value={amt(v2BurnedVal, 2)}
+          sub={v2BurnedPct !== undefined ? `${v2BurnedPct.toFixed(4)}% of supply` : "share of supply —"}
+          accent
+        />
+      </div>
+      <p className="max-w-2xl text-xs text-text-faint">
+        Manual today — the 20% platform fee share on v2 launches isn&apos;t routed through an automated buyback
+        contract yet (FeeSplitter v2 hasn&apos;t shipped). The Safe buys and burns by hand; every buyback it runs is
+        logged here once it happens. Nothing to log yet.
+      </p>
+      <BuybackV2Panel />
+
+      {/* ── v1 history (legacy mechanism) — never summed with v2 above ──── */}
+      <section className="mt-2">
+        <h2 className="font-serif text-lg font-semibold text-bone">v1 history</h2>
+        <p className="mt-1 max-w-2xl text-xs text-text-faint">
+          $BALLAST v1&apos;s automated buyback ran independently, on its own contract, against its own pool. Kept
+          here for the record — its burn total is v1-only and is never added to v2&apos;s figure above.
+        </p>
+      </section>
+
       {!s.configured ? (
         <Notice
-          title="Not live yet"
-          body="The buyback contract isn't deployed here yet. Once it is (and NEXT_PUBLIC_BUYBACK_ADDRESS is set), every figure on this page reads live from chain."
+          title="v1 buyback contract not configured"
+          body="NEXT_PUBLIC_BUYBACK_ADDRESS isn't set, so v1's legacy figures below can't be read."
         />
       ) : (
         <>
           {/* ── Header figures ─────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Figure
-              label="$BALLAST burned"
+              label="$BALLAST v1 burned"
               value={amt(s.totalBurned, 2)}
               sub={
                 s.burnedPctBps !== undefined
-                  ? `${(s.burnedPctBps / 100).toFixed(2)}% of supply`
+                  ? `${(s.burnedPctBps / 100).toFixed(2)}% of v1 supply`
                   : "share of supply —"
               }
-              accent
             />
             <Figure label="WETH spent on buybacks" value={amt(s.totalWethSpent)} sub={`${s.buybackCount ?? 0} buybacks`} />
             <Figure label="Fees accrued, not yet spent" value={amt(s.accruedWeth)} sub="WETH waiting" />
@@ -106,7 +162,7 @@ export default function BuybackPage() {
 
           {/* ── Where the money comes from ─────────────────────────────── */}
           <section className="card p-5">
-            <h2 className="section-label">Where the money comes from</h2>
+            <h2 className="section-label">Where the money comes from (v1)</h2>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-text-secondary">
               <Node>1% swap fee (WETH)</Node>
               <Arrow />
@@ -128,6 +184,74 @@ export default function BuybackPage() {
         </>
       )}
     </div>
+  );
+}
+
+// v2's buyback panel. Once BuybackBurnerV2 is deployed and
+// NEXT_PUBLIC_BUYBACK_V2_ADDRESS is set, this reads it live: pending
+// balances (WETH/NVDA sent by the Safe, not yet spent), per-asset cooldown
+// status, and the cumulative burn total. Before that, an honest "manual,
+// nothing automated yet" state — never a fabricated log entry.
+function BuybackV2Panel() {
+  const now = useNow();
+  const v2 = useBuybackV2();
+
+  if (!v2.configured) {
+    return (
+      <section className="card p-5">
+        <h2 className="section-label">v2 buyback</h2>
+        <p className="mt-3 text-sm text-text-muted">
+          Manual — BuybackBurnerV2 isn&apos;t deployed yet. Once it is, this section reads it live: pending balances,
+          cooldown status, and every burn.
+        </p>
+      </section>
+    );
+  }
+
+  function readyLabel(readyAt?: bigint): string {
+    if (readyAt === undefined || now === 0) return "—";
+    const r = Number(readyAt);
+    if (r === 0 || r <= now) return "Ready now";
+    const mins = Math.ceil((r - now) / 60);
+    return mins < 60 ? `Ready in ${mins}m` : `Ready in ${Math.ceil(mins / 60)}h`;
+  }
+
+  return (
+    <section className="card p-5">
+      <h2 className="section-label">v2 buyback</h2>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <div className="eyebrow">WETH pending</div>
+          <div className="mt-1 tabular-nums text-text-primary">{amt(v2.wethPendingBalance)}</div>
+        </div>
+        <div>
+          <div className="eyebrow">NVDA pending</div>
+          <div className="mt-1 tabular-nums text-text-primary">{amt(v2.nvdaPendingBalance, 4)}</div>
+        </div>
+        <div>
+          <div className="eyebrow">WETH buyback</div>
+          <div className="mt-1 text-text-secondary">{readyLabel(v2.wethReadyAt)}</div>
+        </div>
+        <div>
+          <div className="eyebrow">NVDA buyback</div>
+          <div className="mt-1 text-text-secondary">{readyLabel(v2.nvdaReadyAt)}</div>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-text-faint">
+        {v2.buybackCount ?? 0} buyback{v2.buybackCount === 1 ? "" : "s"} run · permissionless once ready — anyone may
+        call it, no owner exists.
+      </p>
+      {BUYBACK_V2_ADDRESS && (
+        <a
+          className="mt-2 inline-block text-xs text-green underline underline-offset-2"
+          href={`${EXPLORER}/address/${BUYBACK_V2_ADDRESS}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View the contract on Blockscout ↗
+        </a>
+      )}
+    </section>
   );
 }
 

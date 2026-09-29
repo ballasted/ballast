@@ -4,11 +4,19 @@ import { useCallback, useState } from "react";
 import { useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import type { Address } from "viem";
 import { ballastHookAbi, aggregatorV3Abi } from "@/lib/abis";
-import { HOOK_ADDRESSES, ETH_USD_FEED_ADDRESS } from "@/lib/contracts";
+import { HOOK_ADDRESSES, ETH_USD_FEED_ADDRESS, WETH_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt } from "@/lib/waitForReceipt";
 import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
+import { useAssets } from "@/hooks/useAssets";
+
+export type OtherOwed = {
+  currency: Address;
+  symbol?: string;
+  amount: bigint;
+  decimals: number;
+};
 
 const CHAIN_ID = activeChain.id;
 
@@ -55,6 +63,49 @@ export function useAccruedFees(account?: Address) {
   const accruedWeth = owedRes.data !== undefined ? perHook.reduce((s, x) => s + x.owed, 0n) : undefined;
   const hooksWithBalance = perHook.filter((x) => x.owed > 0n);
 
+  // Non-WETH quote-asset fees (e.g. NVDA, SPY, SGOV — any registry-allowed
+  // asset a pool might be quoted in). Probed against EVERY hook × EVERY
+  // registry asset: pre-gen-4 hooks lack owedIn entirely (the call simply
+  // fails, allowFailure), and most (hook, currency) pairs read 0 — both
+  // harmless, since this is the only way to discover which currencies a
+  // creator/vault/referrer actually has a balance in without an indexer.
+  const { assets } = useAssets();
+  const otherCandidates = assets.filter((a) => !WETH_ADDRESS || a.address.toLowerCase() !== WETH_ADDRESS.toLowerCase());
+  const otherOwedRes = useReadContracts({
+    allowFailure: true,
+    contracts: HOOK_ADDRESSES.flatMap((hook) =>
+      otherCandidates.map(
+        (a) =>
+          ({
+            address: hook,
+            abi: ballastHookAbi,
+            functionName: "owedIn",
+            args: account ? [account, a.address] : undefined,
+            chainId: CHAIN_ID,
+          }) as const,
+      ),
+    ),
+    query: { enabled: Boolean(account) && HOOK_ADDRESSES.length > 0 && otherCandidates.length > 0, refetchInterval: 30_000 },
+  });
+  // (hook, currency) pairs with a real balance — this is exactly what claim()
+  // below iterates to call claimIn(currency) on the right hook.
+  const otherPerHookCurrency: { hook: Address; currency: Address; amount: bigint }[] = [];
+  HOOK_ADDRESSES.forEach((hook, hi) => {
+    otherCandidates.forEach((a, ai) => {
+      const r = otherOwedRes.data?.[hi * otherCandidates.length + ai];
+      if (r?.status === "success" && (r.result as bigint) > 0n) {
+        otherPerHookCurrency.push({ hook, currency: a.address, amount: r.result as bigint });
+      }
+    });
+  });
+  // Summed per currency (across hooks) for display.
+  const otherOwed: OtherOwed[] = otherCandidates
+    .map((a) => {
+      const amount = otherPerHookCurrency.filter((x) => x.currency.toLowerCase() === a.address.toLowerCase()).reduce((s, x) => s + x.amount, 0n);
+      return { currency: a.address, symbol: a.symbol, amount, decimals: a.decimals ?? 18 };
+    })
+    .filter((o) => o.amount > 0n);
+
   // WETH ≈ ETH 1:1, so the ETH/USD feed gives the USD equivalent. Decimals read
   // live from the feed, never assumed (CLAUDE.md rule 9).
   const ethRes = useReadContracts({
@@ -75,19 +126,20 @@ export function useAccruedFees(account?: Address) {
   const accruedUsd1e18 =
     accruedWeth !== undefined && ethUsd1e18 !== undefined ? (accruedWeth * ethUsd1e18) / 10n ** 18n : undefined;
 
-  // Claim from EACH hook that owes this account — one tx per hook with a balance
-  // (typically one; two only right after a hook redeploy while old fees remain). A
-  // reverted/lost claim stops the loop and surfaces the hash; already-swept hooks
-  // stay swept, so a retry only re-hits the ones still owing.
+  // Claim EVERYTHING owed: WETH via claim() (one tx per hook with a WETH
+  // balance) THEN every non-WETH currency via claimIn(currency) (one tx per
+  // (hook, currency) pair with a balance — typically zero or one today, since
+  // only gen-4's NVDA-quoted pool can produce these). A reverted/lost claim
+  // stops the loop and surfaces the hash; already-swept (hook, currency)
+  // pairs stay swept, so a retry only re-hits what's still owing.
   const claim = useCallback(async () => {
     if (!publicClient || !account) return;
-    const targets = hooksWithBalance;
-    if (targets.length === 0) return;
+    if (hooksWithBalance.length === 0 && otherPerHookCurrency.length === 0) return;
     setError(undefined);
     setTxHash(undefined);
     setPhase("claiming");
     try {
-      for (const { hook } of targets) {
+      for (const { hook } of hooksWithBalance) {
         const hash = await writeContractAsync({
           address: hook,
           abi: ballastHookAbi,
@@ -103,25 +155,47 @@ export function useAccruedFees(account?: Address) {
           throw new Error(`A claim reverted — check Blockscout: ${hash}`);
         }
       }
+      for (const { hook, currency } of otherPerHookCurrency) {
+        const hash = await writeContractAsync({
+          address: hook,
+          abi: ballastHookAbi,
+          functionName: "claimIn",
+          args: [currency],
+          chainId: CHAIN_ID,
+        });
+        setTxHash(hash);
+        const outcome = await pollReceipt(publicClient, hash);
+        if (outcome.status === "lost") {
+          throw new Error(`We lost track of a claim — check Blockscout before retrying: ${hash}`);
+        }
+        if (outcome.status === "reverted") {
+          throw new Error(`A claim reverted — check Blockscout: ${hash}`);
+        }
+      }
       setPhase("success");
       void owedRes.refetch();
+      void otherOwedRes.refetch();
       invalidateChainReads(); // fees claimed → wallet balance + owed refresh now
     } catch (e) {
       setError(decodeTxError(e));
       setPhase("error");
     }
-  }, [account, publicClient, writeContractAsync, hooksWithBalance, owedRes, invalidateChainReads]);
+  }, [account, publicClient, writeContractAsync, hooksWithBalance, otherPerHookCurrency, owedRes, otherOwedRes, invalidateChainReads]);
+
+  const totalClaimTxCount = hooksWithBalance.length + otherPerHookCurrency.length;
 
   return {
     accruedWeth,
     accruedUsd1e18,
+    otherOwed, // non-WETH currencies (e.g. NVDA) with a real balance — empty array if none
     phase,
     txHash,
     error,
     isConfigured: HOOK_ADDRESSES.length > 0,
-    isLoading: owedRes.isLoading,
-    // >1 hook owing means the claim will prompt more than once (see FeePanel note).
-    claimSpansHooks: hooksWithBalance.length > 1,
+    isLoading: owedRes.isLoading || otherOwedRes.isLoading,
+    // >1 total claim tx means the claim will prompt more than once (see FeePanel note)
+    // — either an earlier hook version still owing WETH, or a non-WETH currency.
+    claimSpansHooks: totalClaimTxCount > 1,
     claim,
     reset: () => {
       setPhase("idle");

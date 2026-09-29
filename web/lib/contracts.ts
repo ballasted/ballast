@@ -33,6 +33,22 @@ export const METADATA_DENYLIST_ADDRESS = asAddress(
 export const BUYBACK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_ADDRESS);
 export const isBuybackConfigured = Boolean(BUYBACK_ADDRESS);
 
+// BuybackBurnerV2 — $BALLAST v2's manual-funded, ownerless buyback burner
+// (contracts/src/BuybackBurnerV2.sol). Unset until deployed; the buyback page
+// degrades to an honest "manual, not live yet" state exactly like v1 did
+// before BUYBACK_ADDRESS was set.
+export const BUYBACK_V2_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_V2_ADDRESS);
+export const isBuybackV2Configured = Boolean(BUYBACK_V2_ADDRESS);
+
+// BallastV1Claim — the v1->v2 migration payout, in ETH
+// (contracts/src/BallastV1Claim.sol). Unset until deployed; /app/migrate
+// shows an honest "not live yet" state until then.
+export const V1_CLAIM_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V1_CLAIM_ADDRESS);
+export const isV1ClaimConfigured = Boolean(V1_CLAIM_ADDRESS);
+// $BALLAST v1 — fixed forever, independent of whichever token is currently
+// pinned as the protocol token (see ProtocolTokenNotice.tsx).
+export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as Address;
+
 // BallastManatee — the standalone 1,000-piece on-chain NFT mint (/app/mint). A
 // separate product: no protocol contract is touched. Unset = the mint page shows
 // an honest "not live yet" state. The art is computed on-chain by an immutable
@@ -61,6 +77,19 @@ export const ETH_USD_FEED_ADDRESS = asAddress(
 // allowance, not a direct router allowance.
 export const PERMIT2_ADDRESS =
   "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address;
+
+// Tokens deliberately excluded from every listing surface (Discover grid,
+// search, Top Movers, stat tiles) — e.g. a throwaway test launch used to
+// prove a new factory generation end-to-end. Still fully readable by direct
+// URL/address (nothing here touches useProjects or the token page itself),
+// just never surfaced anywhere a real visitor browses. Env-driven so a new
+// disposable test token needs no code change.
+export const HIDDEN_TOKEN_ADDRESSES: Address[] = parseAddressList(
+  process.env.NEXT_PUBLIC_HIDDEN_TOKEN_ADDRESSES,
+);
+export function isHiddenToken(token: Address | undefined): boolean {
+  return Boolean(token) && HIDDEN_TOKEN_ADDRESSES.some((a) => a.toLowerCase() === token!.toLowerCase());
+}
 
 export const isLensConfigured = Boolean(LENS_ADDRESS);
 export const isFactoryConfigured = Boolean(FACTORY_ADDRESS);
@@ -139,6 +168,11 @@ export const FACTORY_ADDRESSES: Address[] = FACTORIES.map((f) => f.address);
 const HISTORICAL_HOOKS: { factory: Address; hook: Address }[] = [
   { factory: "0x069974136c78Cf0F2162463B95321E59F56523D8", hook: "0x9C15c992E4De3711715C8B7D717EF46e474680CC" },
   { factory: "0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1", hook: "0x743102aa1De955b5F0Fada1377B6E545Fdb080cc" },
+  // gen-3 (HARUNA, BALLCAT) — was missing here since this list's introduction
+  // (61888e3), even though docs/seeded-hook-history.md always listed it. Same
+  // "one short entry silently hides a whole generation's pools" bug class this
+  // file's own comment warns about — found + fixed 2026-09-29.
+  { factory: "0x3eb5532e982931cad40d0416adbd7930a57965ae", hook: "0x4915f612c89100bEbE9279355fab27022D0940cc" },
 ];
 
 // Ordered newest-first: current hook, then every historical one. Every hook-aware

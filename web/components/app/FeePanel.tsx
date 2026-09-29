@@ -35,9 +35,10 @@ export function FeePanel({
 
   if (!address || !f.isConfigured) return null;
   if (requireAccount && address.toLowerCase() !== requireAccount.toLowerCase()) return null;
-  // Self-hide when there's nothing to claim — unless told to always show, or we're
-  // mid/post-claim (so the confirmation stays visible after owed refetches to 0).
-  const empty = f.accruedWeth === 0n;
+  // Self-hide when there's nothing to claim (WETH or any other currency) —
+  // unless told to always show, or we're mid/post-claim (so the confirmation
+  // stays visible after owed refetches to 0).
+  const empty = f.accruedWeth === 0n && f.otherOwed.length === 0;
   if (empty && !alwaysShow && f.phase === "idle") return null;
 
   const busy = f.phase === "claiming";
@@ -55,6 +56,17 @@ export function FeePanel({
       <div className="metric-secondary mt-0.5">
         {f.accruedUsd1e18 !== undefined ? `≈ ${formatUsd(f.accruedUsd1e18)}` : "USD equivalent unavailable"}
       </div>
+
+      {f.otherOwed.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {f.otherOwed.map((o) => (
+            <li key={o.currency} className="metric-secondary">
+              + {Number(formatUnits(o.amount, o.decimals)).toLocaleString("en", { maximumFractionDigits: 6 })}{" "}
+              {o.symbol ?? "tokens"} accrued
+            </li>
+          ))}
+        </ul>
+      )}
 
       <p className="mt-3 text-xs text-text-faint">
         {note ??
@@ -87,7 +99,13 @@ export function FeePanel({
           disabled={busy || empty || f.accruedWeth === undefined}
           onClick={f.claim}
         >
-          {busy ? "Claiming…" : empty ? "Nothing to claim yet" : `Claim ${fmtWeth(f.accruedWeth)} WETH`}
+          {busy
+            ? "Claiming…"
+            : empty
+              ? "Nothing to claim yet"
+              : f.otherOwed.length > 0
+                ? `Claim ${fmtWeth(f.accruedWeth)} WETH + ${f.otherOwed.length} other`
+                : `Claim ${fmtWeth(f.accruedWeth)} WETH`}
         </button>
       )}
       {f.error && <p className="mt-2 text-center text-xs text-negative">{f.error}</p>}

@@ -63,6 +63,9 @@ export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
           This is $BALLAST v1. It has been relaunched. This pool stays open and tradable — nothing here stops
           working.
         </p>
+        <Link href="/app/migrate" className="mt-2 inline-block text-xs text-green underline underline-offset-2">
+          Burn v1, claim ETH ↗
+        </Link>
       </section>
     );
   }
