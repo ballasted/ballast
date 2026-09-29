@@ -28,12 +28,12 @@ import {
 } from "@/components/app/token/TokenSections";
 import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
-import { TerminalChart } from "@/components/app/terminal/TerminalChart";
-import { useOhlcv } from "@/hooks/useOhlcv";
-import { DEFAULT_TIMEFRAME, type Timeframe } from "@/lib/market";
+import { PriceChart } from "@/components/app/token/PriceChart";
+import { WETH_ADDRESS } from "@/lib/contracts";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
+import { SecurityChecksPanel } from "@/components/app/token/SecurityChecksPanel";
 import { ProtocolControlsPanel } from "@/components/app/ProtocolControlsPanel";
 import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
@@ -80,9 +80,7 @@ export default function TokenDetailPage() {
   const { meta } = useProjectMeta(metadataURI);
   const { market } = useMarket(token);
   const { holders } = useHolders(token);
-  const [tf, setTf] = useState<Timeframe>(DEFAULT_TIMEFRAME);
   const [tab, setTab] = useState<TabId>("trades");
-  const { ohlcv, isLoading: ohlcvLoading, available: ohlcvAvailable } = useOhlcv(token, tf);
   // Metadata denylist: a denied token keeps its ticker, price, backing, holders and
   // trades, but its project-supplied branding (name, logo, description, links) is
   // withheld and replaced by a notice stating why, with the raw metadataURI so
@@ -95,6 +93,20 @@ export default function TokenDetailPage() {
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
+
+  // The chart's USD/quote-asset unit switch needs the pool's non-WETH quote asset
+  // (a stock, e.g. NVDA) and ITS live USD price from the SAME allowlist feed read
+  // useAssets already does for the create flow — never re-derived here. A WETH-
+  // only pool has no such asset, so the switch stays hidden (PriceChart handles that).
+  const stockQuoteAsset = (quoteAssets ?? []).find((a) => !WETH_ADDRESS || a.toLowerCase() !== WETH_ADDRESS.toLowerCase());
+  const stockAssetInfo = stockQuoteAsset ? registry.find((a) => a.address.toLowerCase() === stockQuoteAsset.toLowerCase()) : undefined;
+  const quoteUsdPrice =
+    stockAssetInfo?.price !== undefined && stockAssetInfo?.priceDecimals !== undefined
+      ? Number(stockAssetInfo.price) / 10 ** stockAssetInfo.priceDecimals
+      : undefined;
+  // Fastest real price available: on-chain (12s cadence) first, GeckoTerminal
+  // (60s) otherwise — both real reads, never a fabricated interpolation.
+  const livePriceUsd = marketPriceUsd !== undefined ? Number(marketPriceUsd) / 1e18 : market?.priceUsd;
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
   if (!isConfigured) {
@@ -132,12 +144,6 @@ export default function TokenDetailPage() {
             <PoolChips quoteAssets={quoteAssets ?? []} registry={registry} registryLoaded={!registryLoading} />
             <span className={cn("chip", hasPool ? "chip-accent" : "chip-neutral")}>{hasPool ? "Graduated" : "On curve"}</span>
             <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} />
-            <Link
-              href={`/app/terminal/${token}`}
-              className="text-xs text-green underline underline-offset-2"
-            >
-              Terminal ↗
-            </Link>
           </div>
         </header>
       </MotionSection>
@@ -161,14 +167,11 @@ export default function TokenDetailPage() {
       {/* ── Chart + trade panel, side by side. Nothing else above the fold. ── */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
         <MotionSection>
-          <TerminalChart
-            candles={ohlcv?.candles ?? []}
-            timeframe={tf}
-            onTimeframe={setTf}
-            source={ohlcv?.source ?? "GeckoTerminal"}
-            fetchedAt={ohlcv?.fetchedAt}
-            loading={ohlcvLoading}
-            available={ohlcvAvailable}
+          <PriceChart
+            token={token!}
+            quoteSymbol={stockAssetInfo?.symbol}
+            quoteUsdPrice={quoteUsdPrice}
+            livePriceUsd={livePriceUsd}
           />
         </MotionSection>
 
@@ -252,6 +255,7 @@ export default function TokenDetailPage() {
 
             <AllocationSlot />
             <VerificationPanel token={token} />
+            <SecurityChecksPanel token={token} />
             <ProtocolControlsPanel ownerFactory={ownerFactory} token={token} creator={creator} />
             <MetadataHistory launchUri={launchMetadataURI} currentUri={metadataURI} changed={metadataChanged} />
             <CreatorTrackRecord creator={creator} thisToken={token!} />

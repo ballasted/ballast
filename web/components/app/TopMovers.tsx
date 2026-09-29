@@ -6,6 +6,7 @@ import type { Project } from "@/hooks/useProjects";
 import { useTrending } from "@/hooks/useTrending";
 import { useAssets } from "@/hooks/useAssets";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { Sparkline } from "@/components/app/Sparkline";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { shortAddress } from "@/lib/format";
 import { formatSmallUsd } from "@/lib/market";
@@ -88,6 +89,7 @@ export function TopMovers({ projects }: { projects: Project[] }) {
                       <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
                     </span>
                   )}
+                  <Sparkline token={m.token as `0x${string}`} width={48} height={20} />
                   <span className="shrink-0 font-mono text-xs tabular-nums text-text-secondary">
                     {formatSmallUsd(m.priceUsd!)}
                   </span>
