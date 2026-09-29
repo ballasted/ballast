@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fix $BALLAST v2 metadata links to ballasted.fun (canonical domain)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C",
+      "value": "0",
+      "data": "0x750521f500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000035697066733a2f2f516d51436170466e51686e78537979596a66784774734d79513145373950706939484739456731686d71587a456f0000000000000000000000",
+      "contractMethod": null,
+      "_comment": "setMetadataURI(\"ipfs://QmQCapFnQhnxSyyYjfxGtsMyQ1E79Ppi9HG9Eg1hmqXzEo\") on the BALLAST v2 token. Creator-only (msg.sender must equal token.creator(), which is the Safe) -- setMetadataURI has no one-time lock, so this is fully safe to call again even though metadataChanged() already returns true from the prior fix. ballasted.xyz went dark (confirmed NXDOMAIN from two independent public resolvers, 2026-09-29); ballasted.fun is now the canonical, live domain. This corrects v2's on-chain metadata JSON: website 'https://ballasted.xyz' -> 'https://ballasted.fun', telegram 't.me/ballastedapp' -> 't.me/ballastedotfun' (confirmed correct, not a typo). x and every other field (name/symbol/description/category/logo) are unchanged from the prior fix. New JSON pinned to Pinata 2026-09-30, verified resolving at https://gateway.pinata.cloud/ipfs/QmQCapFnQhnxSyyYjfxGtsMyQ1E79Ppi9HG9Eg1hmqXzEo: {name:'Ballast', symbol:'BALLAST', description:'The Ballast protocol's own token, relaunched on the multi-quote-asset generation, paired with NVDA and WETH.', category:'protocol', logo:'ipfs://Qmar8T7MFNPUX3Ya3obsfBuLgEfCeQnXgQwQPcxwFwScMW', website:'https://ballasted.fun', x:'x.com/ballastedapp', telegram:'t.me/ballastedotfun'}. After this confirms, every surface reading the token's live metadataURI (token page, Discover, search, Top Movers, portfolio, OG image) shows the corrected links -- no code change needed, they already read metadataURI live."
+    }
+  ]
+}

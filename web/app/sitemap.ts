@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ballasted.xyz";
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ballasted.fun";
 
 // Static marketing routes only. App (/app/*) routes are dynamic and excluded.
 const ROUTES = [

@@ -16,7 +16,7 @@ import { cn } from "@/lib/cn";
 //   1. RENDER-TIME URL VALIDATION — every href is re-validated here, not just in
 //      the create form. Only http(s) URLs survive; `javascript:`/`data:`/garbage
 //      are dropped, so a directly-pinned link can never become a live sink on a
-//      page we serve under ballasted.xyz.
+//      page we serve under ballasted.fun.
 //   2. OUTBOUND INTERSTITIAL — left-clicking a link opens a confirmation showing
 //      the real destination and that BALLAST does not vouch for it, because we are
 //      actively serving these on our own origin.

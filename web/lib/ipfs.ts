@@ -6,7 +6,7 @@
 // NEXT_PUBLIC_IPFS_GATEWAY MUST resolve to a domain we do NOT serve the app from
 // (e.g. gateway.pinata.cloud, or a dedicated ipfs.* subdomain). User-uploaded
 // content — including anything an SVG or HTML blob could smuggle in — must never
-// be same-origin with ballasted.xyz, or a single malicious upload becomes an XSS
+// be same-origin with ballasted.fun, or a single malicious upload becomes an XSS
 // under our own origin (and a Google Safe Browsing trigger). See CLAUDE.md.
 
 const GATEWAY = process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? "https://gateway.pinata.cloud/ipfs/";

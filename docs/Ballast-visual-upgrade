@@ -42,7 +42,7 @@ Do not build on Dune before reporting.
 
 ## PHASE 1 — Fix what is visibly broken
 
-From the live create page at `ballasted.xyz/app/create`:
+From the live create page at `ballasted.fun/app/create`:
 
 1. **"Fee split" shows the string "read live from FeeConfig"** instead of the
    actual split. It should read `50% creator · 35% platform · 15% referrer`,

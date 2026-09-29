@@ -531,7 +531,7 @@ succeeded (`vercel inspect` confirms `status: Ready`), live at the aliased
 domains.
 
 **Live finding, not from a screenshot — from raw HTTP/DNS, which this
-sandbox CAN do**: **`ballasted.xyz` does not resolve at all** — confirmed
+sandbox CAN do**: **`ballasted.fun` does not resolve at all** — confirmed
 `NXDOMAIN` from two independent public resolvers (Google `8.8.8.8` and
 Cloudflare `1.1.1.1`), not a sandbox artifact. **`ballasted.fun` resolves and
 serves the live site correctly** — confirmed by fetching real rendered HTML:
@@ -540,7 +540,7 @@ Portfolio · Profile`, mobile bottom nav down to 3 items), a live "Pairs"
 scroller renders with the WETH "ETH route" card, the "Security ↗" link is
 present, and `/app/migrate` correctly shows "Not live yet" (honest, since
 `NEXT_PUBLIC_V1_CLAIM_ADDRESS` isn't set). **The page's own metadata still
-hardcodes `ballasted.xyz`** as the canonical `og:url` and JSON-LD `url`
+hardcodes `ballasted.fun`** as the canonical `og:url` and JSON-LD `url`
 (`web/app/layout.tsx` or wherever `NEXT_PUBLIC_APP_URL`/metadata is sourced)
 — if `.fun` is now the real domain, this needs updating; if `.xyz` is
 supposed to still be the primary domain, its DNS needs fixing. Either way,

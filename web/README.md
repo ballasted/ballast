@@ -1,6 +1,6 @@
 # BALLAST — Web
 
-Next.js (App Router) for **ballasted.xyz**. Marketing site at the root, the app
+Next.js (App Router) for **ballasted.fun**. Marketing site at the root, the app
 under `/app`. One project, one domain (build-spec §8).
 
 ## Status

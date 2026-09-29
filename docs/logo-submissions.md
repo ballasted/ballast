@@ -30,7 +30,7 @@ factory (`0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67`), with the Safe only as
    > rather than the deployer-login path.
    >
    > Proof of relationship: [attach or link something that ties you personally
-   > to the project — e.g. the ballasted.xyz domain's DNS/WHOIS, the project's
+   > to the project — e.g. the ballasted.fun domain's DNS/WHOIS, the project's
    > X account (x.com/ballastedapp) posting this same request, or a signed
    > message from the Safe itself via https://app.safe.global's message-signing
    > feature, which produces an EIP-1271-verifiable signature]
@@ -38,7 +38,7 @@ factory (`0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67`), with the Safe only as
    > Icon (48×48 PNG): attached — `docs/assets-brand/icon-dark-512.png`
    > (resize to 48×48 before attaching, or link it; the master asset is
    > 512×512).
-   > Website: https://ballasted.xyz
+   > Website: https://ballasted.fun
    > X: https://x.com/ballastedapp
    > Description: A token launchpad on Robinhood Chain where projects can
    > hold a verifiable on-chain treasury of tokenized real-world assets,
@@ -67,7 +67,7 @@ contract is likely to bounce.
 
 Steps once verified:
 1. Open the token's page on GeckoTerminal (search `0xDc605041F02e41CbD8FDC347023e93C4c3fA243C` under Robinhood Chain), or use the update-token-info link above directly.
-2. Fill in: chain = Robinhood, contract address, name "Ballast", symbol "BALLAST", logo upload, website `https://ballasted.xyz`, X `https://x.com/ballastedapp`, description (same as above).
+2. Fill in: chain = Robinhood, contract address, name "Ballast", symbol "BALLAST", logo upload, website `https://ballasted.fun`, X `https://x.com/ballastedapp`, description (same as above).
 3. Verify by email (one-time password sent to whatever address you submit with).
 4. Free tier: reviewed within a few days. Paid "Fast Pass" ($199): minutes-to-24h. Your call on which.
 

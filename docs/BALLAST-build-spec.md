@@ -1,7 +1,7 @@
 # BALLAST — Build Spec
 
 > Launchpad with verified asset backing, on Robinhood Chain.
-> Brand: **BALLAST** · Domain: **ballasted.xyz** · Handle: **@ballasted**
+> Brand: **BALLAST** · Domain: **ballasted.fun** · Handle: **@ballasted**
 > This document is the source of truth. If something here conflicts with a default assumption, follow this document.
 
 ---

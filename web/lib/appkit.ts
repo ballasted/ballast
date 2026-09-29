@@ -21,8 +21,8 @@ export const modal = appKitEnabled
       metadata: {
         name: "BALLAST",
         description: "Launch with something underneath.",
-        url: "https://ballasted.xyz",
-        icons: ["https://ballasted.xyz/icon.png"],
+        url: "https://ballasted.fun",
+        icons: ["https://ballasted.fun/icon.png"],
       },
       features: { analytics: false, email: false, socials: [] },
       allWallets: "SHOW",

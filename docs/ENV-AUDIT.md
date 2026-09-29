@@ -56,7 +56,7 @@ keys are shown as `<secret>`.
 | `RPC_UPSTREAM_URL` (server) | `/api/rpc` proxies the rate-limited public RPC |
 | `NEXT_PUBLIC_REOWN_PROJECT_ID` | wallet modal falls back to injected-only discovery |
 | `NEXT_PUBLIC_IPFS_GATEWAY` | default `https://gateway.pinata.cloud/ipfs/` |
-| `NEXT_PUBLIC_APP_URL` | default `https://ballasted.xyz` (metadata/OG/sitemap only) |
+| `NEXT_PUBLIC_APP_URL` | default `https://ballasted.fun` (metadata/OG/sitemap only) |
 
 **Later features (not needed for the site to work today):**
 
@@ -93,7 +93,7 @@ Legend: **file** = where it belongs · **read by** = the process that reads it �
 | `NEXT_PUBLIC_REOWN_PROJECT_ID` | web/.env.local + Vercel | `lib/wagmi.ts` | P | `253bb93c024c823876265f33e0546a3f` |
 | `NEXT_PUBLIC_IPFS_GATEWAY` | web/.env.local + Vercel | `lib/ipfs.ts` | P | `https://gateway.pinata.cloud/ipfs/` |
 | `NEXT_PUBLIC_INDEXER_URL` | web/.env.local + Vercel | `lib/indexer.ts` | P | unset (indexer not deployed) |
-| `NEXT_PUBLIC_APP_URL` | web/.env.local + Vercel | `layout.tsx`, `robots.ts`, `sitemap.ts` | P | prod: `https://ballasted.xyz` |
+| `NEXT_PUBLIC_APP_URL` | web/.env.local + Vercel | `layout.tsx`, `robots.ts`, `sitemap.ts` | P | prod: `https://ballasted.fun` |
 | `PINATA_JWT` | web/.env.local + Vercel | `app/api/pin/route.ts` | **S** | `<secret>` |
 | `RPC_UPSTREAM_URL` | web/.env.local + Vercel | `app/api/rpc/route.ts` | **S** | `<secret>` (Alchemy) |
 
@@ -240,7 +240,7 @@ NEXT_PUBLIC_ETH_USD_FEED_ADDRESS=0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9
 NEXT_PUBLIC_REOWN_PROJECT_ID=253bb93c024c823876265f33e0546a3f
 NEXT_PUBLIC_IPFS_GATEWAY=https://gateway.pinata.cloud/ipfs/
 NEXT_PUBLIC_INDEXER_URL=                     # set once the indexer is deployed
-NEXT_PUBLIC_APP_URL=https://ballasted.xyz
+NEXT_PUBLIC_APP_URL=https://ballasted.fun
 ```
 
 **Server-only — DO NOT prefix `NEXT_PUBLIC_`:**

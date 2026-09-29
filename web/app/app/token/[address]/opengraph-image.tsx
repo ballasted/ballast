@@ -149,7 +149,7 @@ export default async function Image({ params }: { params: Promise<{ address: str
                 <Stat label="BACKING" value={backing} muted />
               )}
             </div>
-            <span style={{ display: "flex", fontSize: 26, color: C.faint, letterSpacing: 1 }}>ballasted.xyz</span>
+            <span style={{ display: "flex", fontSize: 26, color: C.faint, letterSpacing: 1 }}>ballasted.fun</span>
           </div>
         </div>
       </div>

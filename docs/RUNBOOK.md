@@ -254,7 +254,7 @@ needed for those. If a `PRIOR_*` var already has a value from an earlier
 redeploy, prepend the new address to the existing comma list instead of
 overwriting it — newest-first.)
 
-**EXPECTED OUTPUT:** `vercel --prod` ends with a `https://ballasted.xyz`
+**EXPECTED OUTPUT:** `vercel --prod` ends with a `https://ballasted.fun`
 (or `ballast-*.vercel.app`) production URL and `Deployed to production.`
 
 Confirm in a browser: open `/app/create`, the quote-asset picker shows more

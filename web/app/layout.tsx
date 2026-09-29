@@ -23,7 +23,7 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", displ
 // marketing visitor never downloads the web3 bundle before reading a word.
 // This is a hard rule from CLAUDE.md and build-spec §8.
 
-const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ballasted.xyz";
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://ballasted.fun";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

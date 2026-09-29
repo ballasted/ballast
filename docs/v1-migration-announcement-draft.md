@@ -14,9 +14,9 @@ production. Fill in the real contract address before posting.
 > Burn what you can, claim what that's worth. Partial claims work, no rush
 > within the 30-day window.
 >
-> Claim: https://ballasted.xyz/app/migrate
+> Claim: https://ballasted.fun/app/migrate
 > Contract: [CONTRACT_ADDRESS] (verified, immutable, no owner)
-> Full data + methodology: https://ballasted.xyz/app/migrate
+> Full data + methodology: https://ballasted.fun/app/migrate
 
 ---
 

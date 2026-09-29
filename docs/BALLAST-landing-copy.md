@@ -1,6 +1,6 @@
 # BALLAST — Landing Page Copy
 
-**ballasted.xyz** · Ready to paste. Every line here respects the hard copy rules: no "safe", "guaranteed", "protected", "floor", "secured", or "yield" in relation to ballast.
+**ballasted.fun** · Ready to paste. Every line here respects the hard copy rules: no "safe", "guaranteed", "protected", "floor", "secured", or "yield" in relation to ballast.
 
 ---
 

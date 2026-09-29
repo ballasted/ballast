@@ -47,7 +47,7 @@ once already.
 |---|---|
 | `NEXT_PUBLIC_APP_URL` | production URL (NOT `localhost:3000` — must be the real domain on Vercel) |
 | `NEXT_PUBLIC_USE_MAINNET` | `true` |
-| `NEXT_PUBLIC_IPFS_GATEWAY` | `https://gateway.pinata.cloud/ipfs/` (must stay cross-origin, never a ballasted.xyz origin) |
+| `NEXT_PUBLIC_IPFS_GATEWAY` | `https://gateway.pinata.cloud/ipfs/` (must stay cross-origin, never a ballasted.fun origin) |
 | `NEXT_PUBLIC_REOWN_PROJECT_ID` | from `web/.env.local` — wallet picker breaks if absent |
 | `RPC_UPSTREAM_URL` | **SECRET** — keyed Alchemy URL for the `/api/rpc` server proxy |
 | `PINATA_JWT` | **SECRET** — server-side pinning; uploads break if absent |

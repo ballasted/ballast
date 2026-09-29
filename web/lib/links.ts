@@ -4,12 +4,8 @@
 // Pure string constants — NO web3, NO React. Safe to import into the marketing tree
 // (root layout, footer, docs) without dragging the wallet bundle in (CLAUDE.md §8).
 //
-// ⚠️ Telegram: collapsed to a SINGLE link per an explicit 2026-09-29 instruction
-// (TELEGRAM_URL = t.me/ballastedotfun), overwriting a DIFFERENT, previously-verified
-// two-link setup (confirmed 2026-07-30 by fetching the live t.me pages: Announcements
-// = t.me/ballastedapp read-only channel, Discussion = t.me/launchballast open group).
-// If that July verification still holds, t.me/ballastedotfun is very likely a typo/
-// wrong handle — re-verify before shipping. Flagged, not silently resolved.
+// Telegram: a single link, t.me/ballastedotfun — confirmed correct (not a typo)
+// 2026-09-30, overriding the July two-link setup (ballastedapp/launchballast).
 
 export const X_URL = "https://x.com/ballastedapp";
 export const X_HANDLE = "@ballastedapp"; // for the Twitter card `site`

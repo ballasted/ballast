@@ -13,7 +13,7 @@ import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step
 ///         denylisted token stays listed by ticker and contract address; its raw
 ///         metadataURI remains fully readable on-chain by anyone. All that changes
 ///         is that we stop serving the project's self-declared branding under
-///         ballasted.xyz. It exists for one purpose: to stop us hosting
+///         ballasted.fun. It exists for one purpose: to stop us hosting
 ///         impersonation / phishing / deceptive branding — the thing Google Safe
 ///         Browsing's deceptive-content category catches, and the thing render-time
 ///         URL validation cannot prevent (a token's metadataURI is a free launch()
