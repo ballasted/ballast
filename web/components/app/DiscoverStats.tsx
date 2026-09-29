@@ -2,9 +2,10 @@
 
 import type { Project } from "@/hooks/useProjects";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
-import { useBuyback } from "@/hooks/useBuyback";
+import { useBuybackV2 } from "@/hooks/useBuybackV2";
 import { useNow } from "@/hooks/useNow";
 import { formatUsd, timeAgo } from "@/lib/format";
+import { TOTAL_SUPPLY } from "@/lib/contracts";
 import { cn } from "@/lib/cn";
 
 // The four headline figures above the Discover board (spec §5.2: reserve value
@@ -15,10 +16,12 @@ import { cn } from "@/lib/cn";
 // Reconciliation by construction: locked value and tokens-launched are derived
 // from the SAME `projects` array Discover renders below (passed in as a prop, not
 // a separate counter), so they can never drift from the list. 24h volume comes
-// from GeckoTerminal; total burned from BuybackBurner's own dead-address balance
-// (useBuyback — independently verifiable, not the contract's self-reported
-// counter). Each card states its source and freshness; an unreachable source
-// shows an em dash + "unavailable", never a zero.
+// from GeckoTerminal; total burned is $BALLAST v2's — BuybackBurnerV2's own
+// dead-address balance (useBuybackV2 — independently verifiable, not the
+// contract's self-reported counter), NOT v1's. v1's 36.3M burned is a separate,
+// superseded token's history and belongs only on the Buyback page. Each card
+// states its source and freshness; an unreachable source shows an em dash +
+// "unavailable", never a zero.
 export function DiscoverStats({
   projects,
   count,
@@ -30,7 +33,7 @@ export function DiscoverStats({
 }) {
   const now = useNow();
   const series = useAnalyticsSeries();
-  const buyback = useBuyback();
+  const buyback = useBuybackV2();
 
   // Total = every treasury's full value; locked = the portion that can never
   // leave (the figure that actually backs the token, a subset of total — a
@@ -47,7 +50,7 @@ export function DiscoverStats({
   }
 
   const volumeOk = series.available && series.volume24hUsd !== undefined;
-  const burnedOk = buyback.configured && buyback.totalBurned !== undefined;
+  const burnedOk = buyback.configured && buyback.burnedBalance !== undefined;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -73,7 +76,7 @@ export function DiscoverStats({
       />
       <StatCard
         label="Total burned"
-        value={burnedOk ? formatUsdBurned(buyback.totalBurned!, buyback.totalSupply) : null}
+        value={burnedOk ? formatUsdBurned(buyback.burnedBalance!, TOTAL_SUPPLY) : null}
         sub={buyback.configured ? "Live · on-chain (dead-address balance)" : "Not deployed yet"}
         loading={buyback.isLoading}
       />

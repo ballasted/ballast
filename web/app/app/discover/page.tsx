@@ -11,8 +11,6 @@ import { DiscoverStats } from "@/components/app/DiscoverStats";
 import { MotionSection } from "@/components/app/MotionSection";
 import { SortRail, type SortId, type FilterId } from "@/components/app/SortRail";
 import { PromoBanners } from "@/components/app/PromoBanners";
-import { LiveRail } from "@/components/app/LiveRail";
-import { TopMovers } from "@/components/app/TopMovers";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken, isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
 import { isHiddenToken } from "@/lib/contracts";
@@ -112,11 +110,6 @@ export default function DiscoverPage() {
         </MotionSection>
       )}
 
-      {/* Live rail sits at xl+ only, beside the main column — a narrower
-          viewport has no room for a third column alongside the card grid. */}
-      <div className="xl:grid xl:grid-cols-[1fr_320px] xl:items-start xl:gap-6">
-      <div className="min-w-0">
-
       {isConfigured && (
         <MotionSection className="mt-5">
           <DiscoverStats projects={listedProjects} count={count} isLoading={isLoading} />
@@ -164,16 +157,6 @@ export default function DiscoverPage() {
             <Pagination page={page} totalPages={Math.ceil(ranked.length / PAGE_SIZE)} onPage={setPage} />
           </>
         )}
-      </div>
-
-      </div>
-
-      {isConfigured && (
-        <aside className="mt-6 hidden space-y-4 xl:sticky xl:top-20 xl:mt-0 xl:block">
-          <LiveRail projects={listedProjects} />
-          <TopMovers projects={listedProjects} />
-        </aside>
-      )}
       </div>
     </div>
   );
