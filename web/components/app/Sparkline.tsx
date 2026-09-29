@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Address } from "viem";
 import { createChart, AreaSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { useOhlcv } from "@/hooks/useOhlcv";
+import { sanitizeCandles } from "@/lib/market";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Chrome-free inline sparkline for a Discover/Top-Movers row — same real data
 // (GeckoTerminal OHLCV via useOhlcv) and the same draw-in-on-load spirit as the
@@ -14,9 +16,17 @@ import { useOhlcv } from "@/hooks/useOhlcv";
 const UP = "#22C93A";
 const DOWN = "#E2564D";
 
-export function Sparkline({ token, width = 64, height = 24 }: { token: Address; width?: number; height?: number }) {
+export function Sparkline(props: { token: Address; width?: number; height?: number }) {
+  return (
+    <ErrorBoundary fallback={<div style={{ width: props.width ?? 64, height: props.height ?? 24 }} aria-hidden className="shrink-0" />}>
+      <SparklineInner {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function SparklineInner({ token, width = 64, height = 24 }: { token: Address; width?: number; height?: number }) {
   const { ohlcv, available } = useOhlcv(token, "15m");
-  const candles = ohlcv?.candles ?? [];
+  const candles = useMemo(() => sanitizeCandles(ohlcv?.candles ?? []), [ohlcv?.candles]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);

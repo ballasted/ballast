@@ -13,7 +13,7 @@ export const GT_NETWORK = "robinhood";
 // was the SUPPLY leg (BackingLens.totalSupply vs token.totalSupply() vs the launch
 // constant, in different precedence). These two helpers fix the supply policy and
 // the arithmetic in one place so the figure can't drift.
-import { TOTAL_SUPPLY } from "@/lib/contracts";
+import { TOTAL_SUPPLY } from "./contracts";
 
 /** Canonical supply for market-cap math. BackingLens.totalSupply and token
  *  totalSupply() are the same ERC-20 total; prefer backing, then the token read,
@@ -128,6 +128,34 @@ export type OhlcvData = {
   timeframe: Timeframe;
   candles: Candle[]; // chronological (oldest first)
 };
+
+// lightweight-charts' setData() throws (synchronously, uncaught by anything but
+// an error boundary) if candles aren't strictly ascending and unique by time.
+// GeckoTerminal's day-granularity OHLCV endpoint has been observed to repeat a
+// timestamp for a low-volume pool (the exact trigger for the "All" timeframe
+// crash — the only view that passes GT's full, unwindowed history straight
+// through). Dedupe (keep the last row per timestamp — GT's most-recent value
+// for that bucket) and sort ascending so every consumer gets a chart-safe series
+// regardless of what the upstream API returns.
+// Whether a live chart series needs a full setData() rather than an incremental
+// update() for its trailing bar. True on a structural change (timeframe/kind/unit)
+// AND whenever the incoming point's time would go backwards relative to whatever
+// the series last held — react-query's placeholderData can leave a finer-grained
+// timeframe's series in place under a new resetKey while coarser real data is still
+// in flight; when that real data lands, its bucketed timestamp can be earlier than
+// the placeholder's, and lightweight-charts throws on update() if so.
+export function shouldResetSeries(resetKeyChanged: boolean, prevTickTime: number | null, nextTime: number): boolean {
+  return resetKeyChanged || (prevTickTime !== null && nextTime < prevTickTime);
+}
+
+export function sanitizeCandles(candles: Candle[]): Candle[] {
+  const byTime = new Map<number, Candle>();
+  for (const c of candles) {
+    if (![c.t, c.o, c.h, c.l, c.c, c.v].every(Number.isFinite)) continue;
+    byTime.set(c.t, c);
+  }
+  return Array.from(byTime.values()).sort((a, b) => a.t - b.t);
+}
 
 export function geckoPoolUrl(pool: string): string {
   return `https://www.geckoterminal.com/${GT_NETWORK}/pools/${pool}`;

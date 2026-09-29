@@ -16,8 +16,8 @@ import {
 import { useOhlcv } from "@/hooks/useOhlcv";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { Freshness } from "@/components/app/Freshness";
-import { formatSmallUsd, type Candle, type Timeframe } from "@/lib/market";
-import { Meander } from "@/components/Meander";
+import { formatSmallUsd, sanitizeCandles, shouldResetSeries, type Candle, type Timeframe } from "@/lib/market";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { cn } from "@/lib/cn";
 
 // The default token-page price chart — replaces the hand-rolled SVG chart that
@@ -110,13 +110,7 @@ function useTweenedNumber(target: number | undefined, reduced: boolean, duration
   return display;
 }
 
-export function PriceChart({
-  token,
-  quoteSymbol,
-  quoteUsdPrice,
-  livePriceUsd,
-  className,
-}: {
+export function PriceChart(props: {
   token: Address;
   /** Ticker of the pool's non-WETH quote asset (e.g. "NVDA"), only when it's a
    *  live-priced allowlisted asset — enables the USD/quote-asset unit switch. */
@@ -128,6 +122,34 @@ export function PriceChart({
    *  whichever the caller already has) — refreshed faster than the OHLCV proxy's
    *  60s poll, so the headline readout can move between candle refetches without
    *  ever inventing a point that isn't backed by a real read. */
+  livePriceUsd?: number;
+  className?: string;
+}) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <section className={cn("card overflow-hidden p-5", props.className)}>
+          <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
+            <p className="text-sm text-text-muted">Chart unavailable</p>
+          </div>
+        </section>
+      }
+    >
+      <PriceChartInner {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function PriceChartInner({
+  token,
+  quoteSymbol,
+  quoteUsdPrice,
+  livePriceUsd,
+  className,
+}: {
+  token: Address;
+  quoteSymbol?: string;
+  quoteUsdPrice?: number;
   livePriceUsd?: number;
   className?: string;
 }) {
@@ -143,7 +165,7 @@ export function PriceChart({
 
   const { tf, windowCount } = TF_MAP[tfKey];
   const { ohlcv, isLoading, available } = useOhlcv(token, tf);
-  const candlesAll = ohlcv?.candles ?? [];
+  const candlesAll = useMemo(() => sanitizeCandles(ohlcv?.candles ?? []), [ohlcv?.candles]);
   const candles = useMemo(
     () => (windowCount ? candlesAll.slice(-windowCount) : candlesAll),
     [candlesAll, windowCount],
@@ -257,9 +279,9 @@ export function PriceChart({
     if (!chart || !series || candles.length === 0) return;
 
     const resetKey = `${tfKey}:${kind}:${unit}`;
-    const isFresh = resetKeyRef.current !== resetKey;
     const last = candles[candles.length - 1]!;
     const prevTick = lastTickRef.current;
+    const isFresh = shouldResetSeries(resetKeyRef.current !== resetKey, prevTick?.t ?? null, last.t);
 
     const point = (c: Candle) =>
       kind === "line"
@@ -333,7 +355,6 @@ export function PriceChart({
     return (
       <section className={cn("card overflow-hidden p-5", className)}>
         <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-          <Meander className="mb-4 max-w-[100px] opacity-60" />
           <p className="text-sm text-text-muted">
             {ohlcv?.reason === "unreachable" ? "Price history unavailable" : "No trades yet"}
           </p>
