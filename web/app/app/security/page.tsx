@@ -8,7 +8,6 @@ import { useSecurityChecks } from "@/hooks/useSecurityCheck";
 import { formatEt } from "@/lib/marketHours";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { Meander } from "@/components/Meander";
 import type { CheckStatus, SecurityCheckResult } from "@/lib/goplus";
 
 // Dashboard: every launch whose live GoPlus scan has anything other than a
@@ -111,7 +110,6 @@ function FlaggedRow({ token, symbol, result }: { token: Address; symbol?: string
 function EmptyState({ title }: { title: string }) {
   return (
     <div className="card flex flex-col items-center p-10 text-center">
-      <Meander className="mb-4 max-w-[100px] opacity-60" />
       <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
     </div>
   );

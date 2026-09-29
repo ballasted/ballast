@@ -12,7 +12,6 @@ import { activeChain } from "@/lib/chain";
 import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
 import { formatEt } from "@/lib/marketHours";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
 
@@ -53,7 +52,6 @@ export function HoldersPanel({
         </div>
       ) : !holders?.available || holders.holders.length === 0 ? (
         <div className="mt-4 flex flex-col items-center py-6 text-center">
-          <Meander className="mb-4 max-w-[100px] opacity-60" />
           <p className="text-sm text-text-muted">Nothing yet.</p>
         </div>
       ) : (
@@ -262,8 +260,7 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
 
       {others.length > 0 && (
         <>
-          <Meander className="my-4 opacity-60" />
-          <div className="space-y-2">
+          <div className="mt-4 space-y-2">
             <div className="eyebrow">Other launches</div>
             {others.map((p) => (
               <Link
@@ -313,7 +310,6 @@ export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: s
         </div>
       ) : !data?.available || data.trades.length === 0 ? (
         <div className="mt-4 flex flex-col items-center py-6 text-center">
-          <Meander className="mb-4 max-w-[100px] opacity-60" />
           <p className="text-sm text-text-muted">Nothing yet.</p>
         </div>
       ) : (

@@ -7,7 +7,6 @@ import { useV1Claim, useMigrationStats } from "@/hooks/useV1Claim";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
-import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { cn } from "@/lib/cn";
 
@@ -76,7 +75,6 @@ export default function MigratePage() {
         />
       ) : !isConnected ? (
         <section className="card p-8 text-center">
-          <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
           <h2 className="font-serif font-semibold text-bone">Connect to check eligibility</h2>
           <div className="mt-4 flex justify-center">
             <ConnectButton />
@@ -210,8 +208,6 @@ export default function MigratePage() {
               </a>
             </div>
           </section>
-
-          <Meander className="opacity-60" />
         </>
       )}
     </div>
@@ -244,7 +240,6 @@ function Figure({ label, value, sub, accent }: { label: string; value: string; s
 function Notice({ title, body }: { title: string; body: string }) {
   return (
     <div className="card p-8 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif font-semibold text-bone">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
     </div>

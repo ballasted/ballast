@@ -3,7 +3,6 @@
 import type { ProjectBacking } from "@/hooks/useProjects";
 import { formatUsd, formatBackingPerToken } from "@/lib/format";
 import { classifyFreshness, formatEt, type FreshnessTier } from "@/lib/marketHours";
-import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 
 type AssetView = {
@@ -94,11 +93,8 @@ export function BackingPanel({
         />
       </div>
 
-      {/* Meander divider (spec 4.2) separating the split from the valuation stamp. */}
-      <Meander className="my-4" />
-
       {/* Backing figure + timestamp: one unit. Never shown apart. */}
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
         {oldest ? (
           <>
             <span className="text-text-faint" title="When the oldest priced treasury asset last updated">

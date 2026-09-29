@@ -10,7 +10,6 @@ import { FeePanel } from "@/components/app/FeePanel";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useAssets } from "@/hooks/useAssets";
-import { Meander } from "@/components/Meander";
 import { CopyAddress } from "@/components/app/CopyAddress";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
@@ -247,7 +246,6 @@ function Stat({ label, value, balance }: { label: string; value: string; balance
 function Notice({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
     <div className="card p-10 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif text-lg font-semibold text-bone">{title}</h2>
       {body && <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>}
       {action && <div className="mt-5">{action}</div>}

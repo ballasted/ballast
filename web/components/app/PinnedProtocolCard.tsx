@@ -5,7 +5,6 @@ import type { Project } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { AssetDisc } from "@/components/app/AssetDisc";
-import { Meander } from "@/components/Meander";
 import { formatSmallUsd } from "@/lib/market";
 import { shortAddress } from "@/lib/format";
 
@@ -27,9 +26,7 @@ export function PinnedProtocolCard({ project }: { project: Project }) {
         <span aria-hidden>◆</span> Protocol token · pinned by BALLAST
       </span>
 
-      <Meander className="my-4" />
-
-      <div className="flex items-start justify-between gap-3">
+      <div className="mt-4 flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <AssetDisc src={ipfsToGateway(meta?.logo)} symbol={symbol} size={56} />
           <div className="min-w-0">

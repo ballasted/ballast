@@ -8,7 +8,6 @@ import { useBuyback, type BurnRow, type BuybackState } from "@/hooks/useBuyback"
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
-import { Meander } from "@/components/Meander";
 import { activeChain } from "@/lib/chain";
 import { formatEt } from "@/lib/marketHours";
 import { shortAddress } from "@/lib/format";
@@ -179,8 +178,6 @@ export default function BuybackPage() {
 
           {/* ── Who controls this ──────────────────────────────────────── */}
           <WhoControls />
-
-          <Meander className="opacity-60" />
         </>
       )}
     </div>
@@ -533,7 +530,6 @@ function CopyAddress({ address }: { address: string }) {
 function Notice({ title, body }: { title: string; body: string }) {
   return (
     <div className="card p-8 text-center">
-      <Meander className="mx-auto mb-5 max-w-[120px] opacity-70" />
       <h2 className="font-serif font-semibold text-bone">{title}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>
     </div>

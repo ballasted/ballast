@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Container } from "@/components/Container";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { Ambience } from "@/components/app/Ambience";
-import { MeanderRule } from "@/components/Meander";
 import { CommandSearch } from "@/components/app/CommandSearch";
 import { NetworkChip } from "@/components/app/NetworkChip";
 import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
@@ -204,10 +203,6 @@ export default function StyleguidePage() {
             </span>
           </div>
         </div>
-      </Section>
-
-      <Section title="MeanderRule">
-        <MeanderRule />
       </Section>
 
       <Section title="Buttons">
