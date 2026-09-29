@@ -30,7 +30,7 @@ export default async function LandingPage() {
       />
       <FigureScreen
         value={stats.available ? String(stats.ballastedProjects) : "—"}
-        label="Projects ballasted"
+        label={stats.available && stats.ballastedProjects === 1 ? "Project ballasted" : "Projects ballasted"}
         muted
       />
     </>
@@ -38,7 +38,6 @@ export default async function LandingPage() {
 }
 
 function Hero({ stats }: { stats: HeroStats }) {
-  const week = stats.available ? String(stats.launchesThisWeek) : "—";
   return (
     <section className="relative overflow-hidden border-b border-border">
       <MeanderWatermark />
@@ -62,10 +61,6 @@ function Hero({ stats }: { stats: HeroStats }) {
             >
               Docs
             </Link>
-          </div>
-
-          <div className="anim-enter anim-d3 mt-10 font-mono text-sm text-text-faint">
-            {week} launched this week
           </div>
 
           <div className="anim-enter anim-d3 mt-8 flex justify-center">
