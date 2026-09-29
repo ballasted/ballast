@@ -47,9 +47,16 @@ export function ProofCard() {
         const res = await fetch("/api/proof-launches", { cache: "no-store" });
         const json = (await res.json()) as { fetchedAt: number; launches: ProofLaunch[] };
         if (!mounted.current) return;
-        setLaunches(json.launches);
+        // Backed launches first — the headline is "see how much backs each
+        // token," so a real backing figure should rotate into view before an
+        // unbacked one whenever at least one exists. Stable partition, not a
+        // sort, so ordering within each group stays newest-first.
+        const ordered = [...json.launches].sort(
+          (a, b) => Number(Boolean(b.backedBySymbol)) - Number(Boolean(a.backedBySymbol)),
+        );
+        setLaunches(ordered);
         setFetchedAt(json.fetchedAt);
-        setIndex((i) => (json.launches.length > 0 ? i % json.launches.length : 0));
+        setIndex((i) => (ordered.length > 0 ? i % ordered.length : 0));
       } catch {
         if (mounted.current) setLaunches((prev) => prev ?? []); // treat a failed fetch as "nothing resolved", never a guess
       }
@@ -136,15 +143,31 @@ export function ProofCard() {
         </span>
       </div>
 
-      <div className="mt-3 flex items-baseline justify-between">
-        <span className="figure-primary text-lg">{formatBackingPerToken(BigInt(l.backingPerTokenUsd))}</span>
-        <span className="metric-secondary">backing per token</span>
-      </div>
-
-      <div className="mt-2 flex items-center justify-between text-xs text-text-faint">
-        <span>{ageS !== undefined ? `Chainlink updated ${formatAge(ageS)} ago` : "Unbacked"}</span>
-        <span>read from chain · {pollAgeS !== undefined ? formatAge(pollAgeS) : "…"} ago</span>
-      </div>
+      {l.backedBySymbol ? (
+        <>
+          <div className="mt-3 flex items-baseline justify-between">
+            <span className="figure-primary text-lg">{formatBackingPerToken(BigInt(l.backingPerTokenUsd))}</span>
+            <span className="metric-secondary">backing per token</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-text-faint">
+            <span>{ageS !== undefined ? `Chainlink updated ${formatAge(ageS)} ago` : "Unbacked"}</span>
+            <span>read from chain · {pollAgeS !== undefined ? formatAge(pollAgeS) : "…"} ago</span>
+          </div>
+        </>
+      ) : (
+        // No treasury deposit — every launch still opens at the same fixed
+        // valuation regardless of backing, so show that real fact (and the
+        // pools it actually trades against) rather than a $0.00 that reads
+        // as a failure.
+        <div className="mt-3 flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            {l.quoteAssetSymbols.map((s) => (
+              <AssetDisc key={s} identity={{ status: "recognized", symbol: s }} size={20} />
+            ))}
+          </span>
+          <span className="metric-secondary">Opens at 1 ETH</span>
+        </div>
+      )}
     </Link>
   );
 }

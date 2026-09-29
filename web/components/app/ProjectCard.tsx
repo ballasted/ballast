@@ -8,9 +8,9 @@ import { useDenylist } from "@/hooks/useDenylist";
 import { useAssets } from "@/hooks/useAssets";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
+import { Sparkline } from "@/components/app/Sparkline";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
-import { Meander } from "@/components/Meander";
 import { cn } from "@/lib/cn";
 import { isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
 
@@ -18,8 +18,11 @@ type BackingAssetView = { asset: `0x${string}` };
 
 // THE card, for every token, everywhere (UI principles §5 — one card, one
 // density, no exceptions for Featured/Trending/New/Ballasted/pinned rows).
-// Exactly five things, in this order, nothing else: image, $TICKER + name,
-// market cap, one backing chip, one state pill.
+// Five things, in this order: image, $TICKER + name, market cap, one backing
+// chip, one state pill — plus a sixth, a live sparkline beside the market cap
+// figure, added 2026-09-30 by explicit instruction overriding the "exactly
+// five" rule for this one case (Top Movers already had the same real data;
+// this just brings it to every card).
 export function ProjectCard({ project }: { project: Project }) {
   const { symbol, name, backing, token, metadataURI, hasPool, marketPriceUsd, quoteAssets } = project;
   const { meta } = useProjectMeta(metadataURI);
@@ -54,8 +57,11 @@ export function ProjectCard({ project }: { project: Project }) {
           <p className="truncate text-sm text-text-muted">{denied ? "Metadata withheld" : (name ?? shortAddress(token))}</p>
         </div>
 
-        <div className="figure-primary mt-2 text-lg tabular-nums">
-          {mcap1e18 !== undefined ? formatUsd(mcap1e18, { compact: true }) : "—"}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="figure-primary text-lg tabular-nums">
+            {mcap1e18 !== undefined ? formatUsd(mcap1e18, { compact: true }) : "—"}
+          </div>
+          <Sparkline token={token} width={56} height={24} />
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-2 pt-3">
@@ -95,7 +101,6 @@ function CardMedia({ logo, symbol }: { logo?: string; symbol?: string }) {
           <span className="select-none font-serif text-4xl font-semibold tracking-tight text-bone/55">
             {(symbol || "•").slice(0, 3).toUpperCase()}
           </span>
-          <Meander className="absolute inset-x-0 bottom-3 px-6 opacity-40" />
         </div>
       )}
     </div>
