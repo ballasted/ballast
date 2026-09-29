@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "@/components/app/nav-items";
 
-// Plain bottom tab bar — below lg only (lg+ uses TopBar's nav row, or on
-// /app/terminal, SideNav). Flush to the screen edge, never floating, never
-// overlapping page content — AppLayout pads <main> by exactly this bar's
-// height. Exactly 4 items; the rest (Analytics, Buyback, Profile) live in
-// AvatarMenu and the lg+ nav row, not squeezed in here.
-const TAB_HREFS = ["/app/discover", "/app/terminal", "/app/portfolio", "/app/create"];
+// Plain bottom tab bar — below lg only (lg+ uses TopBar's nav row). Flush to
+// the screen edge, never floating, never overlapping page content —
+// AppLayout pads <main> by exactly this bar's height. Terminal and Analytics
+// were removed from NAV_ITEMS entirely, so this is now 3 items; the rest
+// (Buyback, Profile) live in AvatarMenu and the lg+ nav row, not squeezed in
+// here.
+const TAB_HREFS = ["/app/discover", "/app/portfolio", "/app/create"];
 const TAB_ITEMS = TAB_HREFS.map((href) => NAV_ITEMS.find((item) => item.href === href)!);
 
 export function BottomNav() {

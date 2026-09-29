@@ -4,16 +4,17 @@
 // Pure string constants — NO web3, NO React. Safe to import into the marketing tree
 // (root layout, footer, docs) without dragging the wallet bundle in (CLAUDE.md §8).
 //
-// Telegram mapping confirmed 2026-07-30 by fetching the public t.me pages:
-//   Announcements = t.me/ballastedapp is the read-only broadcast CHANNEL
-//   Discussion    = t.me/launchballast is the open GROUP
-// (the two were originally noted the other way round — corrected here).
+// ⚠️ Telegram: collapsed to a SINGLE link per an explicit 2026-09-29 instruction
+// (TELEGRAM_URL = t.me/ballastedotfun), overwriting a DIFFERENT, previously-verified
+// two-link setup (confirmed 2026-07-30 by fetching the live t.me pages: Announcements
+// = t.me/ballastedapp read-only channel, Discussion = t.me/launchballast open group).
+// If that July verification still holds, t.me/ballastedotfun is very likely a typo/
+// wrong handle — re-verify before shipping. Flagged, not silently resolved.
 
 export const X_URL = "https://x.com/ballastedapp";
 export const X_HANDLE = "@ballastedapp"; // for the Twitter card `site`
 
-export const TELEGRAM_ANNOUNCEMENTS_URL = "https://t.me/ballastedapp"; // read-only channel
-export const TELEGRAM_DISCUSSION_URL = "https://t.me/launchballast"; // open group
+export const TELEGRAM_URL = "https://t.me/ballastedotfun";
 
 export const DOCS_PATH = "/docs"; // internal route
 
@@ -24,8 +25,7 @@ export const GITHUB_URL: string | undefined = undefined;
 /** External profiles for JSON-LD `sameAs` (external URLs only — not internal docs). */
 export const SAME_AS: string[] = [
   X_URL,
-  TELEGRAM_ANNOUNCEMENTS_URL,
-  TELEGRAM_DISCUSSION_URL,
+  TELEGRAM_URL,
   ...(GITHUB_URL ? [GITHUB_URL] : []),
 ];
 
@@ -34,13 +34,11 @@ export type SiteLink = { label: string; href: string; icon: IconName; external: 
 
 /**
  * The community/social row shared by the marketing footer, the app, and the docs.
- * The two Telegram entries are labelled DISTINCTLY so they don't read as two
- * identical icons to the same platform.
+ * Exactly one X link and one Telegram link — see the TELEGRAM_URL note above.
  */
 export const COMMUNITY_LINKS: SiteLink[] = [
   { label: "X", href: X_URL, icon: "x", external: true },
-  { label: "Telegram · Announcements", href: TELEGRAM_ANNOUNCEMENTS_URL, icon: "telegram", external: true },
-  { label: "Telegram · Discussion", href: TELEGRAM_DISCUSSION_URL, icon: "telegram", external: true },
+  { label: "Telegram", href: TELEGRAM_URL, icon: "telegram", external: true },
   { label: "Docs", href: DOCS_PATH, icon: "docs", external: false },
   ...(GITHUB_URL ? [{ label: "GitHub", href: GITHUB_URL, icon: "github" as const, external: true }] : []),
 ];

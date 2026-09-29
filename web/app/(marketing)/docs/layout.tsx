@@ -33,7 +33,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             ))}
           </nav>
 
-          {/* Community — external channels, distinct labels for the two Telegrams. */}
+          {/* Community — external channels (X, Telegram, GitHub once public). */}
           <p className="mt-6 eyebrow font-semibold">
             Community
           </p>

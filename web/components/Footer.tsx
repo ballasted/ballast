@@ -64,8 +64,8 @@ export function Footer() {
           ))}
         </div>
 
-        {/* Community / social — X, both Telegram links (labelled distinctly), Docs,
-            and GitHub once the repo is public. Anchor tags only, no web3. */}
+        {/* Community / social — X, Telegram, Docs, and GitHub once the repo is
+            public. Anchor tags only, no web3. */}
         <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-6">
           {COMMUNITY_LINKS.map((l) =>
             l.external ? (

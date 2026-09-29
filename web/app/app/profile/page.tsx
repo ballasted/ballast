@@ -105,8 +105,8 @@ export default function ProfilePage() {
   );
 }
 
-// Community/social links in the app, kept OUT of the five-slot bottom nav. Same
-// central config the marketing footer uses; distinct labels for the two Telegrams.
+// Community/social links in the app, kept OUT of the bottom nav. Same central
+// config the marketing footer uses.
 function CommunityLinks() {
   return (
     <section className="border-t border-border pt-4">
