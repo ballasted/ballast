@@ -343,9 +343,9 @@ export function CreateFlow() {
 
   return (
     <>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* ── LEFT: form ──────────────────────────────────────────────── */}
-        <MotionSection className="space-y-5">
+        <MotionSection className="min-w-0 space-y-5 pb-16 lg:pb-0">
           <section className="card space-y-4 p-5">
             <LogoUploader symbol={symbolClean} logoUri={logoUri} setLogoUri={setLogoUri} />
 
@@ -658,8 +658,10 @@ export function CreateFlow() {
           {pinError && <p className="text-center text-xs text-negative">{pinError}</p>}
         </MotionSection>
 
-        {/* ── RIGHT: live preview ─────────────────────────────────────── */}
-        <div>
+        {/* ── RIGHT: live preview — desktop only (lg+). On mobile the same
+            PreviewCard renders inside MobilePreviewSheet below, as a
+            collapsible bottom sheet instead of an in-flow block. ────────── */}
+        <div className="hidden min-w-0 lg:block">
           <MotionSection className="lg:sticky lg:top-20">
             <PreviewCard
               name={name.trim()}
@@ -682,6 +684,33 @@ export function CreateFlow() {
           </MotionSection>
         </div>
       </div>
+
+      <MobilePreviewSheet
+        symbol={symbolClean}
+        logoUri={logoUri}
+        backed={backed}
+        preview={preview}
+        openFdv={openFdv}
+      >
+        <PreviewCard
+          name={name.trim()}
+          symbol={symbolClean}
+          category={category}
+          logoUri={logoUri}
+          backed={backed}
+          selected={selected}
+          amount={amount}
+          preview={preview}
+          feeSplit={feeSplit}
+          feeLoading={feeLoading}
+          feeConfigured={feeConfigured}
+          freshness={freshness}
+          openFdv={openFdv}
+          quoteAssets={quoteAssets}
+          quoteCandidates={quoteCandidates}
+          assets={assets}
+        />
+      </MobilePreviewSheet>
 
       {confirmOpen && (
         <ConfirmModal
@@ -877,6 +906,75 @@ function PreviewCard(p: {
         </p>
       </div>
     </section>
+  );
+}
+
+// ── Mobile live preview — a collapsible bottom sheet ──────────────────────────
+// Below lg, the full PreviewCard can't live in-flow (it would push the launch
+// button far down the page on a phone). Collapsed, it's a thin bar pinned just
+// above BottomNav showing the one figure that matters (backing per token /
+// opening valuation); tapping it opens the same PreviewCard the desktop
+// sidebar shows, as a sheet sliding up from the bottom. lg+ renders nothing
+// (the desktop sticky sidebar already shows the real thing).
+function MobilePreviewSheet({
+  symbol,
+  logoUri,
+  backed,
+  preview,
+  openFdv,
+  children,
+}: {
+  symbol: string;
+  logoUri: string;
+  backed: boolean;
+  preview: { usd: bigint; perToken: bigint } | null;
+  openFdv?: OpenFdv;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const figure = backed ? (preview ? formatBackingPerToken(preview.perToken) : "$0.00") : fmtEthFdv(openFdv?.fdvWeth);
+
+  return (
+    <div className="lg:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-expanded={open}
+        className="fixed inset-x-0 z-40 flex items-center justify-between border-t border-border bg-card px-4 py-3"
+        style={{ bottom: "calc(52px + env(safe-area-inset-bottom))" }}
+      >
+        <span className="flex items-center gap-2.5">
+          <AssetDisc src={ipfsToGateway(logoUri)} symbol={symbol} size={28} />
+          <span className="text-xs text-text-muted">{backed ? "Backing per token" : "Opening valuation"}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="figure-primary text-sm tabular-nums">{figure}</span>
+          <span aria-hidden className="text-text-faint">▲</span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            aria-label="Close preview"
+            className="absolute inset-0"
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-bg pb-[env(safe-area-inset-bottom)]">
+            <div className="sticky top-0 flex items-center justify-center border-b border-border bg-bg py-2">
+              <button
+                type="button"
+                aria-label="Close preview"
+                onClick={() => setOpen(false)}
+                className="h-1.5 w-10 rounded-full bg-border-strong"
+              />
+            </div>
+            <div className="p-4">{children}</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

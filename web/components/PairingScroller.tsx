@@ -36,11 +36,11 @@ export function HorizontalScroller({
   }
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <div
         ref={ref}
         className={cn(
-          "flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-1 pb-1",
+          "flex min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-1 pb-1",
           "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           className,
         )}
