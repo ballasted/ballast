@@ -4,6 +4,8 @@ import { Reveal } from "@/components/Reveal";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { KeelMark } from "@/components/Wordmark";
 import { ProofCard } from "@/components/marketing/ProofCard";
+import { LogoMarquee, PairingScroller } from "@/components/PairingScroller";
+import { PAIRING_TICKERS } from "@/lib/pairingAssets";
 import { getHeroStats, type HeroStats } from "@/lib/heroStats";
 import { formatCompactUsd } from "@/lib/market";
 
@@ -21,6 +23,7 @@ export default async function LandingPage() {
   return (
     <>
       <Hero stats={stats} />
+      <PairsStrip />
       <FigureScreen
         value={stats.available ? formatCompactUsd(stats.totalBallastUsd ?? 0) : "—"}
         label="Total ballast, on-chain"
@@ -68,7 +71,29 @@ function Hero({ stats }: { stats: HeroStats }) {
           <div className="anim-enter anim-d3 mt-8 flex justify-center">
             <ProofCard />
           </div>
+
+          <div className="anim-enter anim-d4 mt-10 w-full max-w-3xl">
+            <LogoMarquee items={PAIRING_TICKERS} />
+          </div>
         </div>
+      </Container>
+    </section>
+  );
+}
+
+// Pool-pairing candidates, same card language as the create flow's picker
+// (components/PairingScroller) — GREEN ones (WETH, SGOV, NVDA, SPY) real, the
+// rest an honest "coming soon", never clickable.
+function PairsStrip() {
+  return (
+    <section className="border-b border-border">
+      <Container className="py-16 sm:py-20">
+        <Reveal>
+          <div className="eyebrow text-center">Pairs</div>
+          <div className="mt-5">
+            <PairingScroller items={PAIRING_TICKERS} size="lg" />
+          </div>
+        </Reveal>
       </Container>
     </section>
   );

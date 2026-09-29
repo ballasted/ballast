@@ -17,13 +17,21 @@ import { ActingAs } from "@/components/app/ActingAs";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import type { AssetIdentity } from "@/lib/assetIdentity";
 import { MotionSection } from "@/components/app/MotionSection";
+import { PairingScroller, HorizontalScroller, type PairingItem } from "@/components/PairingScroller";
+import { ETH_ROUTE_TICKERS } from "@/lib/pairingAssets";
 import { erc20Abi } from "@/lib/abis";
-import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY } from "@/lib/contracts";
+import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY, WETH_ADDRESS } from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
 import { activeChain } from "@/lib/chain";
 import { cn } from "@/lib/cn";
+import type { QuoteAssetCandidate } from "@/hooks/useQuoteAssets";
+
+// Opening FDV's fixed 1B-token supply, as a plain number (mirrors
+// useOpeningFdv's own SUPPLY_WHOLE) — used only to turn a USD FDV into an
+// implied per-token price in a picked stock quote asset's own units.
+const SUPPLY_WHOLE = 1_000_000_000;
 import {
   pinFile,
   pinJson,
@@ -167,7 +175,13 @@ export function CreateFlow() {
   const { address: account } = useAccount();
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { assets, isConfigured: registryReady, isLoading: assetsLoading, isError: assetsError, hasAssets } = useAssets();
-  const { options: quoteOptions, maxQuoteAssets, isConfigured: quoteAssetsReady, isLoading: quoteAssetsLoading } = useQuoteAssets();
+  const {
+    options: quoteOptions,
+    candidates: quoteCandidates,
+    maxQuoteAssets,
+    isConfigured: quoteAssetsReady,
+    isLoading: quoteAssetsLoading,
+  } = useQuoteAssets();
   const { split: feeSplit, isLoading: feeLoading, configured: feeConfigured } = useFeeSplit();
   const openFdv = useOpeningFdv();
   const runner = useLaunchRunner();
@@ -418,6 +432,35 @@ export function CreateFlow() {
             </div>
           </section>
 
+          {/* Pool pairing — which quote asset(s) this token's pool(s) trade
+              against. Independent of the treasury mode below (a token can be
+              paired against several stock quote assets whether or not it also
+              holds a backing treasury). Always at least WETH; up to
+              maxQuoteAssets total. Placed directly under Token — this is the
+              first real decision after naming the project (Pons/LONG
+              ordering), before treasury, which is clearly optional. */}
+          <section className="card space-y-3 p-5">
+            <Field label={`Pool pairing${maxQuoteAssets !== undefined ? ` (up to ${maxQuoteAssets})` : ""}`}>
+              {!quoteAssetsReady ? (
+                <InlineNotice>Deploy the factory and set NEXT_PUBLIC_FACTORY_ADDRESS to enable pool pairing.</InlineNotice>
+              ) : quoteAssetsLoading ? (
+                <AssetPickerSkeleton />
+              ) : (
+                <PairingScroller
+                  items={quoteCandidates.map((c) => candidateToPairingItem(c))}
+                  selectable
+                  selectedKeys={new Set(quoteAssets)}
+                  onToggle={(key) => toggleQuoteAsset(key as Address)}
+                  atCap={quoteAssets.length >= maxQuotes}
+                  size="lg"
+                />
+              )}
+              <p className="mt-2 text-xs text-text-faint">
+                Each pick gets its own Uniswap v4 pool with an equal share of the supply. Every pool opens at 1 ETH.
+              </p>
+            </Field>
+          </section>
+
           {/* Treasury */}
           <section className="card space-y-4 p-5">
             <div className="grid grid-cols-2 gap-2 rounded-card border border-border p-1">
@@ -455,21 +498,12 @@ export function CreateFlow() {
             ) : (
               <>
                 <Field label="Treasury asset">
-                  <div className="grid gap-2">
-                    {assets.map((a) => (
-                      <AssetPickerOption
-                        key={a.address}
-                        a={a}
-                        now={now}
-                        selected={assetAddr === a.address}
-                        onSelect={() => setAssetAddr(a.address)}
-                      />
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-xs text-text-faint">
-                    Price and freshness read live from each asset&apos;s Chainlink feed. A backed launch needs a trading
-                    feed — which is why launches are gated outside market hours.
-                  </p>
+                  <TreasuryAssetScroller
+                    assets={assets}
+                    selectedAddr={assetAddr}
+                    onSelect={setAssetAddr}
+                    now={now}
+                  />
                 </Field>
 
                 <Field label="Amount to deposit">
@@ -500,6 +534,7 @@ export function CreateFlow() {
                   )}
                   {belowMin && selected && <p className="mt-1 text-xs text-warning">Below the minimum deposit for this asset.</p>}
                   {overBalance && <p className="mt-1 text-xs text-negative">More than your wallet holds.</p>}
+                  <p className="mt-1.5 text-xs text-text-faint">Doesn&apos;t change the opening price.</p>
                 </Field>
 
                 <Field label="Withdrawal notice period">
@@ -509,9 +544,13 @@ export function CreateFlow() {
                         key={o.days}
                         type="button"
                         onClick={() => setNoticeDays(o.days)}
-                        className={cn("tab-block", noticeDays === o.days ? "tab-active" : "tab-idle")}
+                        className={cn(
+                          "tab-block flex flex-col items-center gap-0.5 py-5",
+                          noticeDays === o.days ? "tab-active" : "tab-idle",
+                        )}
                       >
-                        {o.label}
+                        <span className="text-2xl font-semibold tabular-nums">{o.days}</span>
+                        <span className="text-xs text-text-faint">days</span>
                       </button>
                     ))}
                   </div>
@@ -563,49 +602,6 @@ export function CreateFlow() {
                 ) : null}
               </>
             )}
-          </section>
-
-          {/* Pool pairing — which quote asset(s) this token's pool(s) trade
-              against. Independent of the treasury mode above (a token can be
-              paired against several stock quote assets whether or not it also
-              holds a backing treasury). Always at least WETH; up to
-              maxQuoteAssets total. */}
-          <section className="card space-y-3 p-5">
-            <Field label={`Pool pairing${maxQuoteAssets !== undefined ? ` (up to ${maxQuoteAssets})` : ""}`}>
-              {!quoteAssetsReady ? (
-                <InlineNotice>Deploy the factory and set NEXT_PUBLIC_FACTORY_ADDRESS to enable pool pairing.</InlineNotice>
-              ) : quoteAssetsLoading ? (
-                <AssetPickerSkeleton />
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {quoteOptions.map((o) => {
-                    const isSelected = quoteAssets.includes(o.address);
-                    const disabled = !isSelected && quoteAssets.length >= maxQuotes;
-                    return (
-                      <button
-                        key={o.address}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => toggleQuoteAsset(o.address)}
-                        className={cn("tab", isSelected ? "tab-active" : "tab-idle", disabled && "opacity-40")}
-                      >
-                        ${o.symbol ?? shortAddress(o.address)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <p className="mt-1.5 text-xs text-text-faint">
-                Each one gets its own Uniswap pool, seeded with an equal share of the supply. Buyers can trade against
-                any of them. At least one is required.
-              </p>
-              {quoteAssets.length > 1 && (
-                <p className="mt-1.5 text-xs text-warning">
-                  Each quote asset gets its own pool. Your supply is split evenly between them — two pools means half
-                  the depth in each.
-                </p>
-              )}
-            </Field>
           </section>
 
           {/* Advanced — creator wallet. See note: the factory records msg.sender as
@@ -679,6 +675,9 @@ export function CreateFlow() {
               feeConfigured={feeConfigured}
               freshness={freshness}
               openFdv={openFdv}
+              quoteAssets={quoteAssets}
+              quoteCandidates={quoteCandidates}
+              assets={assets}
             />
           </MotionSection>
         </div>
@@ -751,6 +750,9 @@ function PreviewCard(p: {
   feeConfigured?: boolean;
   freshness?: { tier: string; label: string };
   openFdv?: OpenFdv;
+  quoteAssets: Address[];
+  quoteCandidates: QuoteAssetCandidate[];
+  assets: AllowedAsset[];
 }) {
   return (
     <section className="card-raised overflow-hidden">
@@ -797,6 +799,41 @@ function PreviewCard(p: {
             </div>
           )}
         </div>
+
+        {/* Pool pairing — logo chips for every picked quote asset, plus, for any
+            picked stock (non-WETH), the implied per-token opening price in that
+            stock's own units: (opening FDV in USD) ÷ (its live oracle USD price)
+            ÷ 1B supply. The opening FDV itself never moves with this pick — only
+            the units it's expressed in do. */}
+        {p.quoteAssets.length > 0 && (
+          <PreviewRow label="Pairing">
+            <span className="inline-flex items-center gap-1.5">
+              {p.quoteAssets.map((addr) => {
+                const c = p.quoteCandidates.find((x) => x.address.toLowerCase() === addr.toLowerCase());
+                const sym = c?.symbol ?? shortAddress(addr);
+                return (
+                  <span key={addr} title={sym}>
+                    <AssetDisc identity={{ status: "recognized", symbol: sym }} size={18} />
+                  </span>
+                );
+              })}
+            </span>
+          </PreviewRow>
+        )}
+        {p.quoteAssets
+          .filter((addr) => !WETH_ADDRESS || addr.toLowerCase() !== WETH_ADDRESS.toLowerCase())
+          .map((addr) => {
+            const asset = p.assets.find((a) => a.address.toLowerCase() === addr.toLowerCase());
+            if (!asset?.price || !asset.priceDecimals || !p.openFdv?.fdvUsd) return null;
+            const stockUsd = Number(asset.price) / 10 ** asset.priceDecimals;
+            if (stockUsd <= 0) return null;
+            const implied = p.openFdv.fdvUsd / stockUsd / SUPPLY_WHOLE;
+            return (
+              <PreviewRow key={addr} label={`Opens at (${asset.symbol ?? "asset"})`}>
+                {implied.toLocaleString("en", { maximumSignificantDigits: 3 })} {asset.symbol}
+              </PreviewRow>
+            );
+          })}
 
         {/* Treasury composition */}
         {p.backed && (
@@ -1206,54 +1243,64 @@ function GalleryGlyph({ tone, className }: { tone?: "negative"; className?: stri
   );
 }
 
-// One row in the treasury-asset picker. Shows the live feed price and the SAME
-// freshness classification the launch gate uses, so a creator can see at a glance
-// why a backed launch might be blocked (a resting/stale feed) before they commit.
-function AssetPickerOption({
-  a,
-  selected,
+// Quote-asset candidate (from useQuoteAssets) → the shared PairingScroller's
+// item shape. "ETH route" mirrors BallastRouter's actually-wired routes
+// (lib/pairingAssets.ETH_ROUTE_TICKERS) — WETH itself always counts as one.
+function candidateToPairingItem(c: QuoteAssetCandidate): PairingItem {
+  return {
+    key: c.address,
+    symbol: c.symbol ?? shortAddress(c.address),
+    isGreen: c.isGreen,
+    hasEthRoute: c.isWeth || ETH_ROUTE_TICKERS.has((c.symbol ?? "").toUpperCase()),
+  };
+}
+
+// Treasury-asset picker — same horizontal-scroller visual language as the pool
+// pairing cards above, but showing the live feed price and the SAME freshness
+// classification the launch gate uses, so a creator can see at a glance why a
+// backed launch might be blocked (a resting/stale feed) before they commit.
+function TreasuryAssetScroller({
+  assets,
+  selectedAddr,
   onSelect,
   now,
 }: {
-  a: AllowedAsset;
-  selected: boolean;
-  onSelect: () => void;
+  assets: AllowedAsset[];
+  selectedAddr: Address | "";
+  onSelect: (a: Address) => void;
   now: number;
 }) {
-  const freshness = freshnessOf(a, now);
-  const tone =
-    freshness?.tier === "fresh"
-      ? "text-green"
-      : freshness?.tier === "stale"
-        ? "text-negative"
-        : "text-warning";
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-input border px-3 py-2.5 text-left transition-colors",
-        selected ? "border-green bg-green-bg" : "border-border hover:border-text-faint",
-      )}
-    >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <AssetDisc symbol={a.symbol} size={28} identity={identityFor(a)} />
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
-          <span className="metric-secondary">
-            {a.marketHours === 1 ? "US equities · 24/5" : a.marketHours === 2 ? "Crypto · 24/7" : "—"}
-          </span>
-        </span>
-      </span>
-      <span className="shrink-0 text-right">
-        <span className="block text-sm font-medium text-text-primary">{formatFeedPrice(a.price, a.priceDecimals)}</span>
-        {freshness && (
-          <span className={cn("metric-secondary inline-flex items-center gap-1", tone)}>
-            <span aria-hidden>•</span> {freshness.label}
-          </span>
-        )}
-      </span>
-    </button>
+    <HorizontalScroller>
+      {assets.map((a) => {
+        const freshness = freshnessOf(a, now);
+        const selected = selectedAddr === a.address;
+        const tone =
+          freshness?.tier === "fresh" ? "text-green" : freshness?.tier === "stale" ? "text-negative" : "text-warning";
+        return (
+          <button
+            key={a.address}
+            type="button"
+            onClick={() => onSelect(a.address)}
+            className={cn(
+              "flex w-[116px] shrink-0 snap-start flex-col items-center gap-1.5 rounded-card border p-3 text-center transition-colors",
+              selected
+                ? "border-green bg-green-bg shadow-[0_0_0_1px_rgba(34,201,58,0.45),0_0_18px_-2px_rgba(34,201,58,0.55)]"
+                : "border-border hover:border-text-faint",
+            )}
+          >
+            <AssetDisc symbol={a.symbol} size={48} identity={identityFor(a)} />
+            <span className="text-sm font-medium text-text-primary">{a.symbol ?? "asset"}</span>
+            <span className="text-xs text-text-secondary">{formatFeedPrice(a.price, a.priceDecimals)}</span>
+            {freshness ? (
+              <span className={cn("text-[10px] uppercase tracking-wide", tone)}>{freshness.label}</span>
+            ) : (
+              <span className="h-[13px]" aria-hidden />
+            )}
+          </button>
+        );
+      })}
+    </HorizontalScroller>
   );
 }
 
