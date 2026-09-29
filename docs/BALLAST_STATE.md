@@ -518,6 +518,39 @@ change, both rounds.
 - **`docs/safe-tx-accept-ownership-batch.json`** — sign after the 5 transfers
   above land.
 
+### Section 8 (ship) — DONE, with one significant live finding
+
+**10 commits pushed to `main`** (`d219b64..c33822f`), full breakdown in git
+log — verification-tooling fix, `BallastV1Claim`, `BuybackBurnerV2`, the
+`BallastHookFork` bug fix, and the full Section 7 redesign, each as its own
+commit. Combined `forge test` 232/232, `tsc --noEmit` clean, `vitest` 60/60,
+all confirmed on the exact code that was committed.
+
+**Vercel's GitHub integration auto-deployed to Production on push** — build
+succeeded (`vercel inspect` confirms `status: Ready`), live at the aliased
+domains.
+
+**Live finding, not from a screenshot — from raw HTTP/DNS, which this
+sandbox CAN do**: **`ballasted.xyz` does not resolve at all** — confirmed
+`NXDOMAIN` from two independent public resolvers (Google `8.8.8.8` and
+Cloudflare `1.1.1.1`), not a sandbox artifact. **`ballasted.fun` resolves and
+serves the live site correctly** — confirmed by fetching real rendered HTML:
+the nav bar has no Terminal/Analytics (`Discover · Buyback · Create ·
+Portfolio · Profile`, mobile bottom nav down to 3 items), a live "Pairs"
+scroller renders with the WETH "ETH route" card, the "Security ↗" link is
+present, and `/app/migrate` correctly shows "Not live yet" (honest, since
+`NEXT_PUBLIC_V1_CLAIM_ADDRESS` isn't set). **The page's own metadata still
+hardcodes `ballasted.xyz`** as the canonical `og:url` and JSON-LD `url`
+(`web/app/layout.tsx` or wherever `NEXT_PUBLIC_APP_URL`/metadata is sourced)
+— if `.fun` is now the real domain, this needs updating; if `.xyz` is
+supposed to still be the primary domain, its DNS needs fixing. Either way,
+**this is a real, live problem, not a screenshot I couldn't take** — flagging
+for your decision on which domain is canonical now.
+
+This is about as much live verification as this sandbox can do (raw
+HTTP/DNS, not a rendered browser) — no fake greens: I did not claim to see
+pixel output, only what the raw response bytes prove.
+
 ### Section 7 (redesign) — now substantially DONE
 
 All three parallel agents finished, combined `tsc --noEmit` clean and
