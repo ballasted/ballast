@@ -31,7 +31,22 @@ fs_permissions = [{ access = "read", path = "../docs/manatee-svgs-ref" }]
 robinhood_mainnet = "${RH_MAINNET_RPC_URL}"
 robinhood_testnet = "${RH_TESTNET_RPC_URL}"
 
-[etherscan]
-robinhood_mainnet = { key = "blockscout", url = "https://robinhoodchain.blockscout.com/api", chain = 4663 }
+# REMOVED 2026-09-29 — this [etherscan] block was the actual cause of
+# "verify-all.sh fails" on every machine, not a network issue. Its mere
+# PRESENCE makes `forge verify-contract` print "ETHERSCAN_API_KEY is set,
+# defaulting to Etherscan verifier" and silently ignore an explicit
+# `--verifier sourcify` (or any non-etherscan verifier) flag entirely —
+# confirmed by reproducing it, then removing this block and watching the
+# exact same command succeed immediately after. It "worked" for `--verifier
+# blockscout` by accident (Blockscout happens to be Etherscan-API-compatible,
+# so the wrongly-forced etherscan client still hit the right shape of API at
+# the URL given) but broke Sourcify outright (a differently-shaped API). Every
+# script that verifies against Blockscout already passes `--verifier
+# blockscout --verifier-url <url>` explicitly (see script/verify/*.sh) and
+# never needed this shortcut. Do not re-add without testing `--verifier
+# sourcify` still works afterward.
+#
+# [etherscan]
+# robinhood_mainnet = { key = "blockscout", url = "https://robinhoodchain.blockscout.com/api", chain = 4663 }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
