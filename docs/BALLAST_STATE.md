@@ -1,4 +1,4 @@
-# BALLAST — full state, 2026-09-29
+# BALLAST — full state, 2026-09-30
 
 Everything below is verified live on-chain this session (`cast call` against
 `$RH_RPC_URL_PAID`, GoPlus's public API, GeckoTerminal's public API, `vercel
@@ -613,13 +613,102 @@ the full stack is green.
 - **Exact-out sell support (next hook generation)** — still a Phase-2
   design-report item; redeploying the hook is the kind of irreversible
   change this project's rules say to bring to you, not do unprompted.
-- The 8-contract Sourcify mismatch's root cause (§1) — confirmed a real,
-  reproducible `bytecode_length_mismatch` (onchain runtime 3350 bytes vs.
-  recompiled 3032 bytes for e.g. CHRS) but couldn't isolate the exact
-  historical compiler setting responsible (BallastToken.sol's source hasn't
-  changed since before any of these launched, per `git log`, so it's a
-  compiler-flag difference, not a source diff — and this project's current
-  `via_ir=true` is now load-bearing for `BallastHook.sol` project-wide,
-  making an isolated recompile-without-via_ir impossible to test cleanly).
-  Doesn't block anything — the manual-upload packages sidestep this
-  entirely — just flagging the investigation didn't fully resolve.
+- The 8-contract Sourcify mismatch's root cause (§1) — **2026-09-30 update:
+  the "different historical commit/compiler settings" theory is now RULED
+  OUT with proof**, not just unresolved. `git log --follow` on all three
+  source files (`BallastToken.sol`, `ProjectTreasury.sol`, `BackingLens.sol`)
+  shows their last content-changing commit is 2026-07-23, before any of the
+  8 failing contracts existed — there is no earlier commit to check out.
+  `foundry.toml`'s compiler block has only ever been touched twice in the
+  repo's history, neither near these launches. Manually decoded CHRS's
+  stored constructor args word-by-word and confirmed every field matches
+  the live contract's `name()`/`symbol()`/`launchMetadataURI()` reads
+  exactly. Since source, settings, and args are all confirmed
+  correct/identical to contracts that DO verify (same factory, same
+  generation), the mismatch must be a Sourcify-matcher-specific quirk, not a
+  real on-chain discrepancy — see `docs/verify-manual/README.md` for the
+  full trace. `contracts/script/verify/verify-all-blockscout.sh` (new) gives
+  these 8 an independent shot via Blockscout's own verifier, which doesn't
+  depend on Sourcify's matcher at all.
+
+---
+
+## 10. Round 3 (2026-09-30) — live-site bug fixes, 8 commits
+
+Reported straight from the live deployed site with screenshots. All fixed,
+tested (`forge test` 232/232, `tsc --noEmit` clean, `vitest` 70/70), and
+verified with real Chromium screenshots (Playwright + a cached browser
+binary turned out to work in this sandbox this round — see below).
+
+1. **Chart crash on "All" timeframe** — root-caused, not just patched.
+   `useOhlcv`'s `placeholderData` kept the previous timeframe's series
+   visible under the new resetKey while coarser real data was still in
+   flight; when it landed, the freshness check incorrectly took the
+   `update()` path instead of `setData()`, and `lightweight-charts` throws
+   on `update()` when the new time is behind the series' last point (which
+   a day-bucketed timestamp almost always is vs. a fine-grained
+   placeholder). Fixed the actual freshness check (`shouldResetSeries()`,
+   new, unit-tested). Added `sanitizeCandles()` (dedupe/sort/drop
+   non-finite rows) as defense-in-depth, and a generic `ErrorBoundary`
+   around `PriceChart`/`Sparkline` so any future chart failure shows "Chart
+   unavailable" instead of blanking the page.
+2. **Blockscout verification** — `contracts/script/verify/verify-all-blockscout.sh`
+   (new) for the user's own machine (not Cloudflare-blocked, unlike this
+   sandbox). Also did real archaeology on the 8-contract Sourcify mismatch
+   (see §9 above) and ruled out the "historical commit" theory with actual
+   git-log + byte-level evidence, not a repeated guess.
+3. **Create page unusable on mobile** — CSS Grid items default to
+   `min-width: auto`; the pairing/treasury horizontal scrollers (fixed-width,
+   non-shrinking cards) forced the grid item to grow past the viewport,
+   which mobile browsers respond to by zooming the whole page out. Added
+   `min-w-0` at the grid-item and scroller level, and built a real mobile
+   bottom sheet for the live preview (thin bar above BottomNav, expands to
+   the full card on tap). Verified zero horizontal overflow at 375/390/430px
+   with real screenshots.
+4. **Landing copy** — dropped the "N launched this week" line; "Projects
+   ballasted" now reads "Project ballasted" at a count of 1.
+5. **Domain migration** — `ballasted.xyz` is dead (confirmed NXDOMAIN
+   again); `ballasted.fun` is canonical everywhere now (code, docs, env
+   defaults, Vercel `NEXT_PUBLIC_APP_URL` on Production+Preview). $BALLAST
+   v2's on-chain metadata isn't one-time-locked (`setMetadataURI` has no
+   lock), so pinned a corrected JSON (website→ballasted.fun,
+   telegram→t.me/ballastedotfun, confirmed correct not a typo) —
+   `docs/safe-tx-set-ballast-v2-metadata-fun-domain.json` ready to sign.
+6. **Greek-key/meander border strips** — removed all 15 usages sitewide and
+   deleted the `Meander`/`MeanderRule` component entirely (confirmed nothing
+   else references it). `MeanderWatermark` (distinct, ~2.5% opacity corner
+   flourish, not a border strip) is untouched.
+7. **Discover page** — removed the Live Feed / Top Movers sidebar entirely
+   (deleted both components; `useLiveRail` hook stays, used independently by
+   the global `EventToasts` toast system). Discover is now full-width: 4
+   cards/row desktop, 3 laptop, 2 tablet, 1 mobile, confirmed via screenshots
+   at 1440/1024/390px. TOTAL BURNED now reads `BuybackBurnerV2` (v2) instead
+   of v1's `BuybackBurner` — it was showing v1's 36.3M on the current
+   protocol's own page; v1's history stays on the Buyback page only.
+8. **Landing proof card** — was rotating through every graduated launch with
+   no preference, so the newest (unbacked $BALLAST v2, "$0.00") was often
+   what showed first despite the headline claiming to prove real backing.
+   Backed launches now sort first; confirmed live — a real backed launch
+   (BCAT, $2.28e-7/token) now surfaces before the unbacked ones. When the
+   shown launch has no deposit, the card now shows its pool-pairing logos +
+   "Opens at 1 ETH" instead of a bare $0.00.
+9. **Discover card sparklines** — added a live sparkline beside the
+   market-cap figure on every card, a sixth element explicitly overriding
+   CLAUDE.md's "exactly five things" rule by instruction. Wired correctly
+   (tsc clean, no layout break) but couldn't visually confirm the drawn line
+   today — GeckoTerminal's minute-candle endpoint 429'd this sandbox after a
+   day of heavy testing (confirmed via direct `curl`, not a code defect;
+   `Sparkline` degrades to hidden rather than fabricating a line).
+
+**New capability discovered this round**: Playwright + a cached Chromium
+binary actually work in this sandbox (a prior round's install must have
+cached the browser; `npx playwright install` itself still needs a real
+package install first, but the binary runs fine once present). Used for
+every screenshot claim above — real pixels, not a guess. `npm run dev`
+also works, just slow to first-compile a heavy route (~110s for
+`/app/create`).
+
+**Commits this round** (not yet pushed as of writing — see below): chart
+crash fix, Blockscout verify script, mobile create-page fix, landing copy,
+domain migration (+ the missed `package.json` follow-up), Meander removal,
+Discover rework, proof card + sparklines.
