@@ -712,3 +712,138 @@ also works, just slow to first-compile a heavy route (~110s for
 crash fix, Blockscout verify script, mobile create-page fix, landing copy,
 domain migration (+ the missed `package.json` follow-up), Meander removal,
 Discover rework, proof card + sparklines.
+
+---
+
+## 11. Site fixes (Part 1) + Fee Router v1 (Part 2) — 2026-09-30/10-01
+
+### Part 1 — ballasted.fun fixes, shipped to production
+
+- **No landing page**: `/` now 308-redirects to `/app/discover` (and `/home`,
+  `/landing` redirect to `/`). The old marketing hero page is deleted. Kept
+  this as a redirect rather than rendering Discover inside the root layout —
+  the wallet-provider tree must only wrap `/app` (CLAUDE.md), and a redirect
+  preserves that with zero risk.
+- **Footer**: one row — BALLAST mark left, exactly X / Telegram / Docs right.
+  Deleted the Product/Learn/Legal columns and the legal boilerplate
+  paragraph. `/terms`/`/privacy` stay live, just unlinked from the footer.
+- **Link-preview image**: no `ballast_og.png` asset was actually attached to
+  the request this session — `web/scripts/generate-og.mjs` renders an
+  equivalent 1200x630 (+@2x) card with `next/og`'s `ImageResponse`, matching
+  the per-token OG card's palette, and writes it to `web/public/og.png`. Root
+  layout metadata points `openGraph`/`twitter` at it with an absolute URL via
+  `metadataBase`. The per-token dynamic OG route now falls back to this
+  static file if its own render throws.
+- Verified live: `curl -sL https://ballasted.fun | grep -E 'og:|twitter:'`
+  shows `og:image` / `twitter:image` = `https://ballasted.fun/og.png`;
+  `curl -sIL https://ballasted.fun/og.png` → `200`, `image/png`. Screenshots
+  of "/" (desktop + mobile, both land on Discover) and the footer (via
+  `/docs`) captured via Playwright against the live site —
+  `docs/screenshots/root-desktop.png`, `root-mobile.png`, `footer-desktop.png`.
+- 3 commits (`6ed15b4`, `25529a1`, `dbba240`), pushed, deployed to Vercel
+  production (`www.ballasted.fun`, deployment `dpl_2M8qfkmMKhruihrYfiWuDRJamcZJ`).
+  `tsc`/`vitest` green before and after.
+
+### Part 2 — Fee Router v1: the creator decides where trading fees go
+
+Full research + design in `docs/FEE_ROUTER_DESIGN.md`. Summary of the
+decision, since it's the load-bearing fact for everything below: **one
+dedicated `FeeRouter` per token**, not a shared singleton — `BallastHook.owed`
+is keyed by address only, so a shared router used as `creator` for multiple
+tokens would commingle their fees with no way to attribute a claimed lump
+sum back to the right token.
+
+**Four buckets** (creator-set bps, default 100% creator, 7-day-scheduled
+changes, never skippable):
+1. Creator wallet — plain transfer.
+2. Treasury — swap into the treasury's asset, lock forever via
+   `proposeDeposit`+`acceptDeposit` (only possible when the router itself is
+   `treasury.creator` — see below). **Shipped disabled in the UI for v1**:
+   the swap needs a verified WETH/asset pool key that isn't resolvable
+   client-side yet; the contract fully supports it (`treasuryAsset`/
+   `treasuryPoolKey`, immutable, set at router construction), it's just not
+   wired up from the create flow today.
+3. Buyback & burn — swap into the token via its own (post-graduation,
+   self-derived) WETH pool, send to `0x…dEaD`. Live.
+4. Holder rewards — opt-in staking (`HolderStakingVault`, one per token):
+   stake anytime, unstake anytime, no lockup, no APR shown anywhere. Live.
+
+**Two ways a token gets a router** (docs/FEE_ROUTER_DESIGN.md §1.1/§1.4):
+- **New launches**: `FeeRouterFactory.createAndLaunch(...)` deploys the
+  router, which calls `BallastFactory.launch()` itself — the router becomes
+  the on-chain `creator` of both the token and its treasury, so `route()` can
+  pull fees (`hook.claim()`) and lock treasury deposits permissionlessly.
+  This is the only path with the treasury bucket available.
+- **Existing tokens**: `FeeRouterFactory.createForExisting(...)` + the
+  creator's own `adopt()` call wires a bucket-splitter that is NOT the
+  on-chain creator — the human must `hook.claim()` and send WETH to the
+  router themselves (Solidity's `msg.sender` can't be spoofed, and
+  `ProjectTreasury.executeWithdrawal` always pays the fixed `creator`
+  address, never the caller — see the design doc for why this can't be
+  fully permissionless for pre-existing tokens). `route()` itself is
+  permissionless either way, same contract, same bucket logic.
+
+Treasury/buyback swaps go through **direct `PoolManager.swap`** (the exact
+pattern `BuybackBurnerV2` already uses), not the UniversalRouter fork —
+CLAUDE.md flags that fork's undocumented `minHopPriceX36` field as something
+that "will revert" against stock calldata, and getting a bespoke encoder
+right without a live test is exactly the kind of funds-at-risk code the
+project's rules say to avoid. `BuybackBurnerV2` already proves the safer
+path works on this chain.
+
+**Contracts** (`contracts/src/FeeRouter.sol`, `HolderStakingVault.sol`,
+`FeeRouterFactory.sol`): no owner, no admin key, no upgrade path anywhere.
+The only privileged address is `realCreator` (the human), scoped to
+scheduling a split change and a small set of Token/Treasury
+creator-passthroughs needed only because the router, not the human, holds
+the on-chain `creator` role in the router-as-creator path (metadata updates,
+accept/decline deposits, the withdrawal lifecycle — all unchanged privileges,
+just proxied).
+
+**Tests**: 45 new (35 unit + 10 staking-vault + 3 real-mainnet-fork), full
+suite 280/280 passing (`forge test`, RPC-gated fork tests included when
+`RH_RPC_URL_PAID` is set). The fork suite deploys a fresh-but-real
+Factory/Hook/Seeder on the actual live `PoolManager` (same pattern as
+`BallastGraduateFork.t.sol`) and self-initializes a vanilla WETH/asset pool
+for the treasury-bucket swap — deliberately not guessing a real external
+pool's fee tier/liquidity. All four buckets, the slippage-revert path, and
+buyback deferral-then-flush are proven end to end against real gen-4
+mechanics, not mocks.
+
+**UI** (`web/components/app/create/FeesSection.tsx`,
+`web/components/app/token/{FeeRouterCard,StakingPanel,FeeRouterDashboard}.tsx`,
+`web/hooks/{useFeeRouter,useFeeRouterLaunchRunner}.ts`): Create-page "Fees"
+section (presets + sliders + live split preview, treasury bucket shown
+disabled/"·soon"); token-page read-only "Where fees go" card (renders only
+when a router exists — no empty state for the common no-router case); opt-in
+staking panel with the required disclosure line ("Rewards come only from
+trading fees the creator routes here. They can change or stop."); creator-
+gated dashboard (schedule split, route now, history). `tsc`/`vitest` green
+(70/70). Reviewed and fixed two issues before committing: the backed-deposit
+step was calling `ProjectTreasury.deposit()` directly (reverts `NotCreator`
+once the router holds that role — now goes through the router's
+`creatorDeposit` passthrough), and the fee-split sliders could reach an
+unsubmittable split with no feedback (rebalancing is now clamp-first, and
+the submit button is gated on the sum).
+
+**Deploy status**: NOT yet live. New keystore `feerouter-deployer`
+(`0xD316888628c75A87e15A15DE36821Fe7371f0cBf`, never the compromised
+`0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1`) is created and verified
+decryptable. `docs/safe-tx-fund-feerouter-deployer.json` sends it 0.001 ETH
+(a real mainnet dry-run estimated the actual deploy cost at ~0.000225 ETH)
+and is waiting on a Safe signature. `FeeRouterFactory`'s predicted nonce-0
+address is `0x939536F25b72ca261076Fa485D2A0EE647e54818` — provisional until
+the funded broadcast confirms it. Once funded:
+`forge script script/DeployFeeRouterFactory.s.sol:DeployFeeRouterFactory
+--rpc-url robinhood_mainnet --account feerouter-deployer --password-file
+~/.foundry/keystores/feerouter-deployer.pass --broadcast`, then verify
+(Blockscout is Cloudflare-blocking this sandbox, same as every prior round —
+run from a machine that isn't):
+`forge verify-contract <address> src/FeeRouterFactory.sol:FeeRouterFactory
+--verifier blockscout --verifier-url
+https://robinhoodchain.blockscout.com/api --chain-id 4663`.
+
+**Copy rules** (enforced in every new file this round, grepped clean):
+never "yield", "APR", "dividend", "passive income", "floor", "guaranteed",
+"safe", "returns", "insured", "protected", "secured" in relation to Ballast.
+Use "fees routed to treasury", "tokens burned", "rewards paid to stakers".
