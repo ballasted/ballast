@@ -34,19 +34,21 @@ export const metadata: Metadata = {
   description:
     "A launchpad on Robinhood Chain where projects can hold a treasury of tokenized real-world assets — and anyone can see exactly how much, per token, live.",
   openGraph: {
-    title: "BALLAST — Launch with something underneath",
+    title: "Ballast — Launch against real stocks",
     description:
-      "See a project's on-chain treasury priced live as backing per token. Disclosure, not a promise.",
+      "Token launchpad on Robinhood Chain. Stock pairs, stock treasury, opens at 1 ETH.",
     url: SITE_URL,
-    siteName: "BALLAST",
+    siteName: "Ballast",
+    images: [{ url: "/og.png", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     site: X_HANDLE,
-    title: "BALLAST — Launch with something underneath",
+    title: "Ballast — Launch against real stocks",
     description:
-      "See a project's on-chain treasury priced live as backing per token.",
+      "Token launchpad on Robinhood Chain. Stock pairs, stock treasury, opens at 1 ETH.",
+    images: ["/og.png"],
   },
   robots: { index: true, follow: true },
 };

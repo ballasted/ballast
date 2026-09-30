@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Address } from "viem";
 import { getOgTokenData } from "@/lib/ogTokenData";
 import { formatBackingPerToken } from "@/lib/format";
@@ -33,6 +35,20 @@ const C = {
 };
 
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {
+  try {
+    return await renderCard(params);
+  } catch {
+    // Render itself is what "never throws" doesn't cover (getOgTokenData already
+    // degrades gracefully) — a satori/font failure still can. Fall back to the
+    // static site-wide card rather than a broken link preview.
+    const fallback = await readFile(join(process.cwd(), "public", "og.png"));
+    return new Response(new Uint8Array(fallback), {
+      headers: { "content-type": "image/png" },
+    });
+  }
+}
+
+async function renderCard(params: Promise<{ address: string }>) {
   const { address } = await params;
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
   const data = isAddr
