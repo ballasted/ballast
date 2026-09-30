@@ -45,6 +45,16 @@ export const isBuybackV2Configured = Boolean(BUYBACK_V2_ADDRESS);
 // shows an honest "not live yet" state until then.
 export const V1_CLAIM_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V1_CLAIM_ADDRESS);
 export const isV1ClaimConfigured = Boolean(V1_CLAIM_ADDRESS);
+
+// FeeRouterFactory — lets a creator route gen-4 trading fees to a
+// treasury/buyback/staking split (contracts/src/FeeRouterFactory.sol,
+// docs/FEE_ROUTER_DESIGN.md). Stateless, no owner. Unset = the Fees section in
+// Create and the fee-router UI on the token page don't render at all — see
+// .env.example for the provisional predicted address pending deploy.
+export const FEE_ROUTER_FACTORY_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_FEE_ROUTER_FACTORY_ADDRESS,
+);
+export const isFeeRouterFactoryConfigured = Boolean(FEE_ROUTER_FACTORY_ADDRESS);
 // $BALLAST v1 — fixed forever, independent of whichever token is currently
 // pinned as the protocol token (see ProtocolTokenNotice.tsx).
 export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as Address;

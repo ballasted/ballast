@@ -7,8 +7,10 @@ import { useAccount, useReadContract } from "wagmi";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useQuoteAssets } from "@/hooks/useQuoteAssets";
 import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
+import { useFeeRouterLaunchRunner, type FeeSplitBps } from "@/hooks/useFeeRouterLaunchRunner";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
+import { FeesSection } from "@/components/app/create/FeesSection";
 import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -20,7 +22,7 @@ import { MotionSection } from "@/components/app/MotionSection";
 import { PairingScroller, HorizontalScroller, type PairingItem } from "@/components/PairingScroller";
 import { ETH_ROUTE_TICKERS } from "@/lib/pairingAssets";
 import { erc20Abi } from "@/lib/abis";
-import { isFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY, WETH_ADDRESS } from "@/lib/contracts";
+import { isFactoryConfigured, isFeeRouterFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY, WETH_ADDRESS } from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -164,6 +166,16 @@ export function CreateFlow() {
   const [noticeDays, setNoticeDays] = useState<7 | 30 | 90>(30);
   const [advanced, setAdvanced] = useState(false);
   const [quoteAssets, setQuoteAssets] = useState<Address[]>([]);
+  // Fee Router split — default 100% creator (unchanged current behavior; only a
+  // non-default split routes the launch through FeeRouterFactory). Separate
+  // from `feeSplit` below, which is the platform's own swap-fee split display.
+  const [routerSplit, setRouterSplit] = useState<FeeSplitBps>({
+    creatorBps: 10000,
+    treasuryBps: 0,
+    buybackBps: 0,
+    rewardsBps: 0,
+  });
+  const routerIsDefault = routerSplit.creatorBps === 10000 && routerSplit.treasuryBps === 0 && routerSplit.buybackBps === 0 && routerSplit.rewardsBps === 0;
 
   // Submit lifecycle
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -185,6 +197,8 @@ export function CreateFlow() {
   const { split: feeSplit, isLoading: feeLoading, configured: feeConfigured } = useFeeSplit();
   const openFdv = useOpeningFdv();
   const runner = useLaunchRunner();
+  const feeRouterRunner = useFeeRouterLaunchRunner();
+  const activeRunner = routerIsDefault ? runner : feeRouterRunner;
 
   // Default to WETH the moment it's available — a launch always needs at
   // least one quote asset, and WETH is the one every launch can use.
@@ -265,7 +279,9 @@ export function CreateFlow() {
     ? Boolean(selected) && amountRaw > 0n && !belowMin && !overBalance && !feedBlocked
     : true;
   const quoteAssetsValid = quoteAssets.length > 0;
-  const formValid = projectValid && treasuryValid && quoteAssetsValid;
+  const routerSplitValid =
+    routerSplit.creatorBps + routerSplit.treasuryBps + routerSplit.buybackBps + routerSplit.rewardsBps === 10000;
+  const formValid = projectValid && treasuryValid && quoteAssetsValid && routerSplitValid;
 
   function openConfirm() {
     setPinError(undefined);
@@ -302,7 +318,11 @@ export function CreateFlow() {
       // (a new CID for the same metadata) — and the runner skips any step already
       // on-chain, so it never re-deploys or re-deposits.
       setLaunchParams(params);
-      runner.run(params);
+      if (routerIsDefault) {
+        runner.run(params);
+      } else {
+        feeRouterRunner.run(params, routerSplit);
+      }
     } catch (e) {
       setPinning(false);
       setPinError(e instanceof Error ? e.message : "Could not pin project metadata to IPFS.");
@@ -312,7 +332,12 @@ export function CreateFlow() {
   // Re-run from where we left off, reusing the already-pinned metadata. Safe to
   // call after an error or a lost step: the runner prechecks each step on-chain.
   function resumeLaunch() {
-    if (launchParams) runner.run(launchParams);
+    if (!launchParams) return;
+    if (routerIsDefault) {
+      runner.run(launchParams);
+    } else {
+      feeRouterRunner.run(launchParams, routerSplit);
+    }
   }
 
   if (!isFactoryConfigured) {
@@ -323,19 +348,21 @@ export function CreateFlow() {
     );
   }
 
-  // Terminal + in-progress states take over the whole view.
-  if (runner.result) {
-    return <SuccessCard token={runner.result.token} symbol={symbolClean} logoUri={logoUri} />;
+  // Terminal + in-progress states take over the whole view. Once either runner
+  // has started, routerIsDefault stays stable (the Fees section isn't rendered
+  // mid-flow), so activeRunner keeps pointing at the one actually running.
+  if (activeRunner.result) {
+    return <SuccessCard token={activeRunner.result.token} symbol={symbolClean} logoUri={logoUri} />;
   }
-  const running = pinning || runner.steps.length > 0;
+  const running = pinning || activeRunner.steps.length > 0;
   if (running) {
     return (
       <LaunchProgress
         symbol={symbolClean}
         pinning={pinning}
-        steps={runner.steps}
-        isRunning={runner.isRunning}
-        launched={runner.launched}
+        steps={activeRunner.steps}
+        isRunning={activeRunner.isRunning}
+        launched={activeRunner.launched}
         onResume={resumeLaunch}
       />
     );
@@ -603,6 +630,12 @@ export function CreateFlow() {
               </>
             )}
           </section>
+
+          {/* Fees — where trading fees go, in bps across four buckets. Default
+              100% creator leaves current behavior unchanged (see
+              routerIsDefault above); anything else routes the launch through
+              FeeRouterFactory instead of BallastFactory directly. */}
+          {isFeeRouterFactoryConfigured && <FeesSection split={routerSplit} onChange={setRouterSplit} />}
 
           {/* Advanced — creator wallet. See note: the factory records msg.sender as
               creator; there is no override parameter, so we surface the address as a

@@ -19,6 +19,9 @@ import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanne
 import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
+import { FeeRouterCard } from "@/components/app/token/FeeRouterCard";
+import { StakingPanel } from "@/components/app/token/StakingPanel";
+import { FeeRouterDashboard } from "@/components/app/token/FeeRouterDashboard";
 import {
   AllocationSlot,
   MetadataHistory,
@@ -244,6 +247,10 @@ export default function TokenDetailPage() {
             )}
 
             <ProtocolTokenNotice token={token} />
+
+            <FeeRouterCard token={token} />
+            <StakingPanel token={token} symbol={symbol} />
+            <FeeRouterDashboard token={token} />
 
             {shownMeta && (shownMeta.description || shownMeta.website || shownMeta.x || shownMeta.telegram) && (
               <section className="card p-5">
