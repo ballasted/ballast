@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund the new feerouter-deployer wallet with gas ETH only", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xD316888628c75A87e15A15DE36821Fe7371f0cBf",
+      "value": "1000000000000000",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Sends 0.001 ETH (plain transfer) to a BRAND NEW keystore ('feerouter-deployer', created this session specifically for this one deploy -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1). A dry run against the real mainnet RPC estimated the actual deploy cost at ~0.000225 ETH, so this is ~4.4x margin, still negligible on this L2. This wallet is gas-only: it deploys FeeRouterFactory (one transaction, nonce 0, no constructor args, no owner -- see docs/FEE_ROUTER_DESIGN.md) and does nothing else ever again. Individual FeeRouter + HolderStakingVault instances deploy later, lazily, one per token, paid for by whichever creator or keeper calls FeeRouterFactory.createAndLaunch/createForExisting -- not from this wallet."
+    }
+  ]
+}
