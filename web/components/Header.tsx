@@ -6,8 +6,7 @@ import { Container } from "@/components/Container";
 import { Wordmark } from "@/components/Wordmark";
 import { cn } from "@/lib/cn";
 
-const NAV = [{ href: "/docs", label: "Docs" }];
-
+// Docs/X/Telegram live only in the footer now — no nav items here.
 export function Header() {
   // Past the hero the header gains its border + a denser background. Just a
   // 150ms color/opacity shift — no size change, no CLS. A passive scroll listener,
@@ -29,17 +28,6 @@ export function Header() {
     >
       <Container className="flex h-14 items-center justify-between">
         <Wordmark />
-        <nav className="hidden items-center gap-6 md:flex">
-          {NAV.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="text-sm text-text-secondary transition-colors duration-150 hover:text-text-primary"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
         <div className="flex items-center gap-2">
           {/* Links into the /app segment. That segment (not this header) owns the
               web3 bundle, so these are plain links, not wallet buttons. */}

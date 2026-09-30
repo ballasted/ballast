@@ -57,6 +57,15 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  async redirects() {
+    // No landing page — the root domain opens straight on Discover. Old
+    // landing-era paths fall through to "/" (which itself now redirects on).
+    return [
+      { source: "/", destination: "/app/discover", permanent: true },
+      { source: "/home", destination: "/", permanent: true },
+      { source: "/landing", destination: "/", permanent: true },
+    ];
+  },
   webpack: (config, { webpack }) => {
     // wagmi's connectors barrel drags in the Base/Coinbase account connector,
     // which lazily requires optional @x402/* payment packages we don't install
