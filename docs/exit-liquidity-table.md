@@ -163,7 +163,23 @@ CRCL  0xdf0992e440dd0be65bd8439b609d6d4366bf1cb5
 
 ## Batch-2 router compatibility
 
-`BallastRouter` (gen-4, deployed 2026-09-26, `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1`; source `contracts/src/BallastRouter.sol`) has a structural property that matters here: **leg 1 (`_swapDirect`) is single-hop only.** It swaps `tokenIn` for `quoteAsset` through exactly one pool taken from the constructor-fixed `routes` array, using the Uniswap-v3-style `swap()` / `uniswapV3SwapCallback()` ABI — the contract's own NatSpec says this is shared by "Uniswap v3 / Ramses v3 — identical swap/callback ABI" and nothing else. Leg 1 never chains through an intermediate token (no WETH→USDG→asset hop), and it cannot call a Uniswap v4 pool at all in that leg (v4 is only used in leg 2, always against the fixed UniversalRouter, with completely different calldata — see `_swapBallastPool`). So router compatibility for a WETH holder depends on one thing only: **does a direct WETH↔asset pool exist, and is it Uniswap v3 or Ramses v3?** The deep via-USDG bridge routes that drive this table's AMBER/GREEN classification are irrelevant to the router — it structurally cannot reach them.
+> **Superseded 2026-10 by `BallastRouterV2`** (`0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0`,
+> `contracts/src/BallastRouterV2.sol`, wired into the frontend) — leg 1 is no
+> longer single-hop-only. It multi-hops through Fables' v4 pools (ETH→USDG→asset,
+> picking up CRCL/MSTR/PLTR/COIN and more) OR a 1-2 hop Ramses v3 chain
+> (including the via-USDG bridge this section says v1 "structurally cannot
+> reach"), whichever quotes better at the trade's actual size, with an
+> on-chain fallback to the other venue. The analysis below is kept as the
+> historical record of why v1 needed this fix — it no longer describes the
+> live router.
+>
+> **All 11 of this table's AMBER/GREEN assets plus the 5 with no Fables pool
+> at all (SGOV/GOOGL/MSFT/AMD/ORCL) are router-reachable today.** PLTR and
+> COIN default to the Ramses leg specifically (Fables-team guidance,
+> 2026-10-03: their liquidity isn't deep enough yet) rather than the
+> shallower-than-classification route v1 was stuck with.
+
+`BallastRouter` v1 (gen-4, deployed 2026-09-26, `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1`; source `contracts/src/BallastRouter.sol`, never wired into the frontend) had a structural property that matters here: **leg 1 (`_swapDirect`) is single-hop only.** It swaps `tokenIn` for `quoteAsset` through exactly one pool taken from the constructor-fixed `routes` array, using the Uniswap-v3-style `swap()` / `uniswapV3SwapCallback()` ABI — the contract's own NatSpec says this is shared by "Uniswap v3 / Ramses v3 — identical swap/callback ABI" and nothing else. Leg 1 never chains through an intermediate token (no WETH→USDG→asset hop), and it cannot call a Uniswap v4 pool at all in that leg (v4 is only used in leg 2, always against the fixed UniversalRouter, with completely different calldata — see `_swapBallastPool`). So router compatibility for a WETH holder depends on one thing only: **does a direct WETH↔asset pool exist, and is it Uniswap v3 or Ramses v3?** The deep via-USDG bridge routes that drive this table's AMBER/GREEN classification are irrelevant to the router — it structurally cannot reach them.
 
 Of the six batch-2 assets, only CRCL, MSTR, PLTR, and COIN classify AMBER (AMD and ORCL are RED, out of scope for "should this become a quote asset" — noted briefly at the end anyway):
 

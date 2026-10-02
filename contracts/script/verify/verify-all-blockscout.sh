@@ -61,6 +61,10 @@ vfy 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67 src/BallastFactory.sol:BallastFac
 vfy 0x4eb2dd759f4d6524e66057d1adc10c26e40142cc src/BallastHook.sol:BallastHook --guess-constructor-args --rpc-url "$RPC"
 vfy 0x690241daf35efdf34e0b726aceb451bd901858db src/BallastSeeder.sol:BallastSeeder --guess-constructor-args --rpc-url "$RPC"
 vfy 0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1 src/BallastRouter.sol:BallastRouter --guess-constructor-args --rpc-url "$RPC"
+# BallastRouterV2 (current, Fables/Ramses, 2026-10-02) — already verified on Sourcify
+# (exact match); this just mirrors that onto Blockscout natively. Needs --guess
+# because its constructor takes the two fixed-table array args, not a bare address list.
+vfy 0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0 src/BallastRouterV2.sol:BallastRouterV2 --guess-constructor-args --rpc-url "$RPC"
 vfy 0xE09F093595045E8765F420Cb12E0AA250910E5AD src/FeeConfig.sol:FeeConfig --guess-constructor-args --rpc-url "$RPC"
 vfy 0x427764d0d19aB765c35A41A5aa4771580307dA81 src/AssetRegistry.sol:AssetRegistry --guess-constructor-args --rpc-url "$RPC"
 vfy 0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770 src/BackingLens.sol:BackingLens --guess-constructor-args --rpc-url "$RPC"

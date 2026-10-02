@@ -9,12 +9,16 @@
 // inside /app, useQuoteAssets() reads isGreenQuoteAsset() live on-chain per
 // address, and that result always wins over anything hardcoded here.
 //
-// GREEN mirrors the current on-chain quote-asset allowlist (SGOV, NVDA, SPY —
-// docs/exit-liquidity-table.md "Recommendation for A1's final step"). Router
-// path mirrors BallastRouter's wired routes (NVDA, SPY — same doc, "Batch-2
-// router compatibility": the router's leg 1 is single-hop-only, so only a
-// direct WETH pool counts, not the deeper via-USDG routes that drive the
-// GREEN/AMBER/RED classification). Update both sets if either changes.
+// GREEN mirrors the current on-chain quote-asset allowlist — re-verified live
+// 2026-10 (BallastFactory.isGreenQuoteAsset): all 16 registry assets read
+// true today, not just the original SGOV/NVDA/SPY batch (the factory
+// promoted the rest since this set was first written; isGreenQuoteAsset is
+// fixed at factory construction, not owner-settable, so this reflects the
+// CURRENT deployed factory, re-check against a new one). hasEthRoute mirrors
+// BallastRouterV2 (contracts/src/BallastRouterV2.sol / web/lib/routerV2.ts) —
+// ALL 16 now have a real ETH route (Fables-or-Ramses for 11, Ramses-only for
+// SGOV/GOOGL/MSFT/AMD/ORCL), superseding v1's single-hop-only limitation that
+// used to make this a strict subset of GREEN. Update both sets if either changes.
 export type PairingTicker = {
   key: string;
   symbol: string;
@@ -23,8 +27,12 @@ export type PairingTicker = {
   hasEthRoute?: boolean;
 };
 
-export const GREEN_TICKERS = new Set(["SGOV", "NVDA", "SPY"]);
-export const ETH_ROUTE_TICKERS = new Set(["NVDA", "SPY"]);
+export const GREEN_TICKERS = new Set([
+  "SGOV", "NVDA", "SPY", "META", "QQQ", "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "AMD", "COIN", "PLTR", "ORCL", "MSTR", "CRCL",
+]);
+export const ETH_ROUTE_TICKERS = new Set([
+  "SGOV", "NVDA", "SPY", "META", "QQQ", "AAPL", "GOOGL", "TSLA", "MSFT", "AMZN", "AMD", "COIN", "PLTR", "ORCL", "MSTR", "CRCL",
+]);
 
 // The 16 stock/RWA tickers reviewed in docs/exit-liquidity-table.md (batch 1
 // + batch 2), in that doc's order. Not every one is on-chain-allowlisted yet

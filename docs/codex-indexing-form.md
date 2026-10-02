@@ -19,7 +19,8 @@ memory. ABIs exported as JSON: `docs/abi/*.json`.
 | BallastFactory | `0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67` | `docs/abi/BallastFactory.json` |
 | BallastHook | `0x4eb2dd759f4d6524e66057d1adc10c26e40142cc` | `docs/abi/BallastHook.json` |
 | BallastSeeder | `0x690241daf35efdf34e0b726aceb451bd901858db` | `docs/abi/BallastSeeder.json` |
-| BallastRouter | `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1` | `docs/abi/BallastRouter.json` |
+| BallastRouter v1 (superseded, never wired into the frontend) | `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1` | `docs/abi/BallastRouter.json` |
+| BallastRouterV2 (current, pay with ETH into any quote asset via Fables or Ramses) | `0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0` | `docs/abi/BallastRouterV2.json` |
 | FeeConfig (gen-4) | `0xE09F093595045E8765F420Cb12E0AA250910E5AD` | `docs/abi/FeeConfig.json` |
 | AssetRegistry (shared, all generations) | `0x427764d0d19aB765c35A41A5aa4771580307dA81` | `docs/abi/AssetRegistry.json` |
 | BackingLens | `0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770` | `docs/abi/BackingLens.json` |

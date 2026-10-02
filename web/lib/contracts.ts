@@ -78,6 +78,22 @@ export const QUOTER_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_QUOTER_ADDRES
 export const UNIVERSAL_ROUTER_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_UNIVERSAL_ROUTER_ADDRESS,
 );
+
+// BallastRouterV2 (contracts/src/BallastRouterV2.sol) — pay with ETH into a
+// non-WETH-quoted pool (NVDA/SPY/SGOV/...), routed over Fables or Ramses v3,
+// chosen per call from a live quote at the actual trade size. No owner, no
+// setters — ramsesRoutes/fablesHops are fixed at construction (see
+// contracts/script/DeployBallastRouterV2.s.sol for the index map). Supersedes
+// BallastRouter v1 (0xc422e0a6ca75d1ffAfd77f72b710b2Ef3aeF50e1), which was never
+// wired into this frontend — nothing to migrate.
+export const ROUTER_V2_ADDRESS = asAddress(process.env.NEXT_PUBLIC_ROUTER_V2_ADDRESS);
+export const isRouterV2Configured = Boolean(ROUTER_V2_ADDRESS && QUOTER_ADDRESS);
+
+// Ramses v3 quoter/factory — the "Ramses" venue side of BallastRouterV2's live
+// dual-venue quote (lib/routerV2.ts). Fables' own pools are quoted through the
+// existing QUOTER_ADDRESS (V4Quoter is PoolManager-generic, not hook-specific).
+export const RAMSES_QUOTER_ADDRESS = asAddress(process.env.NEXT_PUBLIC_RAMSES_QUOTER_ADDRESS);
+export const USDG_ADDRESS = asAddress(process.env.NEXT_PUBLIC_USDG_ADDRESS);
 export const ETH_USD_FEED_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_ETH_USD_FEED_ADDRESS,
 );

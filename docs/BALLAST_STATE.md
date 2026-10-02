@@ -18,7 +18,8 @@ stated plainly, not glossed over.
 | BallastFactory | `0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67` | — (no admin surface) | Unknown — Blockscout unreachable this session |
 | BallastHook | `0x4eb2dd759f4d6524e66057d1adc10c26e40142cc` | — (no admin surface) | Unknown |
 | BallastSeeder | `0x690241daf35efdf34e0b726aceb451bd901858db` | — (no admin surface) | Unknown |
-| BallastRouter | `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1` | — (no admin surface) | Unknown |
+| BallastRouter v1 | `0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1` | — (no admin surface) | Unknown — never wired into the frontend, superseded below, left live (not a security issue, just unused) |
+| **BallastRouterV2** (current, deployed 2026-10-02) | `0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0` | — no owner/admin/privileged function at all; `ramsesRoutes`/`fablesHops` fixed at construction, same as v1's `routes` | Verified via Sourcify, exact match (Blockscout unreachable this session, same Cloudflare block) |
 | FeeConfig (gen-4) | `0xE09F093595045E8765F420Cb12E0AA250910E5AD` | old EOA `0xA277…37D1` (`pendingOwner` = Safe, accept not yet run) | Unknown |
 
 ### Shared across every generation

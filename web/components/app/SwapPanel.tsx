@@ -4,14 +4,16 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useAccount, useBalance, useReadContract, useGasPrice } from "wagmi";
 import { useSwap, type SwapPhase } from "@/hooks/useSwap";
+import { useRouterV2Swap } from "@/hooks/useRouterV2Swap";
 import { useTokenQuotePools } from "@/hooks/useTokenQuotePools";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { ActingAs } from "@/components/app/ActingAs";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
-import { isSwapConfigured } from "@/lib/contracts";
+import { isSwapConfigured, isRouterV2Configured } from "@/lib/contracts";
 import { erc20Abi } from "@/lib/abis";
+import { routerV2RoutesFor } from "@/lib/routerV2";
 import { cn } from "@/lib/cn";
 
 type Side = "buy" | "sell";
@@ -50,6 +52,12 @@ export function SwapPanel({
   const [slippageBps, setSlippageBps] = useState<number>(100);
   const [customSlip, setCustomSlip] = useState("");
   const [selectedQuote, setSelectedQuote] = useState<Address | undefined>(undefined);
+  // Pay with ETH via BallastRouterV2 (Fables-or-Ramses, live-quoted at this
+  // size) instead of the quote asset directly — only possible, and only
+  // shown, when the active pool's quote asset isn't WETH and the router has a
+  // route for it (lib/routerV2.ts). Defaults on: that's the new capability
+  // this panel is here to expose, not a buried option.
+  const [payWithEthViaRouter, setPayWithEthViaRouter] = useState(true);
   const { address: account } = useAccount();
   const { wrongNetwork } = useNetworkGuard();
 
@@ -62,14 +70,30 @@ export function SwapPanel({
     quotePools.find((o) => o.quoteAsset === selectedQuote) ?? quotePools.find((o) => o.isWeth) ?? quotePools[0];
   const isWethQuote = activeQuote?.isWeth ?? true; // assume WETH until pools resolve — zero flicker for the common case
 
-  const s = useSwap(hasPool ? token : undefined, side, amount, slippageBps, activeQuote?.quoteAsset);
+  const routerV2Routes = activeQuote && !isWethQuote ? routerV2RoutesFor(activeQuote.quoteAsset) : undefined;
+  const canRouteViaEth = isRouterV2Configured && Boolean(routerV2Routes);
+  const routingViaEth = canRouteViaEth && payWithEthViaRouter;
+
+  const direct = useSwap(hasPool ? token : undefined, side, amount, slippageBps, activeQuote?.quoteAsset);
+  const viaRouter = useRouterV2Swap(
+    hasPool ? token : undefined,
+    side,
+    amount,
+    slippageBps,
+    canRouteViaEth ? activeQuote?.quoteAsset : undefined,
+    activeQuote?.hook,
+  );
+  const s = routingViaEth ? viaRouter : direct;
 
   // Balances for the active input leg: native ETH on a WETH buy, the quote
   // asset's ERC-20 on a non-WETH buy (e.g. paying in NVDA), the token on a sell.
   const ethBal = useBalance({
     address: account,
     chainId: activeChain.id,
-    query: { enabled: Boolean(account) && hasPool && side === "buy" && isWethQuote, refetchInterval: 15_000 },
+    query: {
+      enabled: Boolean(account) && hasPool && side === "buy" && (isWethQuote || routingViaEth),
+      refetchInterval: 15_000,
+    },
   });
   const quoteAssetBal = useReadContract({
     address: activeQuote?.quoteAsset,
@@ -77,7 +101,7 @@ export function SwapPanel({
     functionName: "balanceOf",
     args: account ? [account] : undefined,
     chainId: activeChain.id,
-    query: { enabled: Boolean(account) && hasPool && side === "buy" && !isWethQuote && Boolean(activeQuote) },
+    query: { enabled: Boolean(account) && hasPool && side === "buy" && !isWethQuote && !routingViaEth && Boolean(activeQuote) },
   });
   const tokenBal = useReadContract({
     address: token,
@@ -89,7 +113,7 @@ export function SwapPanel({
   });
   const balance =
     side === "buy"
-      ? isWethQuote
+      ? isWethQuote || routingViaEth
         ? ethBal.data?.value
         : (quoteAssetBal.data as bigint | undefined)
       : (tokenBal.data as bigint | undefined);
@@ -115,7 +139,7 @@ export function SwapPanel({
   // (labelling the leg "WETH" would be misleading). Against any other quote
   // asset (SGOV/NVDA/SPY), neither leg is ETH — the user pays/receives that
   // ERC-20 directly, so its own symbol is shown instead.
-  const quoteSym = isWethQuote ? "ETH" : activeQuote?.symbol || "…";
+  const quoteSym = isWethQuote || routingViaEth ? "ETH" : activeQuote?.symbol || "…";
   const inSym = side === "buy" ? quoteSym : symbol;
   const outSym = side === "buy" ? symbol : quoteSym;
   const busy = s.phase === "approving" || s.phase === "swapping";
@@ -127,7 +151,10 @@ export function SwapPanel({
   // Price impact vs the pool mid: compare the quote's effective price to spot.
   // spotPriceWeth (from useBacking, WETH-only) only applies when trading against
   // WETH; any other active quote asset uses its OWN pool's mid from useTokenQuotePools.
-  const spotPrice = isWethQuote ? spotPriceWeth : activeQuote?.marketPriceInQuote;
+  // Routed-via-ETH quotes span two legs in two different currencies — there's no
+  // single-pool spot price to compare against, so this stays unset rather than
+  // showing a number computed against the wrong denomination.
+  const spotPrice = routingViaEth ? undefined : isWethQuote ? spotPriceWeth : activeQuote?.marketPriceInQuote;
   let priceImpactPct: number | undefined;
   if (spotPrice && spotPrice > 0n && s.quote !== undefined && s.quote > 0n && s.amountIn > 0n) {
     const spot = Number(spotPrice) / 1e18;
@@ -209,6 +236,22 @@ export function SwapPanel({
             </button>
           ))}
         </div>
+      )}
+
+      {/* Pay-with-ETH toggle — only when the active pool's quote asset isn't
+          WETH and BallastRouterV2 has a route for it. */}
+      {canRouteViaEth && (
+        <button
+          onClick={() => setPayWithEthViaRouter((v) => !v)}
+          disabled={busy}
+          className={cn(
+            "mt-3 flex w-full items-center justify-between rounded-input border px-3 py-2 text-xs transition-colors disabled:opacity-40",
+            routingViaEth ? "border-green bg-green-bg text-green" : "border-border text-text-muted hover:text-text-secondary",
+          )}
+        >
+          <span>Pay with ETH</span>
+          <span className="font-medium">{routingViaEth ? "On" : "Off"}</span>
+        </button>
       )}
 
       {/* Pay */}
@@ -359,13 +402,25 @@ export function SwapPanel({
           />
           <DetailRow
             label="Route"
-            hint={isWethQuote ? "The venue, and how ETH is wrapped inside the swap." : "The venue — a direct pool, no wrap involved."}
+            hint={
+              routingViaEth
+                ? "Which venue is filling the ETH leg, chosen from a live quote at this size."
+                : isWethQuote
+                  ? "The venue, and how ETH is wrapped inside the swap."
+                  : "The venue — a direct pool, no wrap involved."
+            }
             value={
-              isWethQuote
-                ? side === "buy"
-                  ? "Uniswap v4 · ETH wrapped in-route"
-                  : "Uniswap v4 · unwrapped to ETH"
-                : `Uniswap v4 · direct ${quoteSym} pool`
+              routingViaEth
+                ? "venue" in s && s.venue
+                  ? s.venue === "fables"
+                    ? "Fables"
+                    : "Ramses"
+                  : "—"
+                : isWethQuote
+                  ? side === "buy"
+                    ? "Uniswap v4 · ETH wrapped in-route"
+                    : "Uniswap v4 · unwrapped to ETH"
+                  : `Uniswap v4 · direct ${quoteSym} pool`
             }
           />
           {highImpact && (
@@ -377,16 +432,23 @@ export function SwapPanel({
         </div>
       )}
 
-      {/* Approval story — ETH-wrapped buys against WETH need no approval at all;
-          every other leg (a WETH sell, or EITHER side against a non-WETH quote
-          asset like NVDA/SPY/SGOV) pulls its input via Permit2, so it gets the
-          explicit two-step flow. */}
-      {side === "buy" && isWethQuote ? (
+      {/* Approval story — ETH-wrapped buys (against WETH, or via the router)
+          need no approval at all; every other leg pulls its input via either
+          Permit2 (direct non-WETH flow) or a plain ERC-20 approval straight to
+          the router (sell via router — BallastRouterV2 does its own
+          transferFrom, no Permit2), so those get the explicit two-step flow. */}
+      {side === "buy" && (isWethQuote || routingViaEth) ? (
         <p className="mt-3 flex items-start gap-1.5 text-xs text-green">
           <span aria-hidden>✓</span> No approval needed — ETH is wrapped inside the swap.
         </p>
       ) : (
-        <ApprovalSteps phase={s.phase} paySymbol={inSym} receiveSymbol={outSym} unwrapsToEth={side === "sell" && isWethQuote} />
+        <ApprovalSteps
+          phase={s.phase}
+          paySymbol={inSym}
+          receiveSymbol={outSym}
+          unwrapsToEth={side === "sell" && (isWethQuote || routingViaEth)}
+          viaRouter={routingViaEth}
+        />
       )}
 
       {/* Action */}
@@ -504,26 +566,29 @@ function ApprovalSteps({
   paySymbol,
   receiveSymbol,
   unwrapsToEth,
+  viaRouter = false,
 }: {
-  phase: SwapPhase;
+  phase: SwapPhase | "idle" | "quoting" | "approving" | "swapping" | "success" | "error";
   paySymbol: string;
   receiveSymbol: string;
   unwrapsToEth: boolean;
+  viaRouter?: boolean;
 }) {
   const approveState = phase === "approving" ? "active" : phase === "swapping" || phase === "success" ? "done" : "todo";
   const swapState = phase === "swapping" ? "active" : phase === "success" ? "done" : "todo";
   const idle = phase === "idle" || phase === "quoting";
+  const approvalName = viaRouter ? "the router" : "Permit2";
   return (
     <div className="mt-3 rounded-input border border-border bg-bg px-3 py-2">
       {idle ? (
         <p className="text-xs text-text-faint">
           {unwrapsToEth
-            ? "Sell = a one-time Permit2 approval, then the swap. WETH output is unwrapped to ETH for you."
-            : `A one-time Permit2 approval, then the swap — you receive ${receiveSymbol} directly.`}
+            ? `Sell = a one-time approval to ${approvalName}, then the swap. The ETH leg's output is sent to you as ETH.`
+            : `A one-time approval to ${approvalName}, then the swap — you receive ${receiveSymbol} directly.`}
         </p>
       ) : (
         <ol className="space-y-1.5">
-          <StepLine state={approveState} label={`Approve ${paySymbol} access (Permit2)`} />
+          <StepLine state={approveState} label={`Approve ${paySymbol} access (${approvalName})`} />
           <StepLine state={swapState} label={`Swap & receive ${receiveSymbol}`} />
         </ol>
       )}

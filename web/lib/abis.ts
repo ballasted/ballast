@@ -780,6 +780,118 @@ export const quoterAbi = [
   },
 ] as const;
 
+// BallastRouterV2 — ETH <-> quoteAsset (Fables or Ramses) <-> our own v4 pool,
+// single PoolManager.unlock() per call, on-chain fallback to the other venue.
+// See contracts/src/BallastRouterV2.sol.
+export const ballastRouterV2Abi = [
+  {
+    type: "function",
+    name: "buyWithETH",
+    stateMutability: "payable",
+    inputs: [
+      { name: "fablesHopIdx", type: "uint256[]" },
+      { name: "ramsesHopIdx", type: "uint256[]" },
+      { name: "preferFables", type: "bool" },
+      { name: "quoteAsset", type: "address" },
+      { name: "ballastToken", type: "address" },
+      { name: "hook", type: "address" },
+      { name: "minOut", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [
+      { name: "out", type: "uint256" },
+      { name: "usedFables", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "sellToETH",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "ballastToken", type: "address" },
+      { name: "amountIn", type: "uint256" },
+      { name: "quoteAsset", type: "address" },
+      { name: "hook", type: "address" },
+      { name: "fablesHopIdx", type: "uint256[]" },
+      { name: "ramsesHopIdx", type: "uint256[]" },
+      { name: "preferFables", type: "bool" },
+      { name: "minOut", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+    outputs: [
+      { name: "out", type: "uint256" },
+      { name: "usedFables", type: "bool" },
+    ],
+  },
+] as const;
+
+// v4Quoter.quoteExactInput — multi-hop, used to quote the Fables leg (ETH ->
+// USDG -> ... -> quoteAsset) at the user's actual trade size.
+export const quoterMultiHopAbi = [
+  {
+    type: "function",
+    name: "quoteExactInput",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "currencyIn", type: "address" },
+          {
+            name: "path",
+            type: "tuple[]",
+            components: [
+              { name: "intermediateCurrency", type: "address" },
+              { name: "fee", type: "uint24" },
+              { name: "tickSpacing", type: "int24" },
+              { name: "hooks", type: "address" },
+              { name: "hookData", type: "bytes" },
+            ],
+          },
+          { name: "minHopPriceX36", type: "uint256[]" },
+          { name: "amountIn", type: "uint128" },
+          { name: "amountOutMinimum", type: "uint128" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "amountOut", type: "uint256" },
+      { name: "gasEstimate", type: "uint256" },
+    ],
+  },
+] as const;
+
+// Ramses v3 QuoterV2 — tickSpacing-keyed (not fee-tier), same ABI shape as
+// Uniswap v3's QuoterV2 otherwise. Used to quote the Ramses leg at the user's
+// actual trade size, same venue BallastRouterV2's Ramses hops execute against.
+export const ramsesQuoterAbi = [
+  {
+    type: "function",
+    name: "quoteExactInputSingle",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "amountIn", type: "uint256" },
+          { name: "tickSpacing", type: "int24" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [
+      { name: "amountOut", type: "uint256" },
+      { name: "sqrtPriceX96After", type: "uint160" },
+      { name: "initializedTicksCrossed", type: "uint32" },
+      { name: "gasEstimate", type: "uint256" },
+    ],
+  },
+] as const;
+
 // v4 StateView — pool spot price via getSlot0(poolId).
 export const stateViewAbi = [
   {
