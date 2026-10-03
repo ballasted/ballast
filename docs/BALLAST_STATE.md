@@ -931,10 +931,34 @@ a small `ProveSwapV2Mainnet.s.sol` script (quote both venues, compute a real
 `minOut` the same way the frontend does, `buyWithETH` then `sellToETH`) runs
 against it. Nothing was spent; no new key was generated without being asked.
 
-**Status**: code complete, tested, pushed (`main` == `origin/main`, nothing
-ahead/behind). Production already points at V2 (`NEXT_PUBLIC_ROUTER_V2_ADDRESS`
-is set in both `.env` and `.env.example`) — confirm the same var is set in
-the Vercel project's environment variables (not just local `.env`) if the
-live site doesn't show the "Pay with ETH" toggle. Two items remain genuinely
-blocked on the human: Blockscout verification from an unblocked machine, and
-the live buy/sell proof (manually, or by funding a clean key).
+**Found and fixed a real production gap**: `NEXT_PUBLIC_ROUTER_V2_ADDRESS`,
+`NEXT_PUBLIC_RAMSES_QUOTER_ADDRESS`, and `NEXT_PUBLIC_USDG_ADDRESS` were all
+present in local `.env`/`.env.example` but **never set on Vercel** (`vercel
+env ls production` showed only the unrelated, pre-existing
+`NEXT_PUBLIC_ROUTER_ADDRESS`). So `4fb3429` merging to main did NOT put
+BallastRouterV2 live — `isRouterV2Configured` was false in every production
+build since deploy, and the "Pay with ETH" toggle, plus every Ramses-only
+quote asset (SGOV/GOOGL/MSFT/AMD/ORCL — no Fables route at all), silently
+never worked on `ballasted.fun`. Fixed this round: added all three vars to
+Production + Preview via `vercel env add`, pushed the minOut-refactor commit
+(`2430337`), and ran `vercel --prod` (the CLI upload itself failed twice on a
+flaky connection, but it triggered the Git-integration build regardless,
+which completed — deployment `dpl_J12jDa1xaH69hYggtPDtGXDwEuvQ`, now aliased
+to `ballasted.fun`/`www.ballasted.fun`).
+
+**Verified live, not just deployed**: downloaded the actual production JS
+bundle served from `ballasted.fun` (`app/app/token/[address]/page-*.js` +
+its shared chunk `6548-*.js`) and grepped it directly — both
+`0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0` (router) and
+`0x4730e03EB4a58A5e20244062D5f9A99bCf5770a6` (Ramses quoter) are baked into
+the live bundle, and the literal string `"Pay with ETH"` renders from it.
+Not inferred from the deploy succeeding — read back from the bytes actually
+served to a browser.
+
+**Status**: code complete, tested, pushed (`main` == `origin/main`), and
+confirmed live in production. Two items remain genuinely blocked on the
+human: Blockscout/"Robinscan" verification from a machine that isn't
+Cloudflare-blocked, and the live buy/sell proof (manually from the site with
+your own wallet, or by funding a clean key for a script — see above, the
+only wallet available to this session is the flagged-compromised one with
+dust balance).
