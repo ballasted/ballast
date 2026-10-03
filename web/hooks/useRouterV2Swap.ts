@@ -16,6 +16,7 @@ import {
   NATIVE_ETH_SENTINEL,
   WETH_TOKEN,
 } from "@/lib/routerV2";
+import { computeMinOut } from "@/lib/swap";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt, replayForRevert } from "@/lib/waitForReceipt";
 import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
@@ -156,7 +157,7 @@ export function useRouterV2Swap(
     };
   }, [publicClient, token, quoteAsset, hook, routes, hasFables, hasRamses, amountIn, side]);
 
-  const minOut = quote !== undefined ? (quote * BigInt(10000 - slippageBps)) / 10000n : 0n;
+  const minOut = computeMinOut(quote, slippageBps);
 
   const swap = useCallback(async () => {
     const router = ROUTER_V2_ADDRESS;

@@ -848,3 +848,93 @@ https://robinhoodchain.blockscout.com/api --chain-id 4663`.
 never "yield", "APR", "dividend", "passive income", "floor", "guaranteed",
 "safe", "returns", "insured", "protected", "secured" in relation to Ballast.
 Use "fees routed to treasury", "tokens burned", "rewards paid to stakers".
+
+---
+
+## 12. BallastRouterV2 shipped to production — live, minOut hardened (2026-10-03)
+
+Fables confirmed the test buy from round 11's deploy: fees correct, nothing
+left mid-route between hops, all 12 Fables pool keys match their registry.
+`BallastRouterV2` (`0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0`) is now the
+default "pay with ETH" path in `SwapPanel` — this was already wired and
+defaulted-on in the commit that deployed it (`4fb3429`), already pushed to
+`origin/main`, so there is nothing further to merge; this round is hardening
++ verification + an honest accounting of what's still unproven.
+
+**minOut**: both swap hooks (`useSwap`, `useRouterV2Swap`) now call a single
+shared `computeMinOut(quote, slippageBps)` in `web/lib/swap.ts` instead of
+each inlining the same arithmetic — one place to get it right, instead of two
+copies that could silently drift. It floors to `0` only when there is no live
+quote yet or slippage is >=100% (both already treated as "not ready to swap"
+by the callers, never as "accept anything"); every real swap call sends
+`quote * (10000 - slippageBps) / 10000`, never a bare `0`/`1`. New test
+`web/lib/swap.test.ts` sweeps a wide quote x slippage grid and asserts
+`minOut` never sits below `quote` minus slippage (and never drifts more than
+one rounding unit above that floor, so it's the exact figure, not a looser
+one) — `npx vitest run` (82/82, including the 6 new cases) and `tsc --noEmit`
+both clean. Solidity's own `BallastRouterV2.t.sol` already had
+`test_minOutReverts_regardlessOfVenue` proving the on-chain revert path
+regardless of which venue fills; this closes the frontend-side gap.
+
+**Dual-venue quoting + route label**: also already in `4fb3429` — confirmed,
+not re-litigated. `useRouterV2Swap` quotes Fables and Ramses at the user's
+actual typed size on every change (never a cached per-ticker default —
+`preferFables` is NOT hardcoded; Fables fee tiers move with market hours per
+Fables' own team), picks whichever quotes better right now, and wires the
+loser in as the on-chain fallback (`buyWithETH`/`sellToETH` both take both
+hop tables + a `preferFables` bool + fall back on revert). `SwapPanel`'s
+"Route" detail row shows "Fables" or "Ramses" plainly, no prose.
+
+**V1 migration**: none needed. `BallastRouter` v1
+(`0xc422e0a6ca75d1ffafd77f72b710b2ef3aef50e1`) was never wired into this
+frontend (confirmed again this round — grepped the whole repo), so no user
+ever approved it and nothing needs to move off it. It's left live and
+untouched; V2 has no owner/admin surface either, so there's no shared state
+or permission to migrate between the two.
+
+**Docs**: `docs/codex-indexing-form.md` and `docs/exit-liquidity-table.md`
+already correctly list v1 as superseded and V2 as current (done in
+`4fb3429`); this entry is the `BALLAST_STATE.md` record of the hardening
+round itself.
+
+**Blockscout/"Robinscan" verification — NOT done from this sandbox, same
+block as every prior round**: `https://robinhoodchain.blockscout.com/` the
+bare page loads (HTTP 200), but its `/api/*` endpoints — what `forge
+verify-contract` actually calls — serve a Cloudflare "Just a moment..."
+challenge page here, confirmed again this round (`verify-log.txt` shows the
+identical failure from the last attempt). Sourcify verification (exact
+match) was already done in `4fb3429`. The router's line is already staged in
+`contracts/script/verify/verify-all-blockscout.sh` (line ~67); run just this
+one line from a machine that isn't Cloudflare-blocked:
+
+```
+forge verify-contract 0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0 \
+  src/BallastRouterV2.sol:BallastRouterV2 --chain-id 4663 \
+  --verifier blockscout --verifier-url https://robinhoodchain.blockscout.com/api/ \
+  --guess-constructor-args --rpc-url "$RH_MAINNET_RPC_URL"
+```
+
+**Production mainnet buy/sell proof — NOT done, and should not be attempted
+with the current deployer key**: the repo's existing mainnet-proof pattern
+(`contracts/script/ProveSwapMainnet.s.sol`) broadcasts small real swaps from
+`DEPLOYER_PRIVATE_KEY`. That EOA is
+`0xA2774e53dCb666799dBA7d00dC11d10d7Ff837D1` — the address §5/§11 already
+flag as **compromised** (ownership of every contract it could touch has
+already been migrated off it for exactly that reason). It also currently
+holds ~0.00000005 ETH on mainnet, not enough for gas. Spending from it, even
+a few cents, is both a security smell (acting through a known-compromised
+key) and not actually possible at its current balance. This step needs
+either: (a) the human does one buy and one sell themselves from
+`ballasted.fun` with their own wallet and sends back the two tx hashes, or
+(b) a *fresh* funded EOA (not the compromised one) gets added to `.env` and
+a small `ProveSwapV2Mainnet.s.sol` script (quote both venues, compute a real
+`minOut` the same way the frontend does, `buyWithETH` then `sellToETH`) runs
+against it. Nothing was spent; no new key was generated without being asked.
+
+**Status**: code complete, tested, pushed (`main` == `origin/main`, nothing
+ahead/behind). Production already points at V2 (`NEXT_PUBLIC_ROUTER_V2_ADDRESS`
+is set in both `.env` and `.env.example`) — confirm the same var is set in
+the Vercel project's environment variables (not just local `.env`) if the
+live site doesn't show the "Pay with ETH" toggle. Two items remain genuinely
+blocked on the human: Blockscout verification from an unblocked machine, and
+the live buy/sell proof (manually, or by funding a clean key).

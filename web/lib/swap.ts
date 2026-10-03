@@ -188,3 +188,16 @@ function keyTuple(k: PoolKey) {
 export function swapDeadline(nowSec: number, secondsOut = 600): bigint {
   return BigInt((nowSec > 0 ? nowSec : Math.floor(Date.now() / 1000)) + secondsOut);
 }
+
+/**
+ * The single source of truth for a swap's `minOut`, shared by useSwap and
+ * useRouterV2Swap — every buy/sell call sends THIS value, never a bare 0 or 1.
+ * `quote === undefined` (no live quote yet) and `slippageBps >= 10000` (100%+,
+ * blocked in the UI anyway) both floor to 0, which the callers already treat as
+ * "not ready to swap" rather than "accept anything."
+ */
+export function computeMinOut(quote: bigint | undefined, slippageBps: number): bigint {
+  if (quote === undefined || quote <= 0n || slippageBps >= 10000) return 0n;
+  const bps = slippageBps < 0 ? 0 : Math.trunc(slippageBps);
+  return (quote * BigInt(10000 - bps)) / 10000n;
+}

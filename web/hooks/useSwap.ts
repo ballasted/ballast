@@ -14,7 +14,7 @@ import {
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { poolKeyForToken, candidatePoolKeys, buyZeroForOne, sellZeroForOne } from "@/lib/pool";
-import { buildV4SwapInput, buildErc20SwapInput, swapDeadline, type SwapSide } from "@/lib/swap";
+import { buildV4SwapInput, buildErc20SwapInput, swapDeadline, computeMinOut, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
 import { decodeTxError } from "@/lib/txError";
 import { pollReceipt, replayForRevert } from "@/lib/waitForReceipt";
@@ -182,7 +182,7 @@ export function useSwap(
     };
   }, [token, publicClient, amountIn, side, hookForKey, quoteAsset]);
 
-  const minOut = quote !== undefined ? (quote * BigInt(10000 - slippageBps)) / 10000n : 0n;
+  const minOut = computeMinOut(quote, slippageBps);
 
   const swap = useCallback(async () => {
     if (!token || !account || !publicClient || !inputCurrency) return;
