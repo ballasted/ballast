@@ -31,6 +31,16 @@ const REVERT_COPY: Record<string, string> = {
   NoticeNotElapsed: "The withdrawal notice period has not elapsed yet.",
   AssetNotAllowed: "That asset is not on the treasury allowlist.",
   SelfBackingForbidden: "A project cannot back itself with its own token.",
+  // BallastV1Claim (v1 -> v2 migration)
+  DeadlinePassed: "The claim window has closed.",
+  DeadlineNotYetPassed: "The claim window is still open — sweep only works after it closes.",
+  SwapDeadlineExpired: "That took too long and the quote expired. Try again.",
+  AlreadyFullyClaimed: "This address has already claimed its full entitlement.",
+  NothingToClaim: "There's nothing left to claim at this size.",
+  InvalidProof: "This address isn't in the snapshot, or the claim data doesn't match.",
+  WrongPath: "This address already claimed in the other form (ETH or $BALLAST) — every claim from here must use that same one.",
+  MinOutTooLow: "Set a minimum amount above zero before claiming as $BALLAST.",
+  InsufficientOutput: "Price moved past your slippage tolerance before the swap landed. Nothing was claimed — try again.",
 };
 
 // Solidity `Error(string)` reverts (Solmate/OpenZeppelin), which arrive as a plain

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount } from "wagmi";
-import { useV1Claim, useMigrationStats } from "@/hooks/useV1Claim";
+import { useV1Claim, useMigrationStats, useBallastV2TokenQuote, computeMinOut, type ClaimPathChoice } from "@/hooks/useV1Claim";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -11,6 +11,7 @@ import { activeChain } from "@/lib/chain";
 import { cn } from "@/lib/cn";
 
 const EXPLORER = activeChain.blockExplorers.default.url;
+const SLIPPAGE_PRESETS = [50, 100, 200] as const; // 0.5 / 1 / 2%
 
 function fmtEth(v?: bigint): string {
   if (v === undefined) return "—";
@@ -20,6 +21,27 @@ function fmtV1(v?: bigint): string {
   if (v === undefined) return "—";
   return Number(formatUnits(v, 18)).toLocaleString("en", { maximumFractionDigits: 2 });
 }
+function fmtBallast(v?: bigint): string {
+  if (v === undefined) return "—";
+  return Number(formatUnits(v, 18)).toLocaleString("en", { maximumFractionDigits: 2 });
+}
+
+/** This call's share of the entitlement, in ETH terms, projected from the
+ *  same linear formula the contract itself uses — identical whichever path
+ *  is chosen, since claimToken swaps exactly this amount. */
+function projectedEthShare(
+  amountV1: bigint,
+  burned: bigint | undefined,
+  snapshotBalance: bigint | undefined,
+  ethAmount: bigint | undefined,
+): bigint | undefined {
+  if (burned === undefined || snapshotBalance === undefined || ethAmount === undefined || snapshotBalance === 0n) return undefined;
+  const remaining = snapshotBalance - burned;
+  const burnNow = amountV1 > remaining ? remaining : amountV1;
+  const oldShare = (ethAmount * burned) / snapshotBalance;
+  const newShare = (ethAmount * (burned + burnNow)) / snapshotBalance;
+  return newShare - oldShare;
+}
 
 export default function MigratePage() {
   const { address, isConnected } = useAccount();
@@ -28,15 +50,36 @@ export default function MigratePage() {
   const c = useV1Claim(address);
   const stats = useMigrationStats();
   const [pct, setPct] = useState(100);
+  const [pathChoice, setPathChoice] = useState<ClaimPathChoice>("eth");
+  const [slippageBps, setSlippageBps] = useState<number>(100);
   const TOTAL_ETH_BUDGET = 693084308357578318n; // data/snapshot/v1_claim_eth_meta.json
+
+  // Once a holder has claimed anything, they're locked to that path forever —
+  // the choice stops being a choice.
+  const effectivePath: ClaimPathChoice = c.lockedTo ?? pathChoice;
+
+  const amountV1 = useMemo(() => {
+    if (c.remaining === undefined || c.v1Balance === undefined) return undefined;
+    const want = (c.remaining * BigInt(pct)) / 100n;
+    return want > c.v1Balance ? c.v1Balance : want;
+  }, [c.remaining, c.v1Balance, pct]);
+
+  const ethShare = useMemo(
+    () => (amountV1 !== undefined ? projectedEthShare(amountV1, c.burned, c.snapshotBalance, c.ethAmount) : undefined),
+    [amountV1, c.burned, c.snapshotBalance, c.ethAmount],
+  );
+
+  const tokenQuote = useBallastV2TokenQuote(effectivePath === "token" ? ethShare : undefined);
+  const minOut = computeMinOut(tokenQuote.tokensOut, slippageBps);
+  const highImpact = tokenQuote.priceImpactPct !== undefined && tokenQuote.priceImpactPct > 5;
 
   return (
     <div className="relative space-y-5">
       <header>
         <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">v1 → v2 migration</h1>
         <p className="mt-2 max-w-2xl text-sm text-text-secondary">
-          Burn your snapshotted $BALLAST v1 permanently, receive ETH in return. Holding v1 gave no claim on anything —
-          this is a one-time, opt-in exchange, not a redemption right you always had.
+          Burn your snapshotted $BALLAST v1 permanently, receive ETH or $BALLAST v2 in return. Holding v1 gave no
+          claim on anything — this is a one-time, opt-in exchange, not a redemption right you always had.
         </p>
       </header>
 
@@ -48,7 +91,7 @@ export default function MigratePage() {
           ) : (
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Figure
-                label="ETH paid out"
+                label="ETH value paid out"
                 value={stats.isLoading ? "…" : fmtEth(stats.totalEthPaid)}
                 sub={`of ${fmtEth(TOTAL_ETH_BUDGET)} total`}
               />
@@ -92,7 +135,7 @@ export default function MigratePage() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Figure label="Snapshot balance" value={fmtV1(c.snapshotBalance)} sub="$BALLAST v1" />
             <Figure label="Current v1 balance" value={fmtV1(c.v1Balance)} sub="what you can still burn" />
-            <Figure label="ETH claimed so far" value={fmtEth(c.claimedEth)} sub={`of ${fmtEth(c.ethAmount)} total`} accent />
+            <Figure label="Claimed so far" value={fmtEth(c.claimedEth)} sub={`of ${fmtEth(c.ethAmount)} ETH value`} accent />
             <Deadline deadline={c.deadline} now={now} />
           </div>
 
@@ -101,15 +144,35 @@ export default function MigratePage() {
               <p className="text-sm text-green">Fully claimed — every ETH you were owed has been paid.</p>
             </section>
           ) : c.deadlinePassed ? (
-            <Notice title="Deadline passed" body="Unclaimed ETH from this snapshot has moved to the Safe for a $BALLAST v2 buyback." />
+            <Notice title="Claim window closed" body="Unclaimed ETH from this snapshot has moved to the Safe for a $BALLAST v2 buyback." />
           ) : (
             <section className="card p-5">
-              <h2 className="section-label">Burn v1, receive ETH</h2>
+              <h2 className="section-label">Burn v1, choose your payout</h2>
               <p className="mt-2 text-sm text-text-secondary">
                 Burn any amount up to what you currently hold. Burning less than your full snapshot balance pays the
-                same proportion of your ETH entitlement — you can come back and burn more later. Partial claims sum
+                same proportion of your entitlement — you can come back and burn more later. Partial claims sum
                 to exactly your full entitlement, with no dust lost.
               </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  disabled={Boolean(c.lockedTo) && c.lockedTo !== "eth"}
+                  onClick={() => setPathChoice("eth")}
+                  className={cn("tab-block", effectivePath === "eth" ? "tab-active" : "tab-idle")}
+                >
+                  ETH{" "}
+                  <span className="chip chip-accent ml-1 align-middle">
+                    {c.lockedTo === "eth" ? "Locked in" : "Recommended"}
+                  </span>
+                </button>
+                <button
+                  disabled={Boolean(c.lockedTo) && c.lockedTo !== "token"}
+                  onClick={() => setPathChoice("token")}
+                  className={cn("tab-block", effectivePath === "token" ? "tab-active" : "tab-idle")}
+                >
+                  $BALLAST v2{c.lockedTo === "token" && <span className="chip chip-accent ml-1 align-middle">Locked in</span>}
+                </button>
+              </div>
 
               <div className="mt-4">
                 <input
@@ -127,9 +190,50 @@ export default function MigratePage() {
                 </div>
               </div>
 
+              {effectivePath === "token" && (
+                <div className="mt-4 space-y-2 border-t border-border pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-faint">Slippage tolerance</span>
+                    <div className="flex items-center gap-1">
+                      {SLIPPAGE_PRESETS.map((bps) => (
+                        <button
+                          key={bps}
+                          onClick={() => setSlippageBps(bps)}
+                          className={cn(
+                            "rounded px-2 py-1 text-xs tabular-nums transition-colors",
+                            slippageBps === bps ? "bg-green-bg text-green" : "text-text-muted hover:text-text-secondary",
+                          )}
+                        >
+                          {bps / 100}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <DetailRow
+                    label="You'll receive"
+                    value={tokenQuote.isLoading ? "quoting…" : `~${fmtBallast(tokenQuote.tokensOut)} $BALLAST`}
+                  />
+                  {tokenQuote.priceImpactPct !== undefined && (
+                    <DetailRow
+                      label="Price impact"
+                      value={tokenQuote.priceImpactPct < 0.01 ? "<0.01%" : `${tokenQuote.priceImpactPct.toFixed(2)}%`}
+                      tone={highImpact ? "warning" : undefined}
+                    />
+                  )}
+                  <DetailRow label="Minimum received" value={`${fmtBallast(minOut)} $BALLAST`} />
+                  {tokenQuote.error && <p className="text-xs text-warning">Couldn&apos;t quote this size against current liquidity.</p>}
+                  {highImpact && (
+                    <p className="text-xs text-warning">
+                      The pool is thin — this size moves its price {tokenQuote.priceImpactPct!.toFixed(1)}%. Consider the ETH path, or a
+                      smaller slice.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {c.phase === "success" ? (
                 <div className="mt-4 space-y-2 text-center">
-                  <p className="text-sm text-green">Claim confirmed — ETH is in your wallet.</p>
+                  <p className="text-sm text-green">Claim confirmed.</p>
                   {c.txHash && (
                     <a className="text-xs text-text-faint hover:text-text-secondary" href={`${EXPLORER}/tx/${c.txHash}`} target="_blank" rel="noreferrer">
                       View on Blockscout ↗
@@ -154,13 +258,16 @@ export default function MigratePage() {
                     c.v1Balance === undefined ||
                     c.v1Balance === 0n ||
                     c.remaining === undefined ||
-                    c.remaining <= 0n
+                    c.remaining <= 0n ||
+                    (effectivePath === "token" && (minOut === 0n || tokenQuote.isLoading))
                   }
                   onClick={() => {
-                    if (c.remaining === undefined || c.v1Balance === undefined) return;
-                    const want = (c.remaining * BigInt(pct)) / 100n;
-                    const amount = want > c.v1Balance ? c.v1Balance : want;
-                    void c.claim(amount);
+                    if (amountV1 === undefined) return;
+                    if (effectivePath === "token") {
+                      void c.claimAsToken(amountV1, minOut);
+                    } else {
+                      void c.claim(amountV1);
+                    }
                   }}
                 >
                   {c.phase === "approving"
@@ -169,7 +276,7 @@ export default function MigratePage() {
                       ? "Claiming…"
                       : c.v1Balance === 0n
                         ? "No v1 balance to burn"
-                        : `Burn ${pct}% and claim`}
+                        : `Burn ${pct}% and claim ${effectivePath === "token" ? "as $BALLAST" : "in ETH"}`}
                 </button>
               )}
               {c.error && <p className="mt-2 text-xs text-negative">{c.error}</p>}
@@ -179,7 +286,8 @@ export default function MigratePage() {
           <p className="max-w-2xl text-xs text-text-faint">
             Sold v1 since the snapshot? You can only ever burn what you currently hold, which caps how much of your
             entitlement you can reach. Bought more v1 since the snapshot? Burning beyond your original snapshot
-            balance gets nothing extra — entitlement is fixed at the snapshot, not your current balance.
+            balance gets nothing extra — entitlement is fixed at the snapshot, not your current balance. Whichever
+            form you claim first (ETH or $BALLAST v2) is locked in for every later partial claim on this address.
           </p>
 
           <section className="card p-5">
@@ -220,11 +328,13 @@ function Deadline({ deadline, now }: { deadline?: bigint; now: number }) {
     remaining === undefined
       ? "—"
       : remaining <= 0
-        ? "Passed"
+        ? "Closed"
         : remaining > 86400
           ? `${Math.ceil(remaining / 86400)}d left`
-          : `${Math.ceil(remaining / 3600)}h left`;
-  return <Figure label="Deadline" value={label} sub="30 days from launch" />;
+          : remaining > 3600
+            ? `${Math.ceil(remaining / 3600)}h left`
+            : `${Math.ceil(remaining / 60)}m left`;
+  return <Figure label="Deadline" value={label} sub="7 days from launch" />;
 }
 
 function Figure({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
@@ -233,6 +343,15 @@ function Figure({ label, value, sub, accent }: { label: string; value: string; s
       <div className="eyebrow">{label}</div>
       <div className="mt-1 figure-primary text-2xl tabular-nums">{value}</div>
       {sub && <div className="metric-secondary mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function DetailRow({ label, value, tone }: { label: string; value: string; tone?: "warning" }) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-text-faint">{label}</span>
+      <span className={cn("tabular-nums", tone === "warning" ? "text-warning" : "text-text-secondary")}>{value}</span>
     </div>
   );
 }

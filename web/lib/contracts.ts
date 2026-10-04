@@ -40,11 +40,19 @@ export const isBuybackConfigured = Boolean(BUYBACK_ADDRESS);
 export const BUYBACK_V2_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_V2_ADDRESS);
 export const isBuybackV2Configured = Boolean(BUYBACK_V2_ADDRESS);
 
-// BallastV1Claim — the v1->v2 migration payout, in ETH
+// BallastV1Claim — the v1->v2 migration payout, ETH or $BALLAST v2
 // (contracts/src/BallastV1Claim.sol). Unset until deployed; /app/migrate
 // shows an honest "not live yet" state until then.
 export const V1_CLAIM_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V1_CLAIM_ADDRESS);
 export const isV1ClaimConfigured = Boolean(V1_CLAIM_ADDRESS);
+// `deadline()` read back from the live contract at deploy (tx
+// 0x1781bf0050aebcaf2b5baa6f49165b12cc961069b3b5898339b348fe0abb00bf,
+// 2026-10-04) — immutable, can never change post-deploy. Hardcoded (not a
+// live read) so the highest-traffic page in the app (Discover) and the nav
+// don't add a contract call for every visitor just to decide whether to show
+// a promo banner; /app/migrate itself still reads `deadline()` live for the
+// figure that actually matters to a claimer.
+export const V1_CLAIM_DEADLINE_UNIX = 1791745997;
 
 // FeeRouterFactory — lets a creator route gen-4 trading fees to a
 // treasury/buyback/staking split (contracts/src/FeeRouterFactory.sol,
@@ -58,6 +66,10 @@ export const isFeeRouterFactoryConfigured = Boolean(FEE_ROUTER_FACTORY_ADDRESS);
 // $BALLAST v1 — fixed forever, independent of whichever token is currently
 // pinned as the protocol token (see ProtocolTokenNotice.tsx).
 export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as Address;
+// $BALLAST v2 — fixed forever, same reasoning. This is what BallastV1Claim's
+// claimToken path always swaps into, independent of PROTOCOL_TOKEN_ADDRESS
+// (which can point elsewhere if the pinned token is ever retired/replaced).
+export const BALLAST_V2_TOKEN_ADDRESS = "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C" as Address;
 
 // BallastManatee — the standalone 1,000-piece on-chain NFT mint (/app/mint). A
 // separate product: no protocol contract is touched. Unset = the mint page shows

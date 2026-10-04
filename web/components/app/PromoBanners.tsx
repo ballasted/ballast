@@ -5,18 +5,41 @@ import { KeelMark } from "@/components/Wordmark";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useAssets } from "@/hooks/useAssets";
 import type { AssetIdentity } from "@/lib/assetIdentity";
+import { isV1ClaimConfigured, V1_CLAIM_DEADLINE_UNIX } from "@/lib/contracts";
 
 // Two promo banners at the top of Discover — the "launchpad energy" entry
 // point. Both stay inside the existing green/bone palette (no invented hue)
 // and both point at real, existing surfaces: launching against a real
 // treasury, and the buyback/burn tracker. Neither implies a return, a
 // guarantee, or a benefit for holding/depositing (CLAUDE.md hard rules).
+// A third, time-limited strip (MigrationBanner) sits above both for the
+// 7-day v1->v2 claim window and self-removes after — see its own comment.
 export function PromoBanners() {
   return (
-    <div className="mb-6 grid gap-4 lg:grid-cols-2">
-      <TreasuryBanner />
-      <BuybackBanner />
+    <div className="mb-6 space-y-4">
+      <MigrationBanner />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TreasuryBanner />
+        <BuybackBanner />
+      </div>
     </div>
+  );
+}
+
+/** Visible only while the v1->v2 claim window is open — checked against the
+ *  contract's own immutable deadline (lib/contracts.ts), not a guess. Nothing
+ *  renders at all once the window closes or if the claim contract isn't live,
+ *  so this never needs manual removal. */
+function MigrationBanner() {
+  if (!isV1ClaimConfigured || Date.now() / 1000 >= V1_CLAIM_DEADLINE_UNIX) return null;
+  return (
+    <Link
+      href="/app/migrate"
+      className="card flex flex-wrap items-center justify-between gap-3 border-green/30 bg-green-bg/40 px-5 py-3.5 transition-colors hover:bg-green-bg/60"
+    >
+      <span className="eyebrow text-green">v1 → v2 migration</span>
+      <span className="text-sm font-semibold text-green">Claim now →</span>
+    </Link>
   );
 }
 

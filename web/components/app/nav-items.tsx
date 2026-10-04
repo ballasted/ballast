@@ -1,11 +1,19 @@
+import { V1_CLAIM_DEADLINE_UNIX, isV1ClaimConfigured } from "@/lib/contracts";
+
 // Single source of truth for the app's primary navigation. Both the desktop
-// SideNav and the mobile BottomNav render from this list, so an entry (or its
-// order) is defined once and can never drift between the two shells.
+// SideNav and the mobile TopBar render from this list via `visibleNavItems`,
+// so an entry (or its order) is defined once and can never drift between the
+// two shells. BottomNav keeps its own curated subset (see its own comment)
+// and is deliberately not wired to this — a time-limited promo entry has no
+// business displacing one of its 3 primary tabs.
 
 export type NavItem = {
   href: string;
   label: string;
   icon: (props: { active: boolean }) => React.ReactNode;
+  /** Unix seconds. Item disappears from `visibleNavItems` once past this —
+   *  for time-limited entries (e.g. a claim window), never a permanent one. */
+  expiresAt?: number;
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -14,7 +22,19 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/app/create", label: "Create", icon: IconCreate },
   { href: "/app/portfolio", label: "Portfolio", icon: IconPortfolio },
   { href: "/app/profile", label: "Profile", icon: IconProfile },
+  // v1 -> v2 migration claim window — self-removing after deadline, and never
+  // shown at all if the claim contract isn't live.
+  ...(isV1ClaimConfigured
+    ? [{ href: "/app/migrate", label: "Migrate", icon: IconMigrate, expiresAt: V1_CLAIM_DEADLINE_UNIX }]
+    : []),
 ];
+
+/** `NAV_ITEMS` filtered for right now — call this from render, not the raw
+ *  array, wherever a time-limited entry should actually disappear on time. */
+export function visibleNavItems(items: NavItem[] = NAV_ITEMS): NavItem[] {
+  const nowSec = Date.now() / 1000;
+  return items.filter((item) => item.expiresAt === undefined || nowSec < item.expiresAt);
+}
 
 function IconDiscover({ active }: { active: boolean }) {
   return (
@@ -50,6 +70,20 @@ function IconPortfolio() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M4 19V10m5 9V5m5 14v-7m5 7V8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconMigrate({ active }: { active: boolean }) {
+  // Two arrows exchanging places — v1 -> v2.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 9h13M13 5l4 4-4 4M20 15H7m4 4l-4-4 4-4"
+        stroke="currentColor"
+        strokeWidth={active ? 2.25 : 2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

@@ -21,6 +21,17 @@ contract BallastV1ClaimTest is Test {
     address dave = vm.addr(4); // 0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718
     address sweepTo = makeAddr("safe");
 
+    // claimToken's swap infra is exercised end-to-end only in the mainnet fork
+    // suite (BallastV1ClaimFork.t.sol), against the real WETH/BALLAST v2 pool.
+    // Here these are just non-zero placeholders so the constructor's zero-
+    // address guards and the one-path-per-holder lock (which reverts before
+    // ever touching swap infra) can be tested without a real router/pool.
+    address ballastV2 = makeAddr("ballastV2");
+    address weth = makeAddr("weth");
+    address universalRouter = makeAddr("universalRouter");
+    address permit2 = makeAddr("permit2");
+    address hook = makeAddr("hook");
+
     bytes32 constant ROOT = 0x5ea4a70e41505a7a7959a862d806722968399a068f962e2d8e48e415939b35ba;
 
     uint256 constant ALICE_BAL = 1000e18;
@@ -61,7 +72,7 @@ contract BallastV1ClaimTest is Test {
     function setUp() public {
         v1 = new MockERC20("Ballast", "BALLAST", 18);
         deadline = block.timestamp + 30 days;
-        claimC = new BallastV1Claim(address(v1), ROOT, deadline, sweepTo);
+        claimC = new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, ballastV2, weth, universalRouter, permit2, hook);
 
         v1.mint(alice, ALICE_BAL);
         v1.mint(bob, BOB_BAL);
@@ -87,7 +98,7 @@ contract BallastV1ClaimTest is Test {
 
     function test_claim_full_oneShot() public {
         vm.prank(alice);
-        uint256 paid = claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        uint256 paid = claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
         assertEq(paid, ALICE_ETH);
         assertEq(alice.balance, ALICE_ETH);
         assertEq(v1.balanceOf(claimC.DEAD()), ALICE_BAL);
@@ -96,8 +107,8 @@ contract BallastV1ClaimTest is Test {
 
     function test_claim_partial_thenRest_sumsExactlyToEthAmount() public {
         vm.startPrank(bob);
-        uint256 paid1 = claimC.claim(BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
-        uint256 paid2 = claimC.claim(BOB_BAL - BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
+        uint256 paid1 = claimC.claimETH(BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
+        uint256 paid2 = claimC.claimETH(BOB_BAL - BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
         vm.stopPrank();
         assertEq(paid1 + paid2, BOB_ETH, "no dust lost across partial claims that sum to full balance");
         assertEq(bob.balance, BOB_ETH);
@@ -109,11 +120,11 @@ contract BallastV1ClaimTest is Test {
         uint256 totalPaid;
         vm.startPrank(dave);
         for (uint256 i = 0; i < 7; i++) {
-            totalPaid += claimC.claim(chunk, DAVE_BAL, DAVE_ETH, daveProof());
+            totalPaid += claimC.claimETH(chunk, DAVE_BAL, DAVE_ETH, daveProof());
         }
         // Sweep the dust remainder (7*chunk < DAVE_BAL by integer division).
         uint256 remainder = DAVE_BAL - chunk * 7;
-        if (remainder > 0) totalPaid += claimC.claim(remainder, DAVE_BAL, DAVE_ETH, daveProof());
+        if (remainder > 0) totalPaid += claimC.claimETH(remainder, DAVE_BAL, DAVE_ETH, daveProof());
         vm.stopPrank();
         assertEq(totalPaid, DAVE_ETH, "7-way partial claim still sums to exactly the full entitlement");
         assertEq(claimC.burnedOf(dave), DAVE_BAL);
@@ -124,7 +135,7 @@ contract BallastV1ClaimTest is Test {
     function test_claim_wrongProof_reverts() public {
         vm.prank(alice);
         vm.expectRevert(BallastV1Claim.InvalidProof.selector);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, bobProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, bobProof());
     }
 
     function test_claim_wrongAmounts_withRightProofShape_reverts() public {
@@ -133,21 +144,21 @@ contract BallastV1ClaimTest is Test {
         // not just lying about the proof array.
         vm.prank(alice);
         vm.expectRevert(BallastV1Claim.InvalidProof.selector);
-        claimC.claim(ALICE_BAL, BOB_BAL, BOB_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, BOB_BAL, BOB_ETH, aliceProof());
     }
 
     function test_claim_byNonLeafAddress_reverts() public {
         address mallory = makeAddr("mallory");
         vm.prank(mallory);
         vm.expectRevert(BallastV1Claim.InvalidProof.selector);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
     }
 
     function test_claim_doubleClaim_afterFull_reverts() public {
         vm.startPrank(alice);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
         vm.expectRevert(BallastV1Claim.AlreadyFullyClaimed.selector);
-        claimC.claim(1, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(1, ALICE_BAL, ALICE_ETH, aliceProof());
         vm.stopPrank();
     }
 
@@ -155,14 +166,14 @@ contract BallastV1ClaimTest is Test {
         vm.warp(deadline);
         vm.prank(alice);
         vm.expectRevert(BallastV1Claim.DeadlinePassed.selector);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
     }
 
     function test_claim_requestingMoreThanRemaining_clampsNotOverpays() public {
         // Ask for 10x the snapshot balance in one call -- must clamp to
         // exactly ALICE_BAL burned and ALICE_ETH paid, never more.
         vm.prank(alice);
-        uint256 paid = claimC.claim(ALICE_BAL * 10, ALICE_BAL, ALICE_ETH, aliceProof());
+        uint256 paid = claimC.claimETH(ALICE_BAL * 10, ALICE_BAL, ALICE_ETH, aliceProof());
         assertEq(paid, ALICE_ETH);
         assertEq(v1.balanceOf(claimC.DEAD()), ALICE_BAL, "never burns more than the snapshot balance");
         assertEq(alice.balance, ALICE_ETH, "never pays more than ethAmount");
@@ -170,9 +181,9 @@ contract BallastV1ClaimTest is Test {
 
     function test_claim_zeroAmount_afterAlreadyFull_reverts() public {
         vm.startPrank(alice);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
         vm.expectRevert(BallastV1Claim.AlreadyFullyClaimed.selector);
-        claimC.claim(0, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(0, ALICE_BAL, ALICE_ETH, aliceProof());
         vm.stopPrank();
     }
 
@@ -187,7 +198,7 @@ contract BallastV1ClaimTest is Test {
         v1.transfer(makeAddr("buyer"), CAROL_BAL - held); // Carol sells 2/3 of her v1
 
         vm.prank(carol);
-        uint256 paid = claimC.claim(held, CAROL_BAL, CAROL_ETH, carolProof());
+        uint256 paid = claimC.claimETH(held, CAROL_BAL, CAROL_ETH, carolProof());
         assertEq(paid, (CAROL_ETH * held) / CAROL_BAL, "proportional to what she actually burned");
         assertLt(paid, CAROL_ETH, "can never reach full entitlement having sold most of her v1");
 
@@ -196,7 +207,7 @@ contract BallastV1ClaimTest is Test {
         // custom error from this contract -- confirms no shortcut exists).
         vm.prank(carol);
         vm.expectRevert();
-        claimC.claim(CAROL_BAL - held, CAROL_BAL, CAROL_ETH, carolProof());
+        claimC.claimETH(CAROL_BAL - held, CAROL_BAL, CAROL_ETH, carolProof());
     }
 
     /// @notice "Bought MORE after -> nothing extra": Dave buys additional v1
@@ -206,7 +217,7 @@ contract BallastV1ClaimTest is Test {
     function test_boughtMoreAfterSnapshot_getsNothingExtra() public {
         v1.mint(dave, DAVE_BAL * 100); // Dave now holds 101x his snapshot balance
         vm.prank(dave);
-        uint256 paid = claimC.claim(DAVE_BAL * 101, DAVE_BAL, DAVE_ETH, daveProof());
+        uint256 paid = claimC.claimETH(DAVE_BAL * 101, DAVE_BAL, DAVE_ETH, daveProof());
         assertEq(paid, DAVE_ETH, "capped at the snapshot entitlement despite holding much more");
         assertEq(v1.balanceOf(claimC.DEAD()), DAVE_BAL, "only the snapshot amount is ever burned, not the extra");
     }
@@ -221,7 +232,7 @@ contract BallastV1ClaimTest is Test {
     function test_sweep_afterDeadline_sendsExactRemainder() public {
         // Only Alice and Bob claim; Carol and Dave's ETH is never claimed.
         vm.prank(alice);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
 
         vm.warp(deadline);
         uint256 expectedRemainder = BOB_ETH + CAROL_ETH + DAVE_ETH;
@@ -255,24 +266,63 @@ contract BallastV1ClaimTest is Test {
         vm.warp(deadline);
         vm.prank(alice);
         vm.expectRevert(BallastV1Claim.DeadlinePassed.selector);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
     }
 
     // ── Invariants ───────────────────────────────────────────────────────
 
     function test_v1_neverHeldByContract_acrossEveryPath() public {
         vm.prank(alice);
-        claimC.claim(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
+        claimC.claimETH(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof());
         vm.prank(bob);
-        claimC.claim(BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
+        claimC.claimETH(BOB_BAL / 2, BOB_BAL, BOB_ETH, bobProof());
         assertEq(v1.balanceOf(address(claimC)), 0, "the claim contract must never hold v1 at any point");
     }
 
     function test_constructor_zeroAddress_reverts() public {
         vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
-        new BallastV1Claim(address(0), ROOT, deadline, sweepTo);
+        new BallastV1Claim(address(0), ROOT, deadline, sweepTo, ballastV2, weth, universalRouter, permit2, hook);
         vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
-        new BallastV1Claim(address(v1), ROOT, deadline, address(0));
+        new BallastV1Claim(address(v1), ROOT, deadline, address(0), ballastV2, weth, universalRouter, permit2, hook);
+        vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
+        new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, address(0), weth, universalRouter, permit2, hook);
+        vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
+        new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, ballastV2, address(0), universalRouter, permit2, hook);
+        vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
+        new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, ballastV2, weth, address(0), permit2, hook);
+        vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
+        new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, ballastV2, weth, universalRouter, address(0), hook);
+        vm.expectRevert(BallastV1Claim.ZeroAddress.selector);
+        new BallastV1Claim(address(v1), ROOT, deadline, sweepTo, ballastV2, weth, universalRouter, permit2, address(0));
+    }
+
+    // ── One path per holder ──────────────────────────────────────────────
+
+    function test_ethThenToken_sameHolder_reverts() public {
+        vm.startPrank(alice);
+        claimC.claimETH(ALICE_BAL / 2, ALICE_BAL, ALICE_ETH, aliceProof());
+        vm.expectRevert(BallastV1Claim.WrongPath.selector);
+        // Reverts on the path lock, before ever touching the (placeholder,
+        // non-functional) swap infra configured in this mock suite.
+        claimC.claimToken(ALICE_BAL - ALICE_BAL / 2, ALICE_BAL, ALICE_ETH, aliceProof(), 1, block.timestamp + 1 hours);
+        vm.stopPrank();
+    }
+
+    function test_claimETH_locksPathOf() public {
+        // claimToken locking path=Token (and claimETH reverting WrongPath
+        // afterward) needs a real pool to actually complete, so that half of
+        // the one-path invariant is proven in the mainnet fork suite instead
+        // (BallastV1ClaimFork.t.sol) -- here we only confirm the ETH side of
+        // the lock, which needs no swap infra at all.
+        vm.prank(alice);
+        claimC.claimETH(1, ALICE_BAL, ALICE_ETH, aliceProof());
+        assertEq(uint256(claimC.pathOf(alice)), uint256(1), "locked to ClaimPath.Eth (1) after the first claimETH");
+    }
+
+    function test_claimToken_zeroMinOut_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert(BallastV1Claim.MinOutTooLow.selector);
+        claimC.claimToken(ALICE_BAL, ALICE_BAL, ALICE_ETH, aliceProof(), 0, block.timestamp + 1 hours);
     }
 
     // ── Reentrancy ───────────────────────────────────────────────────────
@@ -297,7 +347,9 @@ contract BallastV1ClaimTest is Test {
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(address(attacker), bal, ethAmt))));
         bytes32[] memory emptyProof = new bytes32[](0);
 
-        BallastV1Claim soloClaim = new BallastV1Claim(address(v1), leaf, block.timestamp + 30 days, sweepTo);
+        BallastV1Claim soloClaim = new BallastV1Claim(
+            address(v1), leaf, block.timestamp + 30 days, sweepTo, ballastV2, weth, universalRouter, permit2, hook
+        );
         vm.deal(address(this), ethAmt);
         (bool ok,) = address(soloClaim).call{value: ethAmt}("");
         require(ok);
@@ -311,8 +363,8 @@ contract BallastV1ClaimTest is Test {
     }
 }
 
-/// @notice Minimal attacker that calls `claim()` once via `go()`, then tries
-/// to re-enter the SAME `claim()` from its own `receive()` (fired mid-payout,
+/// @notice Minimal attacker that calls `claimETH()` once via `go()`, then tries
+/// to re-enter the SAME `claimETH()` from its own `receive()` (fired mid-payout,
 /// when BallastV1Claim sends it ETH) -- the second, nested call must revert.
 contract ReentrantClaimer {
     MockERC20 public v1_;
@@ -346,13 +398,13 @@ contract ReentrantClaimer {
     }
 
     function go() external {
-        target_.claim(amountV1, snapshotBalance, ethAmount, proof);
+        target_.claimETH(amountV1, snapshotBalance, ethAmount, proof);
     }
 
     receive() external payable {
         if (!reentered) {
             reentered = true;
-            target_.claim(amountV1, snapshotBalance, ethAmount, proof);
+            target_.claimETH(amountV1, snapshotBalance, ethAmount, proof);
         }
     }
 }

@@ -9,7 +9,7 @@ import { CommandSearch } from "@/components/app/CommandSearch";
 import { NetworkChip } from "@/components/app/NetworkChip";
 import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
 import { AvatarMenu } from "@/components/app/AvatarMenu";
-import { NAV_ITEMS } from "@/components/app/nav-items";
+import { NAV_ITEMS, visibleNavItems } from "@/components/app/nav-items";
 import { cn } from "@/lib/cn";
 
 // App shell top bar — logo, nav, search, and account. `hasRail` (true only on
@@ -27,7 +27,7 @@ export function TopBar({ hasRail = false }: { hasRail?: boolean }) {
           <Wordmark />
           {!hasRail && (
             <nav className="hidden items-center gap-5 lg:flex">
-              {NAV_ITEMS.map((item) => {
+              {visibleNavItems(NAV_ITEMS).map((item) => {
                 const active = pathname.startsWith(item.href);
                 return (
                   <Link

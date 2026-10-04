@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
-import { NAV_ITEMS } from "@/components/app/nav-items";
+import { NAV_ITEMS, visibleNavItems } from "@/components/app/nav-items";
 import { Wordmark } from "@/components/Wordmark";
 import { WalletBalance } from "@/components/app/WalletBalance";
 
@@ -23,7 +23,7 @@ export function SideNav() {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems(NAV_ITEMS).map((item) => {
           const active = pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
