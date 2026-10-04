@@ -245,6 +245,8 @@ export default function MigratePage() {
                     </button>
                   </div>
                 </div>
+              ) : c.underfunded ? (
+                <p className="mt-4 text-sm text-warning">Claim funding is being topped up, check back shortly.</p>
               ) : net.wrongNetwork ? (
                 <button className="btn-primary mt-4 w-full sm:w-auto" disabled={net.isSwitching} onClick={() => void net.switchToRobinhood()}>
                   {net.isSwitching ? "Switching…" : `Switch to ${net.targetChain.name}`}
@@ -259,6 +261,7 @@ export default function MigratePage() {
                     c.v1Balance === 0n ||
                     c.remaining === undefined ||
                     c.remaining <= 0n ||
+                    c.underfunded ||
                     (effectivePath === "token" && (minOut === 0n || tokenQuote.isLoading))
                   }
                   onClick={() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useReadContract, useReadContracts, usePublicClient, useWriteContract } from "wagmi";
+import { useBalance, useReadContracts, usePublicClient, useWriteContract } from "wagmi";
 import type { Address } from "viem";
 import { erc20Abi, quoterAbi, stateViewAbi } from "@/lib/abis";
 import { V1_CLAIM_ADDRESS, V1_TOKEN_ADDRESS, BALLAST_V2_TOKEN_ADDRESS, WETH_ADDRESS, QUOTER_ADDRESS, STATE_VIEW_ADDRESS, isV1ClaimConfigured } from "@/lib/contracts";
@@ -328,6 +328,17 @@ export function useV1Claim(account?: Address) {
   const snapshotBalance = entry ? BigInt(entry.balanceWei) : undefined;
   const ethAmount = entry ? BigInt(entry.ethAmountWei) : undefined;
 
+  // The contract's own ETH balance — funded in stages, not necessarily the
+  // full budget at any given moment. Read independently of any wallet read
+  // below so a holder's claim button can be gated on it even before their
+  // other reads land.
+  const contractBalanceRes = useBalance({
+    address: V1_CLAIM_ADDRESS,
+    chainId: CHAIN_ID,
+    query: { enabled: isV1ClaimConfigured, refetchInterval: 15_000 },
+  });
+  const contractBalance = contractBalanceRes.data?.value;
+
   const stateRes = useReadContracts({
     allowFailure: true,
     contracts:
@@ -363,6 +374,13 @@ export function useV1Claim(account?: Address) {
       : undefined;
   const fullyClaimed = remaining !== undefined && remaining <= 0n;
   const deadlinePassed = deadline !== undefined && deadline > 0n && BigInt(Math.floor(Date.now() / 1000)) >= deadline;
+  // Funded in stages — the contract may genuinely not hold enough ETH yet to
+  // pay this holder's full remaining entitlement (either path: claimToken
+  // swaps the same ETH value claimETH would pay directly). Gates the claim
+  // button so no one can send a transaction that reverts for lack of funds.
+  const remainingEth = ethAmount !== undefined && claimedEth !== undefined ? ethAmount - claimedEth : undefined;
+  const underfunded =
+    contractBalance !== undefined && remainingEth !== undefined && remainingEth > 0n && contractBalance < remainingEth;
   // undefined until the on-chain read lands; 0 = not locked to anything yet.
   const lockedTo: ClaimPathChoice | undefined =
     lockedPath === 1 ? "eth" : lockedPath === 2 ? "token" : lockedPath === 0 ? undefined : undefined;
@@ -463,6 +481,9 @@ export function useV1Claim(account?: Address) {
     deadline,
     deadlinePassed,
     lockedTo,
+    contractBalance,
+    remainingEth,
+    underfunded,
     v1Balance,
     phase,
     txHash,
