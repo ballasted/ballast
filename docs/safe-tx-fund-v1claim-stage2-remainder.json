@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund BallastV1Claim — stage 2 of 2 (remainder)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE",
+      "value": "493084308357578318",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Stage 2 of the staged funding plan -- sends the remaining 0.493084308357578318 ETH, which together with stage 1's 0.2 ETH (docs/safe-tx-fund-v1claim-stage1.json) sums to EXACTLY the original total budget (0.693084308357578318 ETH, data/snapshot/v1_claim_eth_meta.json), no more, no less. Sign this whenever -- there's no deadline pressure on when stage 2 lands, only on when the claim window itself closes (contract deadline(), 2026-10-11 19:13:17 UTC). Safe to send even if some holders have already partially or fully claimed from stage 1's funds: the contract's receive() has no logic, so this just tops up whatever balance remains."
+    }
+  ]
+}

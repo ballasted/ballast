@@ -91,11 +91,39 @@ forge script script/DeployV1Claim.s.sol:DeployV1Claim --rpc-url $RH_RPC_URL_PAID
 Confirm the deployed address really is `0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE`
 (`cast code <addr>` returns non-empty) before Step 3.
 
-### Step 3 — Safe: fund the contract with the full ETH budget
+### Step 3 — Safe: fund the contract
 
-`docs/safe-tx-fund-v1claim.json` — already has the exact address + exact
-amount (0.693084308357578318 ETH) filled in. Import and sign AFTER Step 2
-confirms.
+Deployed 2026-10-04. Funding changed from one lump sum to **staged funding**
+the same day, after deploy, while the page was already live at a zero
+balance:
+
+- `docs/safe-tx-fund-v1claim-stage1.json` — 0.2 ETH, stage 1.
+- `docs/safe-tx-fund-v1claim-stage2-remainder.json` — the remaining
+  0.493084308357578318 ETH, stage 2, sign whenever (no deadline pressure on
+  *when* it lands, only on when the claim window itself closes).
+- `docs/safe-tx-fund-v1claim.json` — the original single full-amount
+  (0.693084308357578318 ETH) tx, kept for reference; superseded by the two
+  staged ones above, don't sign both.
+
+**Coverage math for 0.2 ETH, largest-entitlement-first (worst case):** fully
+covers only the top 2 of 71 holders (0.153535436734735813 ETH used,
+0.046464563265264187 ETH left over — not enough for the 3rd-largest,
+0.052300408585888372 ETH). In practice holders claim in whatever order they
+show up, not largest-first, so real coverage before stage 2 lands is likely
+much higher than 2 — e.g. smallest-entitlement-first, 0.2 ETH fully covers 59
+of 71. **Top-up threshold** (to guarantee no holder is ever blocked,
+independent of claim order): keep the contract's balance above the largest
+still-unclaimed single entitlement — currently (zero claims) that's
+**0.08541360636400294 ETH**, the single largest holder's full entitlement.
+That floor only ever drops as holders claim, since the largest ones are
+removed from "still-unclaimed" first.
+
+**No claim can ever revert for lack of funds, regardless of balance**:
+`/app/migrate` reads the contract's live ETH balance and disables a connected
+holder's claim buttons (both paths) whenever it's below that holder's own
+remaining entitlement, showing "Claim funding is being topped up, check back
+shortly" instead. A thin balance just means large holders wait, not that
+anyone's transaction reverts.
 
 ### Step 4 — verify on Sourcify (works from this sandbox, confirmed this session)
 

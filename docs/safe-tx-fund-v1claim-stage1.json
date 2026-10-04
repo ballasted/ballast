@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund BallastV1Claim — stage 1 of 2 (0.2 ETH)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE",
+      "value": "200000000000000000",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Stage 1 of a deliberate staged funding plan (changed from one lump sum 2026-10-04) -- sends exactly 0.2 ETH, NOT the full budget. The contract's receive() has no logic; any amount sent is simply held for claims. If the 71 snapshot holders claimed strictly largest-entitlement-first, 0.2 ETH fully covers only the top 2 (0.153535436734735813 ETH used, 0.046464563265264187 ETH left over -- not enough for the 3rd-largest, 0.052300408585888372 ETH). In practice holders claim in whatever order they show up, so most of the 71 can likely claim fully well before stage 2 lands -- see docs/v1-claim-runbook.md's staged-funding note for the full breakdown and the recommended top-up threshold (keep balance above the largest still-unclaimed single entitlement, 0.08541360636400294 ETH from zero claims, so no holder is ever blocked). /app/migrate reads this contract's live balance and disables a connected holder's claim buttons (both ETH and $BALLAST v2 paths) whenever it's below their own remaining entitlement, so an underfunded contract can never cause a holder's claim transaction to revert -- it just shows 'Claim funding is being topped up, check back shortly' until enough lands. Stage 2 is docs/safe-tx-fund-v1claim-stage2-remainder.json, the remaining 0.493084308357578318 ETH, sign it whenever -- the two stages sum to exactly the original total budget (data/snapshot/v1_claim_eth_meta.json), no more, no less."
+    }
+  ]
+}
