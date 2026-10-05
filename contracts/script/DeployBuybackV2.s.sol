@@ -55,22 +55,38 @@ contract DeployBuybackV2 is Script {
             hooks: IHooks(HOOK)
         });
 
+        address[] memory claimHooks = new address[](1);
+        claimHooks[0] = HOOK;
+
         console2.log("=== DeployBuybackV2 ===");
         console2.log("maxWethPerCall:", maxWeth);
         console2.log("maxNvdaPerCall:", maxNvda);
         console2.log("cooldownSeconds:", cooldown);
         console2.log("maxSlippageBps:", maxSlippageBps);
+        console2.log("claimHooks[0]:", HOOK);
 
         vm.startBroadcast();
         BuybackBurnerV2 bb = new BuybackBurnerV2(
-            IPoolManager(POOL_MANAGER), BALLAST, WETH, NVDA, wethKey, nvdaKey, maxWeth, maxNvda, cooldown, maxSlippageBps
+            IPoolManager(POOL_MANAGER),
+            BALLAST,
+            WETH,
+            NVDA,
+            wethKey,
+            nvdaKey,
+            maxWeth,
+            maxNvda,
+            cooldown,
+            maxSlippageBps,
+            claimHooks
         );
         vm.stopBroadcast();
 
         console2.log("");
         console2.log("BuybackBurnerV2 deployed:", address(bb));
-        console2.log("NEXT: Safe sends a share of claimed fees here (see");
-        console2.log("docs/safe-tx-fund-buybackv2.json), then verify:");
+        console2.log("NEXT: on FeeConfig, setPlatformVault(this) so the platform's 20% hook-fee");
+        console2.log("share accrues directly here (see docs/BUYBACK_BURN_GO_LIVE.md Safe tx set).");
+        console2.log("Also optional/manual: Safe sends a share of its OWN v2 creator fee here");
+        console2.log("(see docs/safe-tx-fund-buybackv2.json), then verify:");
         console2.log("forge verify-contract", address(bb));
         console2.log("src/BuybackBurnerV2.sol:BuybackBurnerV2 --verifier sourcify --chain-id 4663");
     }

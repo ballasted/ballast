@@ -14,17 +14,36 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
 
+/// @dev Minimal interface onto BallastHook's legacy WETH fee ledger — the platform's
+///      hook-fee share (FeeConfig.platformVault) accrues here and is pulled with
+///      claim() (which pays msg.sender, i.e. this contract, once platformVault is
+///      pointed at it). Same two selectors BuybackBurner (v1) already depends on;
+///      see BallastHook.sol: "owed is the pre-existing WETH-only ledger ... must
+///      never be touched."
+interface IBallastHookClaim {
+    function claim() external returns (uint256);
+    function owed(address recipient) external view returns (uint256);
+}
+
 /// @title BuybackBurnerV2 — permissionless, ownerless buyback-and-burn for $BALLAST v2
 ///
-/// @notice $BALLAST v2's creator fee recipient is the Safe (immutable, set at launch —
-///         see BallastFactory.sol:367), so unlike v1 there is no FeeConfig.platformVault
-///         to point at a burner directly. Instead the Safe periodically sends a share of
-///         its claimed fees here (WETH and/or NVDA — v2 graduated two pools) as a
-///         documented, manual routine (see docs/BALLAST_STATE.md). Once here, funds can
-///         ONLY leave via `buybackAndBurn`: swap into $BALLAST v2 through its matching
-///         pool (the WETH-quoted pool for WETH, the NVDA-quoted pool for NVDA) and send
-///         every token bought to the dead address. No owner, no admin function, no
-///         withdrawal path of any kind — every parameter below is immutable forever.
+/// @notice Funded two ways:
+///         1. The platform's 20% hook-fee share, across EVERY pool this chain's
+///            singleton BallastHook serves (FeeConfig.platformVault pointed at this
+///            contract) — pulled permissionlessly via `claimFees`/`claimHooks` (2026-10-06
+///            addition, mirrors BuybackBurner v1's claimHooks array, minus the owner).
+///         2. $BALLAST v2's OWN creator fee recipient is the Safe (immutable, set at
+///            launch — see BallastFactory.sol:367), so the Safe periodically sends a
+///            share of what it separately claims as creator (WETH and/or NVDA — v2
+///            graduated two pools) here as a documented, manual top-up (see
+///            docs/BALLAST_STATE.md). This path is unchanged and still works exactly
+///            as before.
+///         Once here, funds can ONLY leave via `buybackAndBurn`: swap into $BALLAST v2
+///         through its matching pool (the WETH-quoted pool for WETH, the NVDA-quoted
+///         pool for NVDA) and send every token bought to the dead address. No owner, no
+///         admin function, no withdrawal path of any kind — every parameter below is
+///         immutable forever, including `claimHooks` itself (set once at construction,
+///         no setter exists).
 ///
 /// @dev Three independent safety bounds, all immutable, all enforced together (not
 ///      alternatives to each other):
@@ -74,11 +93,22 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
     uint256 public immutable cooldownSeconds;
     uint16 public immutable maxSlippageBps;
 
+    /// @notice Hooks whose `owed(address(this))` WETH this contract pulls before a
+    ///         WETH buyback. Set ONCE at construction; no setter exists (every other
+    ///         parameter here is the same way) — mirrors BuybackBurner (v1)'s
+    ///         `claimHooks` array, minus the owner-settable part. Empty by default
+    ///         behavior if deployed with a zero-length array: `claimFees` is then a
+    ///         permissionless no-op and buybacks only ever spend whatever WETH/NVDA
+    ///         was sent here directly (path 2 in the contract-level note above) —
+    ///         i.e. this feature is additive, never required for the contract to work.
+    address[] public claimHooks;
+
     mapping(address => uint256) public lastBuybackAt; // per quote-asset
     mapping(address => uint256) public totalSpent; // per quote-asset
     uint256 public totalBallastBurned;
     uint256 public buybackCount;
 
+    event FeesClaimed(address indexed hook, uint256 amount);
     event BuybackBurned(
         address indexed caller,
         address indexed asset,
@@ -107,11 +137,15 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
         uint256 maxWethPerCall_,
         uint256 maxNvdaPerCall_,
         uint256 cooldownSeconds_,
-        uint16 maxSlippageBps_
+        uint16 maxSlippageBps_,
+        address[] memory claimHooks_
     ) {
         if (ballast_ == address(0) || weth_ == address(0) || nvda_ == address(0)) revert ZeroAddress();
         if (maxWethPerCall_ == 0 || maxNvdaPerCall_ == 0 || cooldownSeconds_ == 0) revert ZeroValue();
         if (maxSlippageBps_ > MAX_SLIPPAGE_BPS) revert SlippageTooHigh();
+        for (uint256 i; i < claimHooks_.length; ++i) {
+            if (claimHooks_[i] == address(0)) revert ZeroAddress();
+        }
         poolManager = poolManager_;
         ballast = ballast_;
         weth = weth_;
@@ -122,6 +156,7 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
         maxNvdaPerCall = maxNvdaPerCall_;
         cooldownSeconds = cooldownSeconds_;
         maxSlippageBps = maxSlippageBps_;
+        claimHooks = claimHooks_;
     }
 
     // --------------------------------------------------------------------- //
@@ -134,6 +169,45 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
 
     function readyAt(address asset) external view returns (uint256) {
         return lastBuybackAt[asset] == 0 ? 0 : lastBuybackAt[asset] + cooldownSeconds;
+    }
+
+    function claimHooksLength() external view returns (uint256) {
+        return claimHooks.length;
+    }
+
+    /// @notice WETH available to a WETH buyback right now: what's held plus what's
+    ///         still claimable across `claimHooks`. (NVDA has no claim path — see
+    ///         the contract-level note.)
+    function accruedWeth() external view returns (uint256 total) {
+        total = IERC20(weth).balanceOf(address(this));
+        for (uint256 i; i < claimHooks.length; ++i) {
+            total += IBallastHookClaim(claimHooks[i]).owed(address(this));
+        }
+    }
+
+    // --------------------------------------------------------------------- //
+    //  Fee claiming — permissionless pull from the configured hooks          //
+    // --------------------------------------------------------------------- //
+
+    /// @notice Pull this contract's accrued WETH fee share from every configured
+    ///         hook. Permissionless (anyone may call; it only ever moves WETH INTO
+    ///         this contract, never out) and a no-op if `claimHooks` is empty or
+    ///         nothing is owed. Also called automatically at the start of a WETH
+    ///         `buybackAndBurn`, so a single call funds and executes a buyback —
+    ///         exposed standalone too for off-chain accounting / pre-funding.
+    function claimFees() external nonReentrant returns (uint256) {
+        return _claimFees();
+    }
+
+    function _claimFees() internal returns (uint256 claimed) {
+        for (uint256 i; i < claimHooks.length; ++i) {
+            address hook = claimHooks[i];
+            if (IBallastHookClaim(hook).owed(address(this)) == 0) continue;
+            uint256 got = IBallastHookClaim(hook).claim();
+            if (got == 0) continue;
+            claimed += got;
+            emit FeesClaimed(hook, got);
+        }
     }
 
     // --------------------------------------------------------------------- //
@@ -158,6 +232,11 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
         uint256 cap = isWeth ? maxWethPerCall : maxNvdaPerCall;
         uint256 ready = lastBuybackAt[asset] == 0 ? 0 : lastBuybackAt[asset] + cooldownSeconds;
         if (block.timestamp < ready) revert Cooldown(ready);
+
+        // Pull any accrued platform-share WETH before sizing the spend, so a
+        // single permissionless call both funds and executes the buyback — no
+        // separate claim step and no keeper required.
+        if (isWeth) _claimFees();
 
         uint256 held = IERC20(asset).balanceOf(address(this));
         uint256 spend = amountIn > cap ? cap : amountIn;
