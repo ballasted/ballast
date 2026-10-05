@@ -2,14 +2,14 @@
   "version": "1.0",
   "chainId": "4663",
   "createdAt": 0,
-  "meta": { "name": "Fund the new buybackv2-deployer wallet with gas ETH only (TEMPLATE)", "txBuilderVersion": "1.16.0" },
+  "meta": { "name": "Fund the buybackv2-deployer wallet with gas ETH only", "txBuilderVersion": "1.16.0" },
   "transactions": [
     {
-      "to": "PASTE_NEW_KEYSTORE_ADDRESS_HERE",
+      "to": "0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8",
       "value": "1000000000000000",
       "data": null,
       "contractMethod": null,
-      "_comment": "Sends 0.001 ETH (plain transfer) to a BRAND NEW keystore you create yourself (suggested name: 'buybackv2-deployer') -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1. A prior dry run of this exact script (2026-09-30) estimated the deploy cost at ~0.0000690 ETH, so 0.001 ETH is ~14x margin, still negligible on this L2 -- re-run the dry run yourself before funding to confirm that estimate still holds (see docs/BUYBACK_BURN_GO_LIVE.md step 2). This wallet is gas-only: it deploys BuybackBurnerV2 (one transaction, nonce 0, no owner -- see contracts/src/BuybackBurnerV2.sol) and does nothing else ever again."
+      "_comment": "Sends 0.001 ETH (plain transfer) to the fresh keystore wallet 0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8 (nonce 0, balance 0, confirmed live 2026-10-06) -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1. A dry run of the real deploy script against this exact address (2026-10-06, live RPC) estimated the deploy cost at 0.000098593880917401 ETH at 0.040056001 gwei, so 0.001 ETH is ~10x margin, still negligible on this L2. The deterministic CREATE address this wallet's first transaction will produce is 0xcd664C518620140Bee7C95aa6468c40D75026252 (confirmed via both the dry run and `cast compute-address --nonce 0`) -- correct only if this wallet's very first transaction ever is the BuybackBurnerV2 deploy; don't send anything else from it first. This wallet is gas-only: it deploys BuybackBurnerV2 (one transaction, nonce 0, no owner -- see contracts/src/BuybackBurnerV2.sol) and does nothing else ever again."
     }
   ]
 }
