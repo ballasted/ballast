@@ -444,10 +444,11 @@ function SupplyEffect({ totalSupply, burned }: { totalSupply?: bigint; burned?: 
 function WhoControls() {
   return (
     <section className="card p-5">
-      <h2 className="section-label">Who controls this</h2>
+      <h2 className="section-label">Who controls this (v1 buyback only)</h2>
       <p className="mt-2 text-sm text-text-secondary">
-        Owned by a single BALLAST-team key, not a multisig yet — we&apos;d rather say so plainly. Here&apos;s what it
-        can and can&apos;t do; verify with <span className="font-mono">owner()</span>.
+        Owned by a single key — not a multisig, and this specific key is known to be compromised. We&apos;d rather
+        say so plainly than soften it. Here&apos;s exactly what it can and can&apos;t do; verify with{" "}
+        <span className="font-mono">owner()</span>.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <CopyAddress address={OWNER} />
@@ -477,11 +478,16 @@ function WhoControls() {
         </div>
       </dl>
       <p className="mt-3 text-xs text-text-faint">
-        The same key controls the fee config and could redirect future fees elsewhere — but it can never touch WETH
-        already here, which can only buy and burn $BALLAST. We&apos;ll note it here when ownership moves to a multisig.{" "}
+        The same key still owns the fee config feeding this specific buyback and could redirect future fees
+        elsewhere — but it can never touch WETH already here, which can only buy and burn $BALLAST. This applies to
+        the v1 buyback above only.{" "}
         <Link href="/docs/corrections" className="text-green underline underline-offset-2">
           On the record ↗
         </Link>
+      </p>
+      <p className="mt-2 text-xs text-text-faint">
+        $BALLAST v2&apos;s buyback (the &quot;v2 buyback&quot; section above) is a separate, newer contract with no
+        owner at all — no key, compromised or otherwise, can retune or redirect it.
       </p>
     </section>
   );
