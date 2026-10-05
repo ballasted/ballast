@@ -63,6 +63,23 @@ export const FEE_ROUTER_FACTORY_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_FEE_ROUTER_FACTORY_ADDRESS,
 );
 export const isFeeRouterFactoryConfigured = Boolean(FEE_ROUTER_FACTORY_ADDRESS);
+
+// Open Treasury — permissionless community deposits earning a variable share of
+// trading fees (contracts/src/OpenTreasuryVault{,Factory}.sol, OpenTreasuryLens.sol,
+// docs/OPEN_TREASURY_DESIGN.md). Behind an explicit feature flag that defaults to
+// OFF: both addresses AND NEXT_PUBLIC_OPEN_TREASURY_ENABLED="true" are required,
+// so a half-configured env never silently turns the section on.
+export const OPEN_TREASURY_FACTORY_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_OPEN_TREASURY_FACTORY_ADDRESS,
+);
+export const OPEN_TREASURY_LENS_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_OPEN_TREASURY_LENS_ADDRESS,
+);
+export const isOpenTreasuryEnabled =
+  process.env.NEXT_PUBLIC_OPEN_TREASURY_ENABLED === "true" &&
+  Boolean(OPEN_TREASURY_FACTORY_ADDRESS) &&
+  Boolean(OPEN_TREASURY_LENS_ADDRESS);
+
 // $BALLAST v1 — fixed forever, independent of whichever token is currently
 // pinned as the protocol token (see ProtocolTokenNotice.tsx).
 export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as Address;

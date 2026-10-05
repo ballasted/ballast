@@ -17,6 +17,7 @@ import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
+import { OpenTreasurySection } from "@/components/app/token/OpenTreasurySection";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import { FeeRouterCard } from "@/components/app/token/FeeRouterCard";
@@ -218,6 +219,7 @@ export default function TokenDetailPage() {
                 symbol={symbol}
                 now={now}
               />
+              <OpenTreasurySection token={token!} creator={creator} symbol={symbol} />
             </div>
           ) : (
             <div className="card p-5 text-sm text-text-muted">No treasury</div>

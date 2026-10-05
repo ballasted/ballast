@@ -1231,3 +1231,226 @@ export const feeRouterFactoryAbi = [
     ],
   },
 ] as const;
+
+// Open Treasury — contracts/src/OpenTreasuryVault{,Factory}.sol, OpenTreasuryLens.sol.
+export const openTreasuryVaultFactoryAbi = [
+  {
+    type: "function",
+    name: "getOrCreateVault",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "vault", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "vaultFor",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "vaultOf",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "vault", type: "address" }],
+  },
+  {
+    type: "event",
+    name: "VaultCreated",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "vault", type: "address", indexed: true },
+      { name: "caller", type: "address", indexed: true },
+    ],
+  },
+] as const;
+
+export const openTreasuryVaultAbi = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "claim",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "claimFor",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "depositor", type: "address" }],
+    outputs: [{ name: "amount", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "notifyReward",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "sync",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [{ name: "added", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "earned",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "principal",
+    stateMutability: "view",
+    inputs: [
+      { name: "", type: "address" },
+      { name: "", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "pendingWithdrawAt",
+    stateMutability: "view",
+    inputs: [
+      { name: "depositor", type: "address" },
+      { name: "asset", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "assets",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]" }],
+  },
+  {
+    type: "function",
+    name: "assetsOf",
+    stateMutability: "view",
+    inputs: [{ name: "depositor", type: "address" }],
+    outputs: [{ name: "", type: "address[]" }],
+  },
+  { type: "function", name: "minHoldTime", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "rewardsDuration", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "rewardAsset", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "periodFinish", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "rewardRate", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "totalWeight", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "totalRewardDeposited", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "totalRewardClaimed", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  {
+    type: "function",
+    name: "totalPrincipal",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "Deposited",
+    inputs: [
+      { name: "depositor", type: "address", indexed: true },
+      { name: "asset", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "weight", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Withdrawn",
+    inputs: [
+      { name: "depositor", type: "address", indexed: true },
+      { name: "asset", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "weightRemoved", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Claimed",
+    inputs: [
+      { name: "depositor", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "RewardAdded",
+    inputs: [
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "rewardRate", type: "uint256", indexed: false },
+      { name: "periodFinish", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+export const openTreasuryLensAbi = [
+  {
+    type: "function",
+    name: "combinedBackingOf",
+    stateMutability: "view",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "vaultFactory", type: "address" },
+    ],
+    outputs: [
+      {
+        name: "c",
+        type: "tuple",
+        components: [
+          { name: "token", type: "address" },
+          { name: "treasury", type: "address" },
+          { name: "vault", type: "address" },
+          { name: "creatorFundedUsd", type: "uint256" },
+          { name: "creatorFundedOk", type: "bool" },
+          { name: "creatorFundedAnyStale", type: "bool" },
+          { name: "communityWithdrawableUsd", type: "uint256" },
+          { name: "communityAnyStale", type: "bool" },
+          { name: "communityAnyUnpriced", type: "bool" },
+          { name: "combinedTotalUsd", type: "uint256" },
+          {
+            name: "communityAssets",
+            type: "tuple[]",
+            components: [
+              { name: "asset", type: "address" },
+              { name: "balance", type: "uint256" },
+              { name: "price", type: "uint256" },
+              { name: "priceDecimals", type: "uint8" },
+              { name: "assetDecimals", type: "uint8" },
+              { name: "updatedAt", type: "uint256" },
+              { name: "valueUsd", type: "uint256" },
+              { name: "priced", type: "bool" },
+              { name: "stale", type: "bool" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+] as const;
