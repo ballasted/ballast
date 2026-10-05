@@ -33,6 +33,10 @@ contract DeployBuybackV2 is Script {
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
     address constant HOOK = 0x4eB2dD759F4d6524E66057D1ADc10c26E40142Cc;
+    // fallbackRecipient: where claimOtherFees forwards every non-WETH/non-NVDA
+    // platform fee share (e.g. a future SGOV- or SPY-quoted gen-4 launch) -- the
+    // Safe, same address already trusted as FeeConfig.platformVault/owner today.
+    address constant SAFE = 0xEFC97e16a24d2434C7138a2634E554a0631aC079;
 
     function run() external {
         uint256 maxWeth = vm.envOr("MAX_WETH_PER_CALL", uint256(0.02 ether));
@@ -64,6 +68,7 @@ contract DeployBuybackV2 is Script {
         console2.log("cooldownSeconds:", cooldown);
         console2.log("maxSlippageBps:", maxSlippageBps);
         console2.log("claimHooks[0]:", HOOK);
+        console2.log("fallbackRecipient (Safe):", SAFE);
 
         vm.startBroadcast();
         BuybackBurnerV2 bb = new BuybackBurnerV2(
@@ -77,7 +82,8 @@ contract DeployBuybackV2 is Script {
             maxNvda,
             cooldown,
             maxSlippageBps,
-            claimHooks
+            claimHooks,
+            SAFE
         );
         vm.stopBroadcast();
 
@@ -85,6 +91,9 @@ contract DeployBuybackV2 is Script {
         console2.log("BuybackBurnerV2 deployed:", address(bb));
         console2.log("NEXT: on FeeConfig, setPlatformVault(this) so the platform's 20% hook-fee");
         console2.log("share accrues directly here (see docs/BUYBACK_BURN_GO_LIVE.md Safe tx set).");
+        console2.log("WETH/NVDA platform fees: bought back and burned automatically.");
+        console2.log("Platform fees in any other asset: forwarded whole to the Safe via");
+        console2.log("claimOtherFees(asset), permissionless, never held or burned here.");
         console2.log("Also optional/manual: Safe sends a share of its OWN v2 creator fee here");
         console2.log("(see docs/safe-tx-fund-buybackv2.json), then verify:");
         console2.log("forge verify-contract", address(bb));

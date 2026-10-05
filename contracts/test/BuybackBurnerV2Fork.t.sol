@@ -67,6 +67,40 @@ contract SandwichAttacker is IUnlockCallback {
 interface IBallastHookClaimTest {
     function claim() external returns (uint256);
     function owed(address recipient) external view returns (uint256);
+    function claimIn(address currency) external returns (uint256);
+    function owedIn(address recipient, address currency) external view returns (uint256);
+}
+
+/// @dev A malicious "hook" whose claimIn() tries to re-enter claimOtherFees() on
+/// the burner. Used only by the reentrancy fork test below -- never added to a
+/// real deployment's claimHooks, which is immutable and deployer-chosen anyway.
+contract ReentrantClaimInHookFork {
+    BuybackBurnerV2 public target;
+    address public asset;
+    bool public attacked;
+
+    function setTarget(BuybackBurnerV2 t, address asset_) external {
+        target = t;
+        asset = asset_;
+    }
+
+    function owed(address) external pure returns (uint256) {
+        return 0;
+    }
+
+    function claim() external pure returns (uint256) {
+        return 0;
+    }
+
+    function owedIn(address, address) external view returns (uint256) {
+        return attacked ? 0 : 1;
+    }
+
+    function claimIn(address) external returns (uint256) {
+        attacked = true;
+        target.claimOtherFees(asset); // must revert — nonReentrant guard already held
+        return 0;
+    }
 }
 
 /// @notice BuybackBurnerV2 exercised against $BALLAST v2's TWO REAL, LIVE pools
@@ -139,7 +173,7 @@ contract BuybackBurnerV2ForkTest is Test {
         returns (BuybackBurnerV2 bb)
     {
         bb = new BuybackBurnerV2(
-            MANAGER, BALLAST, WETH, NVDA, wethKey, nvdaKey, maxWeth, maxNvda, cooldown, slippageBps, NO_HOOKS
+            MANAGER, BALLAST, WETH, NVDA, wethKey, nvdaKey, maxWeth, maxNvda, cooldown, slippageBps, NO_HOOKS, SAFE
         );
     }
 
@@ -151,7 +185,7 @@ contract BuybackBurnerV2ForkTest is Test {
         address[] memory hooks
     ) internal returns (BuybackBurnerV2 bb) {
         bb = new BuybackBurnerV2(
-            MANAGER, BALLAST, WETH, NVDA, wethKey, nvdaKey, maxWeth, maxNvda, cooldown, slippageBps, hooks
+            MANAGER, BALLAST, WETH, NVDA, wethKey, nvdaKey, maxWeth, maxNvda, cooldown, slippageBps, hooks, SAFE
         );
     }
 
@@ -318,6 +352,7 @@ contract BuybackBurnerV2ForkTest is Test {
         assertEq(bb.maxNvdaPerCall(), 1000e18);
         assertEq(bb.cooldownSeconds(), 1 hours);
         assertEq(bb.maxSlippageBps(), 2000);
+        assertEq(bb.fallbackRecipient(), SAFE, "also immutable, no setter exists");
     }
 
     // ── Sandwich attempt bounded by the slippage guard ──────────────────────
@@ -569,70 +604,188 @@ contract BuybackBurnerV2ForkTest is Test {
         _fundWeth(HOOK, seeded);
 
         vm.prank(anyone); // permissionless
-        uint256 claimed = bb.claimFees();
+        (uint256 wethClaimed, uint256 nvdaClaimed) = bb.claimFees();
 
-        assertEq(claimed, seeded);
+        assertEq(wethClaimed, seeded);
+        assertEq(nvdaClaimed, 0, "nothing owed in NVDA in this scenario");
         assertEq(IWETH9c(WETH).balanceOf(address(bb)), seeded);
         assertEq(bb.buybackCount(), 0, "claiming alone never triggers a swap");
     }
 
-    // ── 2026-10-06: proves a real, severe gap — DO NOT sign setPlatformVault  ──
-    // ── until this is resolved. See the chat record for the full writeup.    ──
+    // ── 2026-10-06/13: the stuck-funds gap found this session, now fixed —      ──
+    // ── NVDA/WETH are auto-claimed and burned; everything else is auto-claimed ──
+    // ── and forwarded whole to fallbackRecipient. See chat record for the full ──
+    // ── writeup and the original failing proof (git history, same test name,   ──
+    // ── before this fix).                                                     ──
 
-    /// @dev BallastHook._distribute (src/BallastHook.sol:335-343) splits by quote
-    ///      asset: WETH-quoted fees go to `owed[recipient]` (claim()); every OTHER
-    ///      quote asset's fees go to `owedIn[recipient][quoteAsset]` (claimIn(asset)).
-    ///      BuybackBurnerV2.claimFees()/_claimFees() only ever calls claim()/owed()
-    ///      -- claimIn is referenced nowhere in this contract (grep confirms it).
-    ///      So: if FeeConfig.platformVault is pointed at this contract, EVERY
-    ///      non-WETH-quoted pool's platform share (today: BALLAST v2's own NVDA
-    ///      pool; structurally ANY future non-WETH quote asset too) accrues to
-    ///      owedIn[address(this)][asset] and stays there FOREVER -- the only
-    ///      address that can ever call claimIn(asset) for it is this contract
-    ///      itself (owedIn is keyed by msg.sender), and this contract has no
-    ///      function, no fallback, and no upgrade path that could ever do that.
-    ///      This test proves it end to end against the real hook and the real
-    ///      FeeConfig owner (the Safe), not a mock.
-    function test_fork_PROVES_nonWethQuotedPlatformFeeIsPermanentlyStuck() public {
+    /// @dev Was `test_fork_PROVES_nonWethQuotedPlatformFeeIsPermanentlyStuck` —
+    ///      flipped now that the fix lands: the real platform fee share that
+    ///      accrues to owedIn[burner][NVDA] after setPlatformVault is auto-claimed
+    ///      by buybackAndBurn's NVDA path (via _claimNvda(), owedIn/claimIn) and
+    ///      burned, exactly like a WETH buyback already was.
+    function test_fork_nvdaPlatformFeeIsClaimedAndBurned_afterSetPlatformVault() public {
         if (!forked) return;
         address[] memory hooks = new address[](1);
         hooks[0] = HOOK;
         BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
 
-        // Step 1: the Safe (real, live FeeConfig owner -- confirmed this session)
-        // signs exactly the transaction this whole thread has been building toward.
         vm.prank(SAFE);
         IFeeConfigAdmin(FEE_CONFIG).setPlatformVault(address(bb));
         assertEq(IFeeConfigAdmin(FEE_CONFIG).platformVault(), address(bb));
 
-        // Step 2: a real trader swaps through BALLAST v2's real NVDA-quoted pool --
-        // same real liquidity, same real hook, same real _distribute logic every
-        // other test in this file already exercises for WETH.
+        // A real trader swaps through BALLAST v2's real NVDA-quoted pool.
         SandwichAttacker trader = new SandwichAttacker(MANAGER);
         deal(NVDA, address(trader), 1e18, true);
         trader.pump(nvdaKey, 1e18);
 
-        uint256 stuckAmount = IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA);
-        assertGt(stuckAmount, 0, "sanity: a real platform fee share accrued to the burner in owedIn");
+        uint256 accrued = IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA);
+        assertGt(accrued, 0, "sanity: a real platform fee share accrued to the burner in owedIn");
+        assertEq(bb.accruedNvda(), accrued, "view agrees before anything is pulled");
 
-        // Step 3: claimFees() -- the ONLY permissionless entrypoint this contract
-        // has for pulling fees -- is blind to it. Not reverting, not helping either.
-        vm.prank(anyone);
-        uint256 claimed = bb.claimFees();
-        assertEq(claimed, 0, "claimFees() only ever touches owed()/claim() -- owedIn is invisible to it");
-        assertEq(
-            IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA), stuckAmount, "still sitting there, untouched"
+        uint256 deadBefore = IERC20(BALLAST).balanceOf(DEAD);
+        vm.prank(anyone); // permissionless -- no keeper, no special caller
+        uint256 bought = bb.buybackAndBurn(NVDA, accrued, 0);
+
+        assertGt(bought, 0, "claimed via owedIn/claimIn AND spent, in one call");
+        assertEq(IERC20(BALLAST).balanceOf(DEAD) - deadBefore, bought);
+        assertEq(bb.totalSpent(NVDA), accrued);
+
+        // The buyback's OWN swap is itself subject to the hook's 1% fee, and since
+        // platformVault is now this contract, 20% of THAT fee credits right back to
+        // owedIn[bb][NVDA] -- AFTER the pre-swap claim already ran this call, so a
+        // small residual is expected, not stuck: the NEXT permissionless call (here,
+        // a standalone claimFees()) picks it up and zeroes it, same mechanism, no
+        // special handling needed.
+        uint256 residual = IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA);
+        if (residual > 0) {
+            (, uint256 nvdaClaimed) = bb.claimFees();
+            assertEq(nvdaClaimed, residual, "the self-referential residual from the buyback's own fee");
+            assertEq(IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA), 0, "fully pulled, nothing left stuck");
+        }
+    }
+
+    /// @dev A platform fee in a third quote asset (not WETH, not NVDA) lands in the
+    ///      Safe, exact amount. No real third-quote-asset pool/launch exists yet on
+    ///      gen-4 (confirmed this session: every FeeTaken event in gen-4's history
+    ///      is WETH- or NVDA-quoted only), so the accrual itself is seeded via
+    ///      stdstore directly on the REAL hook's owedIn ledger -- the closest real
+    ///      setup possible without a live third-quote-asset launch. Everything
+    ///      downstream (claimIn, the forward, the Safe's real balance) is real.
+    ///      SGOV is a real, registry-listed asset (AssetRegistry, GREEN-eligible).
+    function test_fork_thirdAssetPlatformFee_claimedAndLandsInSafe_exactAmount() public {
+        if (!forked) return;
+        address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
+        address[] memory hooks = new address[](1);
+        hooks[0] = HOOK;
+        BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
+
+        uint256 seeded = 1234e6; // SGOV is 6-decimal, same as other stock tokens on this chain
+        stdstore.target(HOOK).sig("owedIn(address,address)").with_key(address(bb)).with_key(sgov).checked_write(
+            seeded
         );
+        deal(sgov, HOOK, seeded, true); // the hook must actually hold it to pay out via claimIn
 
-        // Step 4: prove there is no OTHER way out either -- no function on this
-        // contract's real deployed bytecode responds to claimIn's selector (no
-        // fallback exists, so an unmatched selector reverts cleanly).
-        (bool ok,) = address(bb).call(abi.encodeWithSelector(bytes4(keccak256("claimIn(address)")), NVDA));
-        assertFalse(ok, "no function on the burner can ever call hook.claimIn -- confirmed against real bytecode");
+        uint256 safeBalBefore = IERC20(sgov).balanceOf(SAFE);
 
-        // Step 5: the amount is still exactly where it was -- permanently stuck,
-        // not merely "not yet claimed." Nothing-left-to-try, by construction.
-        assertEq(IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA), stuckAmount);
+        vm.prank(anyone); // permissionless
+        uint256 forwarded = bb.claimOtherFees(sgov);
+
+        assertEq(forwarded, seeded, "exact amount, not an estimate");
+        assertEq(IERC20(sgov).balanceOf(SAFE) - safeBalBefore, seeded, "landed in the Safe, exact amount");
+        assertEq(IERC20(sgov).balanceOf(address(bb)), 0, "never held here");
+        assertEq(IBallastHookOwedIn(HOOK).owedIn(address(bb), sgov), 0, "fully pulled from the hook");
+        assertEq(bb.totalForwarded(sgov), seeded);
+    }
+
+    function test_fork_claimOtherFees_revertsForWeth() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
+        vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
+        bb.claimOtherFees(WETH);
+    }
+
+    function test_fork_claimOtherFees_revertsForNvda() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
+        vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
+        bb.claimOtherFees(NVDA);
+    }
+
+    function test_fork_claimOtherFees_revertsForBallast() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
+        vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
+        bb.claimOtherFees(BALLAST);
+    }
+
+    /// @dev A non-burnable asset sent here directly (no hook involved at all) is
+    ///      forwardable via claimOtherFees; a WETH/NVDA donation is spendable ONLY
+    ///      via buybackAndBurn (claimOtherFees refuses them outright, proven above
+    ///      — this half shows the POSITIVE path: a plain donation really can be
+    ///      bought-and-burned, not just that the wrong function reverts).
+    function test_fork_donation_nonBurnableIsForwardable_wethNvdaOnlySpendableViaBuyback() public {
+        if (!forked) return;
+        address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
+        BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
+
+        // Non-burnable: a plain transfer in, no claim involved.
+        deal(sgov, address(bb), 500e6, true);
+        uint256 safeBalBefore = IERC20(sgov).balanceOf(SAFE);
+        uint256 forwarded = bb.claimOtherFees(sgov);
+        assertEq(forwarded, 500e6);
+        assertEq(IERC20(sgov).balanceOf(SAFE) - safeBalBefore, 500e6);
+
+        // WETH: a plain transfer in is spendable only via buybackAndBurn.
+        _fundWeth(address(bb), 0.001 ether);
+        vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
+        bb.claimOtherFees(WETH);
+        uint256 deadBefore = IERC20(BALLAST).balanceOf(DEAD);
+        vm.prank(anyone);
+        uint256 bought = bb.buybackAndBurn(WETH, 0.001 ether, 0);
+        assertGt(bought, 0);
+        assertEq(IERC20(BALLAST).balanceOf(DEAD) - deadBefore, bought);
+    }
+
+    function test_fork_claimOtherFees_reentrantHook_reverts() public {
+        if (!forked) return;
+        address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
+        ReentrantClaimInHookFork hook = new ReentrantClaimInHookFork();
+        address[] memory hooks = new address[](1);
+        hooks[0] = address(hook);
+        BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
+        hook.setTarget(bb, sgov);
+
+        vm.expectRevert();
+        bb.claimOtherFees(sgov);
+    }
+
+    /// @dev Companion to the main WETH/NVDA invariant above: a platform fee in a
+    ///      third asset leaves this contract ONLY via a transfer to
+    ///      `fallbackRecipient`, never anywhere else, proven directly from the
+    ///      Transfer log.
+    function test_fork_invariant_thirdAssetLeavesOnlyToFallbackRecipient() public {
+        if (!forked) return;
+        address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
+        BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
+        deal(sgov, address(bb), 777e6, true);
+
+        vm.recordLogs();
+        uint256 forwarded = bb.claimOtherFees(sgov);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        _assertSingleOutboundTransfer(logs, sgov, address(bb), forwarded);
+
+        // And that single transfer's recipient is fallbackRecipient, nowhere else.
+        bytes32 transferSig = keccak256("Transfer(address,address,uint256)");
+        bool foundToFallback;
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory l = logs[i];
+            if (l.emitter != sgov || l.topics[0] != transferSig) continue;
+            if (address(uint160(uint256(l.topics[1]))) != address(bb)) continue;
+            assertEq(address(uint160(uint256(l.topics[2]))), SAFE, "the only outbound transfer goes to fallbackRecipient");
+            foundToFallback = true;
+        }
+        assertTrue(foundToFallback);
     }
 }
 
