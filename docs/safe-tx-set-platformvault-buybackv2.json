@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Point FeeConfig.platformVault at the new BuybackBurnerV2 (TEMPLATE)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0xE09F093595045E8765F420Cb12E0AA250910E5AD",
+      "value": "0",
+      "data": "PASTE_SETPLATFORMVAULT_CALLDATA_HERE",
+      "contractMethod": null,
+      "_comment": "The load-bearing transaction: FeeConfig.setPlatformVault(<BuybackBurnerV2 address>). FeeConfig (gen-4, current) is Ownable2Step, owner() confirmed as this Safe on 2026-09-29 (re-verify with `cast call 0xE09F093595045E8765F420Cb12E0AA250910E5AD \"owner()(address)\"` before signing -- RPC was unreachable from the agent sandbox this session so this could not be re-checked live). Once this lands, EVERY future swap's platform fee share (20% of the hook's 1% fee, across EVERY pool this chain's singleton BallastHook serves, not just BALLAST v2's own pool) accrues as owed(BuybackBurnerV2) instead of owed(Safe), and BuybackBurnerV2's own buybackAndBurn/claimFees pulls it permissionlessly -- no further Safe action needed for ongoing funding. Compute the real calldata with: cast calldata \"setPlatformVault(address)\" <BuybackBurnerV2address>. Fill in the real deployed address before signing -- this file is a template, not ready to sign as-is. Sign this AFTER confirming the backfill step (docs/BUYBACK_BURN_GO_LIVE.md step 5) has already swept whatever was owed to the Safe under the OLD platformVault setting, since this change does not retroactively move past accrual."
+    }
+  ]
+}

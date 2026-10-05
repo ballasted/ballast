@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "One-time backfill: sweep the Safe's already-accrued hook fee share into BuybackBurnerV2 (TEMPLATE, TWO SEPARATE SIGNATURES)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "0x4eB2dD759F4d6524E66057D1ADc10c26E40142Cc",
+      "value": "0",
+      "data": "PASTE_CLAIM_CALLDATA_HERE",
+      "contractMethod": null,
+      "_comment": "Step A: BallastHook.claim() -- pulls whatever is currently owed(Safe) (the platform's 20% hook-fee share accrued BEFORE setPlatformVault was repointed) into the Safe's own WETH balance. Calldata is fixed (no args): cast calldata \"claim()\". Check the real amount first with cast call 0x4eB2dD759F4d6524E66057D1ADc10c26E40142Cc \"owed(address)(uint256)\" 0xEFC97e16a24d2434C7138a2634E554a0631aC079 -- was 0 as of 2026-09-29 per docs/BALLAST_STATE.md (fully claimed that session), so whatever this returns now is just the trading activity since then. RPC was unreachable from the agent sandbox this session, so this figure could not be re-verified live -- do not skip the cast call before signing."
+    },
+    {
+      "to": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+      "value": "0",
+      "data": "PASTE_TRANSFER_CALLDATA_HERE",
+      "contractMethod": null,
+      "_comment": "Step B: WETH.transfer(<BuybackBurnerV2 address>, <exact amount claimed in Step A>) -- a PLAIN ERC20 transfer, NOT a native ETH send. Submit this as its own signature AFTER Step A has actually landed and you've confirmed the Safe's real WETH balance delta (Safe UI can't chain 'whatever I just received' automatically -- the amount must be the real, observed number, not guessed). Compute calldata with: cast calldata \"transfer(address,uint256)\" <BuybackBurnerV2address> <amountWei>. This step is optional -- if skipped, that one historical accrual simply stays claimable by the Safe directly (hook.claim() from the Safe's own wallet, any time) and is not otherwise lost; only FUTURE accrual automatically reaches BuybackBurnerV2 once safe-tx-set-platformvault-buybackv2.json has landed."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": { "name": "Fund the new buybackv2-deployer wallet with gas ETH only (TEMPLATE)", "txBuilderVersion": "1.16.0" },
+  "transactions": [
+    {
+      "to": "PASTE_NEW_KEYSTORE_ADDRESS_HERE",
+      "value": "1000000000000000",
+      "data": null,
+      "contractMethod": null,
+      "_comment": "Sends 0.001 ETH (plain transfer) to a BRAND NEW keystore you create yourself (suggested name: 'buybackv2-deployer') -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1. A prior dry run of this exact script (2026-09-30) estimated the deploy cost at ~0.0000690 ETH, so 0.001 ETH is ~14x margin, still negligible on this L2 -- re-run the dry run yourself before funding to confirm that estimate still holds (see docs/BUYBACK_BURN_GO_LIVE.md step 2). This wallet is gas-only: it deploys BuybackBurnerV2 (one transaction, nonce 0, no owner -- see contracts/src/BuybackBurnerV2.sol) and does nothing else ever again."
+    }
+  ]
+}
