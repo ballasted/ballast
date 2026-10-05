@@ -86,6 +86,8 @@ contract BuybackBurnerV2ForkTest is Test {
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
     address constant HOOK = 0x4eB2dD759F4d6524E66057D1ADc10c26E40142Cc;
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
+    address constant FEE_CONFIG = 0xE09F093595045E8765F420Cb12E0AA250910E5AD;
+    address constant SAFE = 0xEFC97e16a24d2434C7138a2634E554a0631aC079;
 
     uint256 internal constant BPS = 10_000;
 
@@ -573,4 +575,72 @@ contract BuybackBurnerV2ForkTest is Test {
         assertEq(IWETH9c(WETH).balanceOf(address(bb)), seeded);
         assertEq(bb.buybackCount(), 0, "claiming alone never triggers a swap");
     }
+
+    // ── 2026-10-06: proves a real, severe gap — DO NOT sign setPlatformVault  ──
+    // ── until this is resolved. See the chat record for the full writeup.    ──
+
+    /// @dev BallastHook._distribute (src/BallastHook.sol:335-343) splits by quote
+    ///      asset: WETH-quoted fees go to `owed[recipient]` (claim()); every OTHER
+    ///      quote asset's fees go to `owedIn[recipient][quoteAsset]` (claimIn(asset)).
+    ///      BuybackBurnerV2.claimFees()/_claimFees() only ever calls claim()/owed()
+    ///      -- claimIn is referenced nowhere in this contract (grep confirms it).
+    ///      So: if FeeConfig.platformVault is pointed at this contract, EVERY
+    ///      non-WETH-quoted pool's platform share (today: BALLAST v2's own NVDA
+    ///      pool; structurally ANY future non-WETH quote asset too) accrues to
+    ///      owedIn[address(this)][asset] and stays there FOREVER -- the only
+    ///      address that can ever call claimIn(asset) for it is this contract
+    ///      itself (owedIn is keyed by msg.sender), and this contract has no
+    ///      function, no fallback, and no upgrade path that could ever do that.
+    ///      This test proves it end to end against the real hook and the real
+    ///      FeeConfig owner (the Safe), not a mock.
+    function test_fork_PROVES_nonWethQuotedPlatformFeeIsPermanentlyStuck() public {
+        if (!forked) return;
+        address[] memory hooks = new address[](1);
+        hooks[0] = HOOK;
+        BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
+
+        // Step 1: the Safe (real, live FeeConfig owner -- confirmed this session)
+        // signs exactly the transaction this whole thread has been building toward.
+        vm.prank(SAFE);
+        IFeeConfigAdmin(FEE_CONFIG).setPlatformVault(address(bb));
+        assertEq(IFeeConfigAdmin(FEE_CONFIG).platformVault(), address(bb));
+
+        // Step 2: a real trader swaps through BALLAST v2's real NVDA-quoted pool --
+        // same real liquidity, same real hook, same real _distribute logic every
+        // other test in this file already exercises for WETH.
+        SandwichAttacker trader = new SandwichAttacker(MANAGER);
+        deal(NVDA, address(trader), 1e18, true);
+        trader.pump(nvdaKey, 1e18);
+
+        uint256 stuckAmount = IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA);
+        assertGt(stuckAmount, 0, "sanity: a real platform fee share accrued to the burner in owedIn");
+
+        // Step 3: claimFees() -- the ONLY permissionless entrypoint this contract
+        // has for pulling fees -- is blind to it. Not reverting, not helping either.
+        vm.prank(anyone);
+        uint256 claimed = bb.claimFees();
+        assertEq(claimed, 0, "claimFees() only ever touches owed()/claim() -- owedIn is invisible to it");
+        assertEq(
+            IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA), stuckAmount, "still sitting there, untouched"
+        );
+
+        // Step 4: prove there is no OTHER way out either -- no function on this
+        // contract's real deployed bytecode responds to claimIn's selector (no
+        // fallback exists, so an unmatched selector reverts cleanly).
+        (bool ok,) = address(bb).call(abi.encodeWithSelector(bytes4(keccak256("claimIn(address)")), NVDA));
+        assertFalse(ok, "no function on the burner can ever call hook.claimIn -- confirmed against real bytecode");
+
+        // Step 5: the amount is still exactly where it was -- permanently stuck,
+        // not merely "not yet claimed." Nothing-left-to-try, by construction.
+        assertEq(IBallastHookOwedIn(HOOK).owedIn(address(bb), NVDA), stuckAmount);
+    }
+}
+
+interface IFeeConfigAdmin {
+    function setPlatformVault(address vault) external;
+    function platformVault() external view returns (address);
+}
+
+interface IBallastHookOwedIn {
+    function owedIn(address recipient, address currency) external view returns (uint256);
 }
