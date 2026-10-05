@@ -346,6 +346,71 @@ contract OpenTreasuryVaultTest is Test {
         assertEq(v.assetWeight(alice, address(asset18)), 100 ether + 120 ether);
     }
 
+    /// @dev Regression test for the deviation-breaker lock-out fixed 2026-10-06.
+    ///      `lastPrice[asset]` only advances on a SUCCESSFUL deposit (a revert rolls
+    ///      back every state change in that call), so without time-based widening a
+    ///      legitimate, gradual price move that drifts >20% from a long-stale anchor
+    ///      would block every subsequent deposit of that asset forever, by anyone.
+    ///      The fix: the allowed band widens by one more `MAX_PRICE_DEVIATION_BPS`
+    ///      increment per `DEVIATION_WIDEN_PERIOD` (7 days) elapsed since the anchor
+    ///      was last set, capped at `MAX_DEVIATION_WIDEN_PERIODS`. This proves (a) a
+    ///      near-term manipulation attempt is still caught at the tight ±20% band,
+    ///      and (b) a genuine multi-week drift eventually clears on its own.
+    function test_priceDeviationBreaker_widensOverTimeInsteadOfPermanentlyLocking() public {
+        OpenTreasuryVault v = _vault();
+        _depositAsAlice(v, asset18, 1 ether); // lastPrice[asset18] = 100e8, anchored now
+
+        // Same-period attempt (no time elapsed): still caught at the tight ±20% band.
+        feed18.setAnswer(135_00000000, block.timestamp);
+        vm.startPrank(bob);
+        asset18.approve(address(v), 10 ether);
+        vm.expectRevert(
+            abi.encodeWithSelector(OpenTreasuryVault.PriceDeviationTooLarge.selector, address(asset18), 100_00000000, 135_00000000)
+        );
+        v.deposit(address(asset18), 1 ether);
+        vm.stopPrank();
+        assertEq(v.lastPrice(address(asset18)), 100_00000000, "anchor must NOT have moved after a reverted attempt");
+
+        // 10 days later (1 full 7-day widen period elapsed): band is now +/-40%
+        // (100 -> [60, 140]), which covers the still-legitimate $135 — deposit
+        // succeeds and the anchor re-advances to $135.
+        vm.warp(block.timestamp + 10 days);
+        feed18.setAnswer(135_00000000, block.timestamp);
+        vm.startPrank(bob);
+        v.deposit(address(asset18), 1 ether);
+        vm.stopPrank();
+        assertEq(v.lastPrice(address(asset18)), 135_00000000, "anchor must advance once the widened band covers it");
+    }
+
+    /// @dev Companion test isolating the exact widening schedule: band = +/-20% *
+    ///      (periods elapsed + 1), capped at 4 periods (28 days -> +/-80%, then flat).
+    function test_priceDeviationBreaker_bandWidensLinearlyThenCaps() public {
+        OpenTreasuryVault v = _vault();
+        _depositAsAlice(v, asset18, 1 ether); // anchor = 100e8 @ t0
+
+        vm.startPrank(bob);
+        asset18.approve(address(v), 100 ether);
+
+        // t0 + 6 days (0 full periods elapsed yet): band is still the base +/-20%.
+        // $121 is just outside +20% (121 > 120) -> reverts.
+        vm.warp(block.timestamp + 6 days);
+        feed18.setAnswer(121_00000000, block.timestamp);
+        vm.expectRevert(
+            abi.encodeWithSelector(OpenTreasuryVault.PriceDeviationTooLarge.selector, address(asset18), 100_00000000, 121_00000000)
+        );
+        v.deposit(address(asset18), 1 ether);
+
+        // t0 + 8 days (1 full period elapsed): band widens to +/-40%. $121 now
+        // clears it, deposit succeeds and re-anchors at $121. Re-publish the feed
+        // (still $121, nothing manipulated) so this isolates the deviation check
+        // from the separate staleness check.
+        vm.warp(block.timestamp + 2 days);
+        feed18.setAnswer(121_00000000, block.timestamp);
+        v.deposit(address(asset18), 1 ether);
+        assertEq(v.lastPrice(address(asset18)), 121_00000000);
+        vm.stopPrank();
+    }
+
     // --------------------------------------------------------------------- //
     //  Reward math                                                          //
     // --------------------------------------------------------------------- //

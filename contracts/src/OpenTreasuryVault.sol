@@ -41,6 +41,19 @@ contract OpenTreasuryVault is ReentrancyGuard {
     ///         exists on this chain to cross-check against; this bounds the blast
     ///         radius of a single bad round, nothing more.
     uint256 public constant MAX_PRICE_DEVIATION_BPS = 2_000;
+    /// @notice Every full period elapsed since the anchor (`lastPriceAt[asset]`) was
+    ///         last set, the allowed band widens by one more `MAX_PRICE_DEVIATION_BPS`
+    ///         increment, capped at `MAX_DEVIATION_WIDEN_PERIODS`. This exists because
+    ///         the anchor only ever advances on a SUCCESSFUL deposit (a revert rolls
+    ///         back the `lastPrice` write) — without widening, a genuine multi-week
+    ///         price drift between deposits would permanently brick all future
+    ///         deposits of that asset, by anyone, forever. Reuses this contract's own
+    ///         7-day reward period (D10) as the widening period rather than inventing
+    ///         a new magnitude. A same-period manipulation attempt is still caught at
+    ///         the tight ±20% band; only elapsed time (not a caller-supplied value)
+    ///         ever widens it.
+    uint256 internal constant DEVIATION_WIDEN_PERIOD = 7 days;
+    uint256 internal constant MAX_DEVIATION_WIDEN_PERIODS = 4; // caps effective band at BPS (see _priceAndValue)
 
     // --------------------------------------------------------------------- //
     //  Config — set once in initialize(); no setter exists for any of it    //
@@ -60,6 +73,7 @@ contract OpenTreasuryVault is ReentrancyGuard {
 
     mapping(address asset => uint256) public totalPrincipal;
     mapping(address asset => uint256) public lastPrice; // last observed feed price, this asset
+    mapping(address asset => uint256) public lastPriceAt; // when lastPrice was last set (deviation-band widening)
 
     mapping(address depositor => mapping(address asset => uint256)) public principal;
     mapping(address depositor => mapping(address asset => uint256)) public assetWeight; // USD, 1e18
@@ -365,11 +379,15 @@ contract OpenTreasuryVault is ReentrancyGuard {
 
         uint256 last = lastPrice[asset];
         if (last != 0) {
-            uint256 lo = (last * (BPS - MAX_PRICE_DEVIATION_BPS)) / BPS;
-            uint256 hi = (last * (BPS + MAX_PRICE_DEVIATION_BPS)) / BPS;
+            uint256 periods = (block.timestamp - lastPriceAt[asset]) / DEVIATION_WIDEN_PERIOD;
+            if (periods > MAX_DEVIATION_WIDEN_PERIODS - 1) periods = MAX_DEVIATION_WIDEN_PERIODS - 1;
+            uint256 bandBps = MAX_PRICE_DEVIATION_BPS * (periods + 1); // capped at BPS, see constant comment
+            uint256 lo = (last * (BPS - bandBps)) / BPS;
+            uint256 hi = (last * (BPS + bandBps)) / BPS;
             if (price < lo || price > hi) revert PriceDeviationTooLarge(asset, last, price);
         }
         lastPrice[asset] = price;
+        lastPriceAt[asset] = block.timestamp;
 
         uint8 priceDec = feed.decimals();
         uint8 assetDec = IERC20Metadata(asset).decimals();
