@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { erc20Abi } from "@/lib/abis";
 import { PROTOCOL_TOKEN_ADDRESS } from "@/components/app/token/ProtocolTokenNotice";
 import { liveQuery } from "@/lib/refresh";
-import { useBuybackV2 } from "@/hooks/useBuybackV2";
+import { useBuybackV2, type TriggerPhase } from "@/hooks/useBuybackV2";
 import { BUYBACK_V2_ADDRESS } from "@/lib/contracts";
 
 // The burn address is a compile-time constant of BuybackBurner. Shown here so anyone
@@ -189,31 +189,30 @@ export default function BuybackPage() {
 // balances (WETH/NVDA sent by the Safe, not yet spent), per-asset cooldown
 // status, and the cumulative burn total. Before that, an honest "manual,
 // nothing automated yet" state — never a fabricated log entry.
+function readyLabel(readyAt: bigint | undefined, now: number): string {
+  if (readyAt === undefined || now === 0) return "Unknown";
+  const r = Number(readyAt);
+  if (r === 0 || r <= now) return "Ready now";
+  const mins = Math.ceil((r - now) / 60);
+  return mins < 60 ? `Ready in ${mins}m` : `Ready in ${Math.ceil(mins / 60)}h`;
+}
+
 function BuybackV2Panel() {
   const now = useNow();
   const v2 = useBuybackV2();
   const { isConnected } = useAccount();
   const net = useNetworkGuard();
-  const busy = v2.triggerWethPhase === "triggering";
 
   if (!v2.configured) {
     return (
       <section className="card p-5">
         <h2 className="section-label">v2 buyback</h2>
         <p className="mt-3 text-sm text-text-muted">
-          Manual — BuybackBurnerV2 isn&apos;t deployed yet. Once it is, this section reads it live: available WETH,
-          cooldown status, the last burn, and the trigger itself.
+          Manual — BuybackBurnerV2 isn&apos;t deployed yet. Once it is, this section reads it live: available
+          WETH/NVDA, cooldown status, the last burn, and the trigger itself.
         </p>
       </section>
     );
-  }
-
-  function readyLabel(readyAt?: bigint): string {
-    if (readyAt === undefined || now === 0) return "Unknown";
-    const r = Number(readyAt);
-    if (r === 0 || r <= now) return "Ready now";
-    const mins = Math.ceil((r - now) / 60);
-    return mins < 60 ? `Ready in ${mins}m` : `Ready in ${Math.ceil(mins / 60)}h`;
   }
 
   return (
@@ -225,98 +224,216 @@ function BuybackV2Panel() {
           <div className="mt-1 tabular-nums text-text-primary">{amt(v2.totalBallastBurned, 0)}</div>
         </div>
         <div>
-          <div className="eyebrow">WETH spent</div>
-          <div className="mt-1 tabular-nums text-text-primary">{amt(v2.wethSpent)}</div>
+          <div className="eyebrow">Last burn</div>
+          {v2.lastBurn ? (
+            <a
+              className="mt-1 inline-flex items-center gap-1 text-sm text-green underline underline-offset-2"
+              href={`${EXPLORER}/tx/${v2.lastBurn.txHash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {amt(v2.lastBurn.ballastBought, 0)} removed ↗
+            </a>
+          ) : v2.historyError ? (
+            <div className="mt-1 text-sm text-text-muted">Unknown</div>
+          ) : (
+            <div className="mt-1 text-sm text-text-muted">None yet</div>
+          )}
         </div>
         <div>
-          <div className="eyebrow">WETH waiting here</div>
-          <div className="mt-1 tabular-nums text-text-primary" title="Held balance plus whatever is still claimable from the configured fee hooks.">
-            {amt(v2.wethAccrued)}
+          <div className="eyebrow">Buybacks run</div>
+          <div className="mt-1 tabular-nums text-text-primary">{v2.buybackCount ?? 0}</div>
+        </div>
+        {BUYBACK_V2_ADDRESS && (
+          <div>
+            <div className="eyebrow">Contract</div>
+            <a
+              className="mt-1 inline-block text-sm text-green underline underline-offset-2"
+              href={`${EXPLORER}/address/${BUYBACK_V2_ADDRESS}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Blockscout ↗
+            </a>
           </div>
-        </div>
-        <div>
-          <div className="eyebrow">Next WETH buyback</div>
-          <div className="mt-1 text-text-secondary">{readyLabel(v2.wethReadyAt)}</div>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <div className="eyebrow">Last burn</div>
-        {v2.lastBurn ? (
-          <a
-            className="mt-1 inline-flex items-center gap-2 text-sm text-green underline underline-offset-2"
-            href={`${EXPLORER}/tx/${v2.lastBurn.txHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {amt(v2.lastBurn.ballastBought, 0)} $BALLAST removed from circulation ↗
-          </a>
-        ) : v2.historyError ? (
-          <div className="mt-1 text-sm text-text-muted">Unknown — couldn&apos;t read the event log.</div>
-        ) : (
-          <div className="mt-1 text-sm text-text-muted">No burns yet.</div>
         )}
       </div>
 
-      <div className="mt-4">
-        {v2.triggerWethPhase === "success" ? (
-          <div className="space-y-2">
-            <p className="text-sm text-green">Buyback confirmed — the $BALLAST it bought was burned.</p>
-            <div className="flex flex-wrap items-center gap-3">
-              {v2.triggerWethTxHash && (
+      <BuybackV2AssetRow
+        label="WETH"
+        now={now}
+        isConnected={isConnected}
+        net={net}
+        spent={v2.wethSpent}
+        waiting={v2.wethAccrued}
+        readyAt={v2.wethReadyAt}
+        ready={v2.wethReady}
+        phase={v2.triggerWethPhase}
+        txHash={v2.triggerWethTxHash}
+        error={v2.triggerWethError}
+        onTrigger={v2.triggerWeth}
+        onReset={v2.resetTriggerWeth}
+      />
+      <BuybackV2AssetRow
+        label="NVDA"
+        now={now}
+        isConnected={isConnected}
+        net={net}
+        spent={v2.nvdaSpent}
+        waiting={v2.nvdaAccrued}
+        readyAt={v2.nvdaReadyAt}
+        ready={v2.nvdaReady}
+        phase={v2.triggerNvdaPhase}
+        txHash={v2.triggerNvdaTxHash}
+        error={v2.triggerNvdaError}
+        onTrigger={v2.triggerNvda}
+        onReset={v2.resetTriggerNvda}
+        decimals={4}
+      />
+
+      {(v2.otherPending.length > 0 || v2.otherForwarded.length > 0) && (
+        <div className="mt-5 border-t border-border-subtle pt-4">
+          <div className="eyebrow">Platform fees in other assets</div>
+          <p className="mt-1 text-xs text-text-faint">
+            No pool here to buy back and burn these — forwarded whole to the Safe instead, never held or spent.
+          </p>
+          <div className="mt-2 space-y-2">
+            {v2.otherPending.map((row) => (
+              <div key={row.address} className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-text-secondary">
+                  {amt(row.amount, 4)} {row.symbol ?? shortAddress(row.address)} pending
+                </span>
+                <button
+                  className="btn-secondary text-xs"
+                  disabled={v2.forwardOtherPhase === "triggering" || !isConnected}
+                  onClick={() => void v2.forwardOther(row.address)}
+                >
+                  {v2.forwardOtherPhase === "triggering" ? "Confirming…" : "Forward to Safe"}
+                </button>
+              </div>
+            ))}
+            {v2.otherForwarded.map((row) => (
+              <div key={row.address} className="text-sm text-text-faint">
+                {amt(row.amount, 4)} {row.symbol ?? shortAddress(row.address)} forwarded to the Safe
+              </div>
+            ))}
+          </div>
+          {v2.forwardOtherError && <p className="mt-2 text-xs text-negative">{v2.forwardOtherError}</p>}
+          {v2.forwardOtherPhase === "success" && (
+            <div className="mt-2 flex items-center gap-3">
+              <p className="text-xs text-green">Forwarded.</p>
+              {v2.forwardOtherTxHash && (
                 <a
                   className="text-xs text-green underline underline-offset-2"
-                  href={`${EXPLORER}/tx/${v2.triggerWethTxHash}`}
+                  href={`${EXPLORER}/tx/${v2.forwardOtherTxHash}`}
                   target="_blank"
                   rel="noreferrer"
                 >
                   View it on Blockscout ↗
                 </a>
               )}
-              <button className="text-xs text-text-faint hover:text-text-secondary" onClick={v2.resetTriggerWeth}>
+              <button className="text-xs text-text-faint hover:text-text-secondary" onClick={v2.resetForwardOther}>
                 Done
               </button>
             </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BuybackV2AssetRow({
+  label,
+  now,
+  isConnected,
+  net,
+  spent,
+  waiting,
+  readyAt,
+  ready,
+  phase,
+  txHash,
+  error,
+  onTrigger,
+  onReset,
+  decimals,
+}: {
+  label: string;
+  now: number;
+  isConnected: boolean;
+  net: ReturnType<typeof useNetworkGuard>;
+  spent?: bigint;
+  waiting?: bigint;
+  readyAt?: bigint;
+  ready: boolean;
+  phase: TriggerPhase;
+  txHash?: `0x${string}`;
+  error?: string;
+  onTrigger: () => Promise<void>;
+  onReset: () => void;
+  decimals?: number;
+}) {
+  const busy = phase === "triggering";
+  return (
+    <div className="mt-4 border-t border-border-subtle pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <div className="eyebrow">{label} spent</div>
+            <div className="mt-1 tabular-nums text-text-primary">{amt(spent, decimals)}</div>
+          </div>
+          <div>
+            <div className="eyebrow">{label} waiting here</div>
+            <div
+              className="mt-1 tabular-nums text-text-primary"
+              title="Held balance plus whatever is still claimable from the configured fee hooks."
+            >
+              {amt(waiting, decimals)}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow">Next {label} buyback</div>
+            <div className="mt-1 text-text-secondary">{readyLabel(readyAt, now)}</div>
+          </div>
+        </div>
+
+        {phase === "success" ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-green">Confirmed — burned.</span>
+            {txHash && (
+              <a
+                className="text-xs text-green underline underline-offset-2"
+                href={`${EXPLORER}/tx/${txHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View ↗
+              </a>
+            )}
+            <button className="text-xs text-text-faint hover:text-text-secondary" onClick={onReset}>
+              Done
+            </button>
           </div>
         ) : !isConnected ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <ConnectButton />
-            <span className="text-xs text-text-faint">Connect a wallet to run a WETH buyback.</span>
-          </div>
+          <ConnectButton />
         ) : net.wrongNetwork ? (
-          <button className="btn-primary w-full sm:w-auto" disabled={net.isSwitching} onClick={() => void net.switchToRobinhood()}>
+          <button className="btn-secondary text-xs" disabled={net.isSwitching} onClick={() => void net.switchToRobinhood()}>
             {net.isSwitching ? "Switching…" : `Switch to ${net.targetChain.name}`}
           </button>
         ) : (
           <button
-            className="btn-primary w-full sm:w-auto"
-            disabled={busy || !v2.wethReady}
-            onClick={() => void v2.triggerWeth()}
-            title={v2.wethReady ? undefined : "Nothing available to spend, or the per-asset cooldown hasn't elapsed."}
+            className="btn-secondary text-xs"
+            disabled={busy || !ready}
+            onClick={() => void onTrigger()}
+            title={ready ? undefined : "Nothing available to spend, or the per-asset cooldown hasn't elapsed."}
           >
-            {busy ? "Confirming…" : v2.wethReady ? "Run buyback" : "Not ready"}
+            {busy ? "Confirming…" : ready ? "Run buyback" : "Not ready"}
           </button>
         )}
-        {(v2.triggerWethError || net.error) && (
-          <p className="mt-2 text-xs text-negative">{v2.triggerWethError ?? net.error}</p>
-        )}
       </div>
-
-      <p className="mt-4 text-xs text-text-faint">
-        {v2.buybackCount ?? 0} buyback{v2.buybackCount === 1 ? "" : "s"} run · permissionless — anyone may call it, no
-        owner exists. NVDA pending: {amt(v2.nvdaPendingBalance, 4)} · {readyLabel(v2.nvdaReadyAt)}.
-      </p>
-      {BUYBACK_V2_ADDRESS && (
-        <a
-          className="mt-2 inline-block text-xs text-green underline underline-offset-2"
-          href={`${EXPLORER}/address/${BUYBACK_V2_ADDRESS}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          View the contract on Blockscout ↗
-        </a>
-      )}
-    </section>
+      {(error || net.error) && <p className="mt-2 text-xs text-negative">{error ?? net.error}</p>}
+    </div>
   );
 }
 
