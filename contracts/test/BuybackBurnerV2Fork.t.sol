@@ -421,6 +421,113 @@ contract BuybackBurnerV2ForkTest is Test {
         assertEq(totalOut, expectedAmount, "the single outbound transfer must equal the full observed balance drop");
     }
 
+    function _sumOutboundTransfers(Vm.Log[] memory logs, address token, address from) internal pure returns (uint256 total) {
+        bytes32 transferSig = keccak256("Transfer(address,address,uint256)");
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory l = logs[i];
+            if (l.emitter != token) continue;
+            if (l.topics.length == 0 || l.topics[0] != transferSig) continue;
+            if (address(uint160(uint256(l.topics[1]))) != from) continue;
+            total += abi.decode(l.data, (uint256));
+        }
+    }
+
+    function _sumBuybackBurnedSpent(Vm.Log[] memory logs) internal pure returns (uint256 total) {
+        bytes32 sig = keccak256("BuybackBurned(address,address,uint256,uint256,uint256)");
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory l = logs[i];
+            if (l.topics.length == 0 || l.topics[0] != sig) continue;
+            (uint256 spent,,) = abi.decode(l.data, (uint256, uint256, uint256));
+            total += spent;
+        }
+    }
+
+    // ── Accounting fix (2026-10-06): totalSpent/event record the REAL settled  ──
+    // ── amount, not the pre-swap request, on both partial and full fills.      ──
+
+    /// @dev The exact live scenario that exposed the bug: requesting far more NVDA
+    ///      than the thin real pool can absorb at the slippage bound. Before the
+    ///      fix, totalSpent(NVDA) and the event's `spent` both read the full 10e18
+    ///      requested; after the fix, both must read the real ~2.7e18 settled.
+    function test_fork_partialFill_recordsRealSettledAmount_notRequested() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
+        _fundNvda(address(bb), 30e18);
+
+        uint256 nvdaBefore = IERC20(NVDA).balanceOf(address(bb));
+        vm.recordLogs();
+        vm.prank(anyone);
+        bb.buybackAndBurn(NVDA, 10e18, 0); // far more than the real pool can absorb at 20%
+        uint256 realSpent = nvdaBefore - IERC20(NVDA).balanceOf(address(bb));
+
+        assertLt(realSpent, 10e18, "sanity: this must actually be a partial fill, not a full one");
+        assertEq(bb.totalSpent(NVDA), realSpent, "totalSpent must record what was really settled, not the request");
+
+        uint256 eventSpent = _singleBuybackBurnedSpent(vm.getRecordedLogs());
+        assertEq(eventSpent, realSpent, "the BuybackBurned event must report the same real amount");
+    }
+
+    /// @dev A small request against real depth fully fills -- requested == settled
+    ///      == totalSpent == event.spent, unchanged from before this fix.
+    function test_fork_fullFill_totalSpentAndEventStillMatchTheRequest() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
+        _fundWeth(address(bb), 0.001 ether);
+        uint256 wethBefore = IERC20(WETH).balanceOf(address(bb));
+
+        vm.recordLogs();
+        vm.prank(anyone);
+        bb.buybackAndBurn(WETH, 0.001 ether, 0);
+        uint256 realSpent = wethBefore - IERC20(WETH).balanceOf(address(bb));
+
+        assertEq(realSpent, 0.001 ether, "sanity: this must be a full fill");
+        assertEq(bb.totalSpent(WETH), 0.001 ether);
+        assertEq(_singleBuybackBurnedSpent(vm.getRecordedLogs()), 0.001 ether);
+    }
+
+    function _singleBuybackBurnedSpent(Vm.Log[] memory logs) internal pure returns (uint256) {
+        bytes32 sig = keccak256("BuybackBurned(address,address,uint256,uint256,uint256)");
+        uint256 matches;
+        uint256 spentOut;
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory l = logs[i];
+            if (l.topics.length == 0 || l.topics[0] != sig) continue;
+            matches++;
+            (uint256 spent,,) = abi.decode(l.data, (uint256, uint256, uint256));
+            spentOut = spent;
+        }
+        assertEq(matches, 1, "expected exactly one BuybackBurned event");
+        return spentOut;
+    }
+
+    /// @dev Across a mix of full and partial fills, on both assets, the sum of every
+    ///      BuybackBurned.spent must equal the sum of every outbound WETH/NVDA
+    ///      Transfer from the contract -- the event never over- or under-reports
+    ///      relative to what actually moved, in aggregate, not just per-call.
+    function test_fork_sumOfBuybackBurnedSpent_equalsSumOfTransfersOut() public {
+        if (!forked) return;
+        BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
+        _fundWeth(address(bb), 1 ether);
+        _fundNvda(address(bb), 30e18);
+
+        vm.recordLogs();
+        vm.prank(anyone);
+        bb.buybackAndBurn(WETH, 0.001 ether, 0); // full fill
+        vm.prank(anyone);
+        bb.buybackAndBurn(NVDA, 10e18, 0); // partial fill (same scenario as above)
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(anyone);
+        bb.buybackAndBurn(WETH, 0.001 ether, 0); // full fill again, independent cooldown
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 totalEventSpent = _sumBuybackBurnedSpent(logs);
+        uint256 totalTransferredOut =
+            _sumOutboundTransfers(logs, WETH, address(bb)) + _sumOutboundTransfers(logs, NVDA, address(bb));
+
+        assertGt(totalEventSpent, 0);
+        assertEq(totalEventSpent, totalTransferredOut, "aggregate event spend must equal aggregate real outflow");
+    }
+
     // ── claimFees integration: a real buyback funded by the platform's hook fee ──
 
     function test_fork_claimFees_fundsAndExecutesARealBuyback() public {

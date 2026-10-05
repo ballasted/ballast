@@ -248,18 +248,34 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
         // by retrying immediately (a reverted call still consumed a block).
         lastBuybackAt[asset] = block.timestamp;
 
+        // `spend` above is a REQUEST (clamped to cap/held) handed into the swap, not
+        // what necessarily leaves this contract -- a thin pool can partially fill
+        // against its own sqrtPriceLimitX96 bound below before consuming all of it
+        // (confirmed live 2026-10-06: requesting 10 NVDA against real liquidity only
+        // settled ~2.71 NVDA including fee). `actualSpent`, decoded back from the
+        // swap's own realized delta, is what's actually true -- that is what gets
+        // recorded and reported, never the pre-swap request. The unspent remainder
+        // (held - actualSpent) was never transferred out, so it simply stays in this
+        // contract's balance for the next call, same as WETH/NVDA sent here any other
+        // way. `lastBuybackAt[asset]` above is already set regardless of fill size --
+        // intentional: the cooldown bounds extraction RATE regardless of mechanism
+        // (full fill against the cap, or partial fill against thin liquidity), so a
+        // partial fill must wait the same cooldown before the remainder can be spent,
+        // exactly like hitting the per-call cap would.
         PoolKey memory key = isWeth ? wethPoolKey : nvdaPoolKey;
-        ballastBought = abi.decode(poolManager.unlock(abi.encode(key, asset, spend)), (uint256));
+        (uint256 actualSpent, uint256 bought) =
+            abi.decode(poolManager.unlock(abi.encode(key, asset, spend)), (uint256, uint256));
+        ballastBought = bought;
         if (ballastBought == 0) revert NothingBought();
         if (ballastBought < minAmountOut) revert MinAmountOutNotMet(ballastBought, minAmountOut);
 
         IERC20(ballast).safeTransfer(DEAD, ballastBought);
 
-        totalSpent[asset] += spend;
+        totalSpent[asset] += actualSpent;
         totalBallastBurned += ballastBought;
         buybackCount += 1;
 
-        emit BuybackBurned(msg.sender, asset, spend, ballastBought, totalBallastBurned);
+        emit BuybackBurned(msg.sender, asset, actualSpent, ballastBought, totalBallastBurned);
     }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
@@ -292,15 +308,20 @@ contract BuybackBurnerV2 is IUnlockCallback, ReentrancyGuard {
         );
 
         // currency0 (the quote asset) is owed by us (negative); currency1 (BALLAST) is received.
+        // d0's magnitude is the REAL amount settled -- on a partial fill (the price
+        // limit above hit before `amountIn` is fully consumed) it is smaller than
+        // `amountIn`. This, not `amountIn`, is returned as the true spend.
         int128 d0 = delta.amount0();
         int128 d1 = delta.amount1();
+        uint256 actualSpent;
         if (d0 < 0) {
-            key.currency0.settle(poolManager, address(this), uint256(uint128(-d0)), false);
+            actualSpent = uint256(uint128(-d0));
+            key.currency0.settle(poolManager, address(this), actualSpent, false);
         }
         uint256 bought = d1 > 0 ? uint256(uint128(d1)) : 0;
         if (bought > 0) {
             key.currency1.take(poolManager, address(this), bought, false);
         }
-        return abi.encode(bought);
+        return abi.encode(actualSpent, bought);
     }
 }
