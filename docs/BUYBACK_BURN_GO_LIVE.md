@@ -135,6 +135,20 @@ first (`docs/PROTOCOL_CONTROLS.md`).
 
 ### Step 1 — create a fresh deploy wallet (you do this, not me)
 
+**Abandoned attempt, 2026-10-06:** the first keystore,
+`0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8`, had its password lost before
+anything was signed. Confirmed live on mainnet this session: nonce **0**,
+so nothing was ever broadcast from it — the deploy never happened and the
+predicted address it printed (`0xcd664C518620140Bee7C95aa6468c40D75026252`)
+was never used. It still holds a stranded 0.002 ETH balance that is
+unspendable without the password; not a security issue (no private key
+exposure, no deploy occurred), just dead weight. Do not fund it further and
+do not reference its predicted address anywhere.
+
+The replacement, `0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F`, is confirmed
+live this session: nonce 0, balance 0, no code (plain EOA) — clean to use.
+`docs/safe-tx-fund-buybackv2-deployer.json` already targets this address.
+
 One command — creates an encrypted keystore directly, never prints the
 private key (only the password prompt, hidden, and the resulting address):
 
@@ -149,7 +163,7 @@ Send me only the printed address.
 ```bash
 cd contracts
 export RPC=$RH_MAINNET_RPC_URL
-forge script script/DeployBuybackV2.s.sol:DeployBuybackV2 --rpc-url $RPC --sender <your-new-address>
+forge script script/DeployBuybackV2.s.sol:DeployBuybackV2 --rpc-url $RPC --sender 0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F
 ```
 
 Prints the predicted `BuybackBurnerV2` address (deterministic CREATE —
@@ -161,17 +175,26 @@ Defaults `MAX_WETH_PER_CALL=0.02 ether`, `MAX_NVDA_PER_CALL=0.5e18`,
 against real pool reserves; re-check those reserves are still roughly that
 order of magnitude before broadcasting (override via env if not).
 
+Re-run this session, 2026-10-06, against the new wallet: predicted address
+`0xDA9ef87A6146f435d34237a9B3a81689603Fa503` (confirmed via both the dry run
+and `cast compute-address --nonce 0`), estimated cost
+0.000098554498501401 ETH at 0.040040001 gwei.
+
 ### Step 3 — Safe: fund the new wallet's gas
 
-Fill in the real address from step 1 into
-`docs/safe-tx-fund-buybackv2-deployer.json`, import it into the Safe
-Transaction Builder, sign.
+`docs/safe-tx-fund-buybackv2-deployer.json` already has the real address
+(`0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F`) filled in — import it into the
+Safe Transaction Builder, sign.
 
 ### Step 4 — deploy + verify
 
+`--account` alone wasn't enough for the prior attempt — it failed during
+simulation on "default sender" before anything was sent. Pass `--sender`
+explicitly alongside `--account` this time:
+
 ```bash
 forge script script/DeployBuybackV2.s.sol:DeployBuybackV2 --rpc-url $RPC \
-  --account buybackv2-deployer --broadcast
+  --account buybackv2-deployer --sender 0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F --broadcast
 ```
 
 Confirm the deployed address matches step 2's prediction (`cast code <addr>`

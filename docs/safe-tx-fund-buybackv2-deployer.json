@@ -5,11 +5,11 @@
   "meta": { "name": "Fund the buybackv2-deployer wallet with gas ETH only", "txBuilderVersion": "1.16.0" },
   "transactions": [
     {
-      "to": "0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8",
+      "to": "0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F",
       "value": "1000000000000000",
       "data": null,
       "contractMethod": null,
-      "_comment": "Sends 0.001 ETH (plain transfer) to the fresh keystore wallet 0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8 (nonce 0, balance 0, confirmed live 2026-10-06) -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1. A dry run of the real deploy script against this exact address (2026-10-06, live RPC) estimated the deploy cost at 0.000098593880917401 ETH at 0.040056001 gwei, so 0.001 ETH is ~10x margin, still negligible on this L2. The deterministic CREATE address this wallet's first transaction will produce is 0xcd664C518620140Bee7C95aa6468c40D75026252 (confirmed via both the dry run and `cast compute-address --nonce 0`) -- correct only if this wallet's very first transaction ever is the BuybackBurnerV2 deploy; don't send anything else from it first. This wallet is gas-only: it deploys BuybackBurnerV2 (one transaction, nonce 0, no owner -- see contracts/src/BuybackBurnerV2.sol) and does nothing else ever again."
+      "_comment": "Sends 0.001 ETH (plain transfer) to the fresh keystore wallet 0x3638643E80Ce1D7eeDB33A5603b6B6bf22802C8F (nonce 0, balance 0, confirmed live 2026-10-06) -- never the old compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1, and never the ABANDONED buybackv2-deployer attempt 0xaBb6c6FBFd72a24C15a051D133c4c445ED725DC8 (keystore password lost; nonce confirmed still 0 on 2026-10-06, so nothing was ever broadcast from it -- it still holds a stranded 0.002 ETH balance, unspendable without the password). A dry run of the real deploy script against this new address (2026-10-06, live RPC) estimated the deploy cost at 0.000098554498501401 ETH at 0.040040001 gwei, so 0.001 ETH is ~10x margin, still negligible on this L2. The deterministic CREATE address this wallet's first transaction will produce is 0xDA9ef87A6146f435d34237a9B3a81689603Fa503 (confirmed via both the dry run and `cast compute-address --nonce 0`) -- correct only if this wallet's very first transaction ever is the BuybackBurnerV2 deploy; don't send anything else from it first. This wallet is gas-only: it deploys BuybackBurnerV2 (one transaction, nonce 0, no owner -- see contracts/src/BuybackBurnerV2.sol) and does nothing else ever again."
     }
   ]
 }

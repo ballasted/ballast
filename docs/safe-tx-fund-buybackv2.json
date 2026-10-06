@@ -2,14 +2,14 @@
   "version": "1.0",
   "chainId": "4663",
   "createdAt": 0,
-  "meta": { "name": "Fund BuybackBurnerV2 with 20% of a claimed fee batch (TEMPLATE)", "txBuilderVersion": "1.16.0" },
+  "meta": { "name": "Fund BuybackBurnerV2 — first buyback, 0.02 WETH", "txBuilderVersion": "1.16.0" },
   "transactions": [
     {
-      "to": "PASTE_BUYBACKBURNERV2_ADDRESS_HERE",
+      "to": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
       "value": "0",
-      "data": "PASTE_WETH_TRANSFER_CALLDATA_HERE",
+      "data": "0xa9059cbb000000000000000000000000da9ef87a6146f435d34237a9b3a81689603fa50300000000000000000000000000000000000000000000000000470de4df820000",
       "contractMethod": null,
-      "_comment": "Template for the documented routine: each time the Safe claims creator fees (docs/safe-tx-claim-all-fees.json is one example), send 20% of what was claimed, per asset, to BuybackBurnerV2. This is a plain ERC20 transfer(BuybackBurnerV2address, amount) on the WETH contract (0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73) and/or the NVDA contract (0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC) -- NOT a native ETH send. Compute calldata with: cast calldata \"transfer(address,uint256)\" <BuybackBurnerV2address> <amount>. Fill in the real BuybackBurnerV2 address (printed by DeployBuybackV2.s.sol once run) and the real 20% amounts before signing -- this file is a template, not ready to sign as-is."
+      "_comment": "WETH.transfer(0xDA9ef87A6146f435d34237a9B3a81689603Fa503, 20000000000000000) -- a plain ERC20 transfer of 0.02 WETH (the contract's own maxWethPerCall cap -- one full buyback call's worth) from the Safe to the live, verified BuybackBurnerV2. 'to' is the WETH contract (0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73), NOT the burner -- this is a token call, not a native ETH send; value stays 0. Calldata decoded back this session via `cast calldata-decode \"transfer(address,uint256)\"` to confirm it reads exactly (0xDA9ef87A6146f435d34237a9B3a81689603Fa503, 20000000000000000) before this was written. Safe's WETH balance confirmed live this session: 92918252128792992 wei (~0.0929 WETH) -- well more than enough, no wrapping needed. This is separate from the ongoing hook-fee funding path (FeeConfig.platformVault, already live as of tx 0x73f3100a61bef73d8a6bda939fc11d7a720bad95690f2874c606388c40f09204) -- this is a one-off manual top-up from the Safe's own v2 creator-fee WETH, same documented routine this file was always meant for (see docs/BUYBACK_BURN_GO_LIVE.md's funding-path note). After this lands, anyone can call buybackAndBurn(WETH, 20000000000000000, minAmountOut) once BuybackBurnerV2's cooldown allows (immediately -- first-ever WETH buyback, no prior lastBuybackAt) -- a fresh V4Quoter quote should back whatever minAmountOut is passed, not 0, to get real slippage protection at call time."
     }
   ]
 }
