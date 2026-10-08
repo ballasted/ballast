@@ -55,6 +55,7 @@ contract BallastRouterV2ForkTest is Test {
     MockBallastToken ballastToken;
 
     DeployBallastRouterV2 deployHelper;
+    bool forked;
 
     struct Ticker {
         string symbol;
@@ -66,8 +67,13 @@ contract BallastRouterV2ForkTest is Test {
     }
 
     function setUp() public {
-        string memory rpc = vm.envString("RH_RPC_URL_PAID");
+        string memory rpc = vm.envOr("RH_RPC_URL_PAID", string(""));
+        if (bytes(rpc).length == 0) {
+            console2.log("BallastRouterV2ForkTest: skipped (RH_RPC_URL_PAID unset)");
+            return;
+        }
         vm.createSelectFork(rpc);
+        forked = true;
 
         deployHelper = new DeployBallastRouterV2();
         router = new BallastRouterV2(
@@ -189,6 +195,10 @@ contract BallastRouterV2ForkTest is Test {
     // ===================================================================== //
 
     function test_buyAndSell_allTickers_bothSizes() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         Ticker[] memory ts = _tickers();
         for (uint256 i = 0; i < ts.length; i++) {
             _buyThenSell(ts[i], 0.1 ether);
@@ -229,6 +239,10 @@ contract BallastRouterV2ForkTest is Test {
     ///         not a mock — preferFables=true, Fables genuinely reverts, Ramses picks
     ///         it up in the SAME transaction.
     function test_fallback_whenPreferredVenueReverts() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         Ticker memory qqq = _tickers()[10];
         (uint256 out, bool usedFables) = router.buyWithETH{value: 2 ether}(
             qqq.fablesHopIdx, qqq.ramsesHopIdx, true, qqq.token, address(ballastToken), qqq.hook, 1, block.timestamp + 300
@@ -241,6 +255,10 @@ contract BallastRouterV2ForkTest is Test {
     ///         it by pointing ramsesHopIdx at a route that does not actually connect
     ///         WETH to the quote asset — BadHopChain), falls back onto Fables.
     function test_fallback_ramsesFirst_fallsBackToFables() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         Ticker memory nvda = _tickers()[0];
         uint256[] memory brokenRamsesPath = _idx1(1); // route 1 is WETH/SPY, not WETH/NVDA
         (uint256 out, bool usedFables) = router.buyWithETH{value: 0.1 ether}(
@@ -251,6 +269,10 @@ contract BallastRouterV2ForkTest is Test {
     }
 
     function test_allVenuesFailed_whenBothPathsAreWrong() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         Ticker memory nvda = _tickers()[0];
         uint256[] memory brokenFablesPath = _idx1(2); // hop 2 is USDG/AAPL, doesn't start at ETH->NVDA's chain
         uint256[] memory brokenRamsesPath = _idx1(1); // WETH/SPY, not WETH/NVDA
@@ -265,6 +287,10 @@ contract BallastRouterV2ForkTest is Test {
     // ===================================================================== //
 
     function test_minOutReverts_regardlessOfVenue() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         Ticker memory nvda = _tickers()[0];
         vm.expectRevert(BallastRouterV2.InsufficientOutput.selector);
         router.buyWithETH{value: 0.1 ether}(
@@ -277,6 +303,10 @@ contract BallastRouterV2ForkTest is Test {
     // ===================================================================== //
 
     function test_exactOutput_singleFablesHop() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address usdg = deployHelper.USDG();
         uint256 wantOut = 100e6; // 100 USDG (6 decimals)
 
@@ -318,6 +348,10 @@ contract BallastRouterV2ForkTest is Test {
     ///         our Fables routes too. Same quote asset, same (mock) ballastToken pool,
     ///         same fork block — the only variable is which router executed the buy.
     function test_gasComparison_buyNvda_newRouterVsOldRouter() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 gasBefore = gasleft();
         router.buyWithETH{value: 0.1 ether}(
             _tickers()[0].fablesHopIdx, _tickers()[0].ramsesHopIdx, true, deployHelper.NVDA(), address(ballastToken), address(0), 1, block.timestamp + 300

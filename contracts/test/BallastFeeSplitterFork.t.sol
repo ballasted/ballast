@@ -11,6 +11,7 @@ import {RamsesLocker} from "../lib/ramses-v3-contracts/contracts/RamsesLocker.so
 import {RamsesLockLauncher} from "../src/RamsesLockLauncher.sol";
 import {BallastFeeSplitterFactory} from "../src/BallastFeeSplitterFactory.sol";
 import {BallastFeeSplitter} from "../src/BallastFeeSplitter.sol";
+import {MockRamsesVoter} from "./mocks/MockRamsesVoter.sol";
 
 interface IWETH9c {
     function deposit() external payable;
@@ -55,17 +56,33 @@ interface IRamsesV3PoolSwap {
 
 /// @notice Fork proof against Ramses' REAL deployed CL infrastructure on
 ///         Robinhood Chain — the authoritative test the mock-based unit suite
-///         (test/RamsesLockLauncher.t.sol) cannot substitute for. Deploys a
-///         FRESH RamsesLocker + RamsesLockLauncher (the real locker is not
-///         deployed on-chain yet — see RAMSES_V3_POSITION_MANAGER/RAMSES_VOTER
-///         below) against the real, already-deployed NonfungiblePositionManager
-///         and Voter, and the real WETH/NVDA pool already used by
-///         BallastRouterV2 (contracts/script/DeployBallastRouterV2.s.sol).
+///         (test/RamsesLockLauncher.t.sol) cannot substitute for.
 ///
-/// SKIPS unless ALL THREE of RH_RPC_URL_PAID, RAMSES_V3_POSITION_MANAGER, and
-/// RAMSES_VOTER are set. The latter two are UNVERIFIED as of this writing —
-/// not discoverable from this repo or from the public RPC/Blockscout in this
-/// sandbox (Cloudflare-blocked) — see .env.example and the Phase-1 report.
+///         Addresses below are from ramses.xyz/docs/raw/contract-addresses.md
+///         (Robinhood Chain, V3 AMM section), cross-checked 2026-10-09:
+///         `positionManager.deployer() == POOL_DEPLOYER` confirmed live via
+///         `cast call` against the public RPC. RamsesLocker itself is
+///         confirmed NOT deployed anywhere on this chain as of this writing —
+///         exhaustively checked every address that ever received an NFT
+///         Transfer from this PositionManager across its entire history (none
+///         has bytecode anywhere near RamsesLocker's ~6.5KB runtime size), the
+///         full published Robinhood contract-addresses page has no locker
+///         entry, RamsesLocker.sol was added to its source repo only on
+///         2026-10-08 (commit cfa91a17) with no accompanying deploy script or
+///         address, and Ramses' own "For Launchpads" docs explicitly frame
+///         the locker as something each integrating launchpad deploys itself
+///         ("Your launchpad configures the 80/20 split; Ramses does not pay
+///         it automatically") — so this test deploys a FRESH instance, the
+///         same way the real deploy eventually will.
+///
+///         No real Voter exists for Robinhood Chain yet (Ramses has not
+///         published one) — this uses a STUB voter (MockRamsesVoter). `collect()`
+///         (the fee-flow path these tests exercise) never touches voter at
+///         all, so this is a safe substitution for THIS test; `collectRewards`
+///         (gauge rewards) is NOT tested here and must stay untested until
+///         Ramses publishes a real voter — see the report.
+///
+/// SKIPS unless RH_RPC_URL_PAID is set.
 contract BallastFeeSplitterForkTest is Test {
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
@@ -73,11 +90,15 @@ contract BallastFeeSplitterForkTest is Test {
     // buildRamsesRoutes()[0], read directly from chain during that script's own
     // Fables-vs-Ramses venue comparison.
     address constant WETH_NVDA_POOL = 0xF8996E22ac7A67fAe741830Ad83B3b4D5e5de203;
+    // Robinhood Chain, ramses.xyz/docs/raw/contract-addresses.md, V3 AMM section.
+    address constant POSITION_MANAGER = 0x2eBd7B85a4E08D5B508b04BA147976C94afE6590;
+    address constant POOL_DEPLOYER = 0x4b37359BF291AbE8453692DB58d515a8b013Dca9;
 
     INonfungiblePositionManager positionManager;
     RamsesLocker locker;
     RamsesLockLauncher launcher;
     BallastFeeSplitterFactory factory;
+    MockRamsesVoter voter;
     ForkSwapper swapper;
     address safe = makeAddr("safe");
     address creator = makeAddr("creator");
@@ -85,22 +106,25 @@ contract BallastFeeSplitterForkTest is Test {
 
     function setUp() public {
         string memory url = vm.envOr("RH_RPC_URL_PAID", string(""));
-        address pmAddr = vm.envOr("RAMSES_V3_POSITION_MANAGER", address(0));
-        address voterAddr = vm.envOr("RAMSES_VOTER", address(0));
-        if (bytes(url).length == 0 || pmAddr == address(0) || voterAddr == address(0)) {
-            console2.log("BallastFeeSplitterFork: skipped (RH_RPC_URL_PAID / RAMSES_V3_POSITION_MANAGER / RAMSES_VOTER unset)");
+        if (bytes(url).length == 0) {
+            console2.log("BallastFeeSplitterFork: skipped (RH_RPC_URL_PAID unset)");
             return;
         }
         vm.createSelectFork(url);
         forked = true;
 
-        positionManager = INonfungiblePositionManager(pmAddr);
-        // RamsesLocker is NOT deployed anywhere yet (the source only went public
-        // recently) — this deploys a FRESH instance against the real, already-
-        // live PositionManager/Voter, exactly as the eventual real deploy will.
-        locker = new RamsesLocker(pmAddr, voterAddr);
+        // Re-verify the deployer() link live on THIS fork (don't just trust the
+        // comment above) before relying on it for anything.
+        require(
+            INonfungiblePositionManager(POSITION_MANAGER).deployer() == POOL_DEPLOYER,
+            "POSITION_MANAGER.deployer() != POOL_DEPLOYER -- addresses are stale, stop"
+        );
+
+        positionManager = INonfungiblePositionManager(POSITION_MANAGER);
+        voter = new MockRamsesVoter(); // stub -- no real Voter published for Robinhood Chain yet
+        locker = new RamsesLocker(POSITION_MANAGER, address(voter));
         factory = new BallastFeeSplitterFactory(safe);
-        launcher = new RamsesLockLauncher(pmAddr, address(locker), address(factory));
+        launcher = new RamsesLockLauncher(POSITION_MANAGER, address(locker), address(factory));
         swapper = new ForkSwapper();
 
         vm.deal(address(this), 100 ether);
@@ -136,6 +160,7 @@ contract BallastFeeSplitterForkTest is Test {
         address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
         int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
         address poolDeployer = IRamsesV3Pool(WETH_NVDA_POOL).factory();
+        assertEq(poolDeployer, POOL_DEPLOYER, "pool.factory() != the published PoolDeployer constant");
 
         address computed =
             PoolAddress.computeAddress(poolDeployer, PoolAddress.PoolKey({token0: token0, token1: token1, tickSpacing: tickSpacing}));
