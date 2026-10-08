@@ -45,10 +45,12 @@ contract ProtocolFeeSinkForkTest is Test {
     address constant ASSET_REGISTRY = 0x427764d0d19aB765c35A41A5aa4771580307dA81;
     address constant SAFE = 0xEFC97e16a24d2434C7138a2634E554a0631aC079;
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-    // tickSpacing 50 == the 0.01% tier, confirmed already enabled on the real
-    // factory (it's what the real WETH/NVDA pool uses) -- createPool() requires
-    // an already-enabled tickSpacing, which is owner-gated, so reuse one known good.
-    int24 constant TICK_SPACING = 50;
+    // tickSpacing 100 == the real 1% fee tier (RamsesV3Factory.tickSpacingInitialFee(100)
+    // == 10000, confirmed on-chain 2026-10-09) -- the tier we'd actually launch
+    // with, not just a convenient already-enabled one. createPool() requires an
+    // already-enabled tickSpacing (enableTickSpacing is AccessHub-gated), and
+    // this one already is.
+    int24 constant TICK_SPACING = 100;
     // sqrtPriceX96 for tick 0 (1:1 starting price) -- 2^96.
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
 
