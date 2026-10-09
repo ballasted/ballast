@@ -21,6 +21,9 @@ Files (relative to `contracts/`):
 - CL/core/libraries/{FullMath,FixedPoint128}.sol
 - CL/gauge/interfaces/IGaugeV3.sol
 - interfaces/IVoter.sol
+- CL/core/interfaces/{IRamsesV3Factory,IRamsesV3PoolDeployer}.sol — added later, same
+  pin, same byte-for-byte fetch, for `RamsesLockLauncher`'s pool-init price-protection
+  (`slot0()`/`initialize()`/`createPool()`/`getPool()`) — see that contract's natspec.
 
 `RamsesLocker.sol` imports `@openzeppelin/contracts/...` (OZ 5.1.0, per the
 source repo's own `foundry.toml` dependency pin). This repo's top-level

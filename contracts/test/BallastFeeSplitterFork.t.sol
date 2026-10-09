@@ -179,6 +179,89 @@ contract BallastFeeSplitterForkTest is Test {
         assertEq(computed, WETH_NVDA_POOL, "vendored PoolAddress init code hash does not match the real deployed pool");
     }
 
+    /// @notice ADVERSARIAL, against the real chain: a caller who expects a
+    ///         wildly different price than the real WETH/NVDA pool's actual
+    ///         live price must have createAndLock refuse to mint, not silently
+    ///         lock liquidity into a pool priced somewhere they never agreed
+    ///         to. This is the exact front-run scenario _ensurePoolPrice
+    ///         exists to stop, proven against Ramses' real deployed factory
+    ///         and pool, not a mock.
+    function test_fork_createAndLock_revertsIfRealPoolPriceOutsideExpectedTolerance() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
+        address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
+        int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
+        (uint160 realSqrtPriceX96, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
+        int24 tickLower = ((currentTick / tickSpacing) + 1) * tickSpacing;
+        int24 tickUpper = tickLower + 2 * tickSpacing;
+
+        uint256 seedAmount = 1 ether;
+        _fund(token0, seedAmount);
+        IERC20(token0).approve(address(launcher), seedAmount);
+        RamsesLockLauncher.MintLegs memory legs = RamsesLockLauncher.MintLegs({
+            token0: token0,
+            token1: token1,
+            tickSpacing: tickSpacing,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            amount0Desired: seedAmount,
+            amount1Desired: 0,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1 hours
+        });
+
+        // "Expect" 10x the real price, with the tightest tolerance -- the real
+        // pool's actual price is nowhere close, so this must revert.
+        uint160 wrongExpectedPrice = realSqrtPriceX96 * 10;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RamsesLockLauncher.PoolPriceOutOfBounds.selector,
+                realSqrtPriceX96,
+                (uint256(wrongExpectedPrice) * 9_900) / 10_000,
+                (uint256(wrongExpectedPrice) * 10_100) / 10_000
+            )
+        );
+        launcher.createAndLock(legs, NVDA, creator, 8000, 2000, wrongExpectedPrice, 100);
+
+        // Nothing was pulled from the caller on the reverted attempt.
+        assertEq(IERC20(token0).balanceOf(address(launcher)), 0);
+    }
+
+    /// @notice ADVERSARIAL, against the real chain: a caller who asks for more
+    ///         tolerance than the launcher allows must be refused outright,
+    ///         before any pool-price check or token pull happens at all.
+    function test_fork_createAndLock_revertsIfDeviationExceedsCeiling() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
+        address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
+        int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
+        (uint160 realSqrtPriceX96,,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
+
+        RamsesLockLauncher.MintLegs memory legs = RamsesLockLauncher.MintLegs({
+            token0: token0,
+            token1: token1,
+            tickSpacing: tickSpacing,
+            tickLower: -887200,
+            tickUpper: 887200,
+            amount0Desired: 1 ether,
+            amount1Desired: 0,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1 hours
+        });
+
+        uint16 tooWide = launcher.MAX_PRICE_DEVIATION_BPS() + 1;
+        vm.expectRevert(RamsesLockLauncher.DeviationTooWide.selector);
+        launcher.createAndLock(legs, NVDA, creator, 8000, 2000, realSqrtPriceX96, tooWide);
+    }
+
     /// @notice Full flow: mint a single-sided WETH/NVDA position via the
     ///         launcher, lock it, swap BOTH directions through the real pool
     ///         to generate real fees on both legs, permissionlessly collect,
@@ -192,7 +275,7 @@ contract BallastFeeSplitterForkTest is Test {
         address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
         address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
         int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
-        (, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
+        (uint160 currentSqrtPriceX96, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
 
         // Range entirely ABOVE the current tick -> single-sided in token0 only
         // (same "fully above current price needs only the lower-address token"
@@ -220,7 +303,12 @@ contract BallastFeeSplitterForkTest is Test {
             amount1Min: 0,
             deadline: block.timestamp + 1 hours
         });
-        (uint256 tokenId, address splitter) = launcher.createAndLock(legs, NVDA, creator, 8000, 2000);
+        // The real WETH/NVDA pool already exists and is already initialized --
+        // this exercises _ensurePoolPrice's "verify within tolerance" branch
+        // against the REAL live price, 0 deviation since nothing moves it
+        // between this read and the call below.
+        (uint256 tokenId, address splitter) =
+            launcher.createAndLock(legs, NVDA, creator, 8000, 2000, currentSqrtPriceX96, 0);
         assertEq(positionManager.ownerOf(tokenId), address(locker));
         assertEq(IERC20(token0).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token1).balanceOf(address(launcher)), 0);
@@ -280,7 +368,7 @@ contract BallastFeeSplitterForkTest is Test {
         address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
         address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
         int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
-        (, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
+        (uint160 currentSqrtPriceX96, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
         int24 tickLower = ((currentTick / tickSpacing) + 1) * tickSpacing;
         int24 tickUpper = tickLower + 2 * tickSpacing;
 
@@ -299,7 +387,8 @@ contract BallastFeeSplitterForkTest is Test {
             amount1Min: 0,
             deadline: block.timestamp + 1 hours
         });
-        (uint256 tokenId, address splitter) = launcher.createAndLock(legs, NVDA, creator, 8000, 2000);
+        (uint256 tokenId, address splitter) =
+            launcher.createAndLock(legs, NVDA, creator, 8000, 2000, currentSqrtPriceX96, 0);
 
         address gauge = IVoterGauge(VOTER).gaugeForPool(WETH_NVDA_POOL);
         address[] memory tokens = IGetRewardTokens(gauge).getRewardTokens();

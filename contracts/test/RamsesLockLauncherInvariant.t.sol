@@ -8,6 +8,8 @@ import {RamsesLockLauncher} from "../src/RamsesLockLauncher.sol";
 import {BallastFeeSplitterFactory} from "../src/BallastFeeSplitterFactory.sol";
 import {MockRamsesPositionManager} from "./mocks/MockRamsesPositionManager.sol";
 import {MockRamsesVoter} from "./mocks/MockRamsesVoter.sol";
+import {MockRamsesV3PoolDeployer} from "./mocks/MockRamsesV3PoolDeployer.sol";
+import {MockRamsesV3Factory} from "./mocks/MockRamsesV3Factory.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 /// @notice Random sequences of createAndLock() calls, with randomized amounts
@@ -21,6 +23,10 @@ contract RamsesLockLauncherHandler is Test {
     MockERC20 public tokenB;
     address public creator = makeAddr("handlerCreator");
     uint256 public calls;
+    // 1:1 price, fixed for the whole campaign — the pool is created at this
+    // price on the handler's first call and every later call on the same pair
+    // reads the exact same price back, so 0 deviation is always correct here.
+    uint160 constant PRICE_1_TO_1 = 1 << 96;
 
     constructor(RamsesLockLauncher launcher_, MockRamsesPositionManager pm_, MockERC20 tokenA_, MockERC20 tokenB_) {
         launcher = launcher_;
@@ -53,7 +59,7 @@ contract RamsesLockLauncherHandler is Test {
             amount1Min: 0,
             deadline: block.timestamp + 1
         });
-        launcher.createAndLock(legs, address(0xBA17), creator, 8000, 2000);
+        launcher.createAndLock(legs, address(0xBA17), creator, 8000, 2000, PRICE_1_TO_1, 0);
         calls++;
     }
 }
@@ -65,7 +71,9 @@ contract RamsesLockLauncherInvariantTest is Test {
     MockERC20 tokenB;
 
     function setUp() public {
-        MockRamsesPositionManager pm = new MockRamsesPositionManager(makeAddr("poolDeployer"));
+        MockRamsesV3Factory v3Factory = new MockRamsesV3Factory();
+        MockRamsesV3PoolDeployer poolDeployer = new MockRamsesV3PoolDeployer(address(v3Factory));
+        MockRamsesPositionManager pm = new MockRamsesPositionManager(address(poolDeployer));
         MockRamsesVoter voter = new MockRamsesVoter();
         RamsesLocker locker = new RamsesLocker(address(pm), address(voter));
         BallastFeeSplitterFactory factory = new BallastFeeSplitterFactory(makeAddr("safe"));

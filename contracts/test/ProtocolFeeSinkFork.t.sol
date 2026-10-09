@@ -142,8 +142,10 @@ contract ProtocolFeeSinkForkTest is Test {
             amount1Min: 0,
             deadline: block.timestamp + 1 hours
         });
+        // Pool was created fresh in setUp() at SQRT_PRICE_1_1 and nothing has
+        // traded against it since -- exact match, 0 tolerance.
         (uint256 tokenId, address splitter) =
-            launcher.createAndLock(legs, address(launchedToken), creator, 8000, 2000);
+            launcher.createAndLock(legs, address(launchedToken), creator, 8000, 2000, SQRT_PRICE_1_1, 0);
         assertEq(INonfungiblePositionManager(POSITION_MANAGER).ownerOf(tokenId), address(locker));
 
         // Swap WETH -> launched token.

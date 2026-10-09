@@ -61,6 +61,18 @@ contract DeployRamsesLockLauncher is Script {
         require(abi.decode(r3, (address)) == VOTER, "LOCKER.voter() mismatch -- stop");
         console2.log("LOCKER wiring re-verified live: OK");
 
+        // The launcher derives v3Factory itself on-chain from
+        // positionManager.deployer() -> IRamsesV3PoolDeployer.RamsesV3Factory()
+        // (see RamsesLockLauncher's constructor) -- nothing to pass in, but
+        // resolve + log it here too so the dry-run output shows exactly what
+        // the constructor will land on before any broadcast.
+        (bool ok4, bytes memory r4) = POSITION_MANAGER.staticcall(abi.encodeWithSignature("deployer()"));
+        require(ok4, "POSITION_MANAGER.deployer() reverted -- stop");
+        require(abi.decode(r4, (address)) == POOL_DEPLOYER, "POSITION_MANAGER.deployer() mismatch -- stop");
+        (bool ok5, bytes memory r5) = POOL_DEPLOYER.staticcall(abi.encodeWithSignature("RamsesV3Factory()"));
+        require(ok5, "POOL_DEPLOYER.RamsesV3Factory() reverted -- stop");
+        console2.log("v3Factory (launcher will derive this on-chain):", abi.decode(r5, (address)));
+
         if (dryRun) {
             uint256 nonce = vm.getNonce(sender);
             address predicted = vm.computeCreateAddress(sender, nonce);

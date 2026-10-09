@@ -102,7 +102,16 @@ any public-facing copy or UI yet.)
 
 ## 6. Per-launch: use the launcher, never call `lock()` directly
 
-`RamsesLockLauncher.createAndLock(legs, launchedToken, creatorRecipient, creatorBps, protocolBps)`
+`RamsesLockLauncher.createAndLock(legs, launchedToken, creatorRecipient, creatorBps, protocolBps, expectedSqrtPriceX96, maxPriceDeviationBps)`
 mints the position, deploys a fresh `BallastFeeSplitter`, and locks the
 position to it, atomically. This is the ONLY path the position's NFT should
 ever take into the locker — see `RamsesLockLauncher.sol`'s own docs for why.
+
+`expectedSqrtPriceX96`/`maxPriceDeviationBps` close a front-running window: a
+Ramses pool's genesis price can be set by anyone via the position manager's
+permissionless pool-init path. The launcher creates/initializes the pool
+itself at `expectedSqrtPriceX96` when it doesn't exist yet (atomically, so
+nothing can beat it there), or verifies an already-initialized pool's live
+price is within `maxPriceDeviationBps` (capped at `MAX_PRICE_DEVIATION_BPS`,
+2000 = 20%) before minting into it — reverting rather than locking liquidity
+into a price it never agreed to. See `RamsesLockLauncher._ensurePoolPrice`.

@@ -8,6 +8,7 @@ import {
   ramsesLockLauncherAbi,
   ballastFeeSplitterAbi,
   ramsesV3FactoryAbi,
+  ramsesV3PoolAbi,
   erc20Abi,
 } from "@/lib/abis";
 import {
@@ -30,13 +31,37 @@ import { cn } from "@/lib/cn";
 const CHAIN_ID = activeChain.id;
 type Phase = "idle" | "pending" | "confirming" | "lost" | "error" | "done";
 
-// Full-range (nearest tickSpacing-100 multiples to Uniswap's MIN/MAX_TICK) --
-// valid regardless of current price, so this never needs a live tick read to
-// pick a range. Deliberately not single-sided (that shape is for a fresh
-// launch's own one-sided seed, not an opt-in liquidity contribution here).
-const FULL_RANGE_LOWER = -887200;
-const FULL_RANGE_UPPER = 887200;
+// Nearest tickSpacing-100 multiples to Uniswap's MIN/MAX_TICK -- the far edge
+// of a one-sided range (the near edge sits just off the current/initial
+// price, computed live below). Ballast creators hold none of their own
+// launched token (the full supply went to the gen-4 pool at graduation), so
+// this position is ALWAYS single-sided: only the quote asset, never the
+// launched token -- same shape as a fresh Ballast launch's own one-sided seed,
+// just the other leg.
+const MIN_TICK = -887200;
+const MAX_TICK = 887200;
+const TICK_SPACING = 100;
+// Buffer (in tickSpacing units) kept between the current/initial price and the
+// position's near edge, so floating-point rounding in the price->tick
+// conversion can never land the range on the wrong side of the live price.
+const TICK_SAFETY_BUFFER = 2 * TICK_SPACING;
+// Default price-deviation tolerance passed to the launcher's pool-init
+// protection (RamsesLockLauncher.MAX_PRICE_DEVIATION_BPS ceiling is 2000) --
+// covers ordinary price drift between this read and tx inclusion without
+// opening the door to a meaningfully mispriced pool.
+const DEFAULT_MAX_PRICE_DEVIATION_BPS = 500;
 const ZERO = "0x0000000000000000000000000000000000000000" as Address;
+
+function alignDown(tick: number, spacing: number): number {
+  return Math.floor(tick / spacing) * spacing;
+}
+function alignUp(tick: number, spacing: number): number {
+  return Math.ceil(tick / spacing) * spacing;
+}
+// tick = log_1.0001(price), price = token1/token0.
+function tickFromPriceToken1PerToken0(priceToken1PerToken0: number): number {
+  return Math.log(priceToken1PerToken0) / Math.log(1.0001);
+}
 
 function fmt(v: bigint | undefined, decimals: number, maxFractionDigits = 6): string {
   if (v === undefined) return "Unknown";
@@ -246,7 +271,6 @@ function SetupPanel({
   const { assets: listedAssets } = useAssets();
 
   const [assetIdx, setAssetIdx] = useState(0);
-  const [tokenAmountStr, setTokenAmountStr] = useState("");
   const [quoteAmountStr, setQuoteAmountStr] = useState("");
   const [initialPriceStr, setInitialPriceStr] = useState(""); // quote per launched token, only if pool doesn't exist yet
   const [phase, setPhase] = useState<Phase>("idle");
@@ -261,6 +285,7 @@ function SetupPanel({
         ? [quoteAsset.address, token]
         : [undefined, undefined];
   const tokenIsToken0 = token0?.toLowerCase() === token.toLowerCase();
+  const quoteIsToken0 = !tokenIsToken0;
 
   const poolRes = useReadContract({
     address: RAMSES_V3_FACTORY_ADDRESS,
@@ -273,30 +298,28 @@ function SetupPanel({
   const poolAddress = poolRes.data as Address | undefined;
   const poolExists = Boolean(poolAddress && poolAddress !== ZERO);
 
-  const tokenDecimals = 18; // Ballast-launched tokens are always 18 decimals (ERC-8056)
+  // Only read when the pool exists -- this is the authoritative live price
+  // (RamsesLockLauncher will read the same slot0() itself at tx time and
+  // compare against what we pass as expectedSqrtPriceX96, within tolerance).
+  const slot0Res = useReadContract({
+    address: poolAddress,
+    abi: ramsesV3PoolAbi,
+    functionName: "slot0",
+    chainId: CHAIN_ID,
+    query: { enabled: poolExists },
+  });
+  const liveSqrtPriceX96 = slot0Res.data ? (slot0Res.data[0] as bigint) : undefined;
+  const liveTick = slot0Res.data ? (slot0Res.data[1] as number) : undefined;
+
   const quoteDecimals = quoteAsset?.decimals ?? 18;
 
-  let tokenAmount = 0n;
   let quoteAmount = 0n;
-  try {
-    if (tokenAmountStr) tokenAmount = parseUnits(tokenAmountStr, tokenDecimals);
-  } catch {
-    tokenAmount = 0n;
-  }
   try {
     if (quoteAmountStr) quoteAmount = parseUnits(quoteAmountStr, quoteDecimals);
   } catch {
     quoteAmount = 0n;
   }
 
-  const walletTokenRes = useReadContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: account ? [account] : undefined,
-    chainId: CHAIN_ID,
-    query: { enabled: Boolean(account) },
-  });
   const walletQuoteRes = useReadContract({
     address: quoteAsset?.address,
     abi: erc20Abi,
@@ -305,29 +328,30 @@ function SetupPanel({
     chainId: CHAIN_ID,
     query: { enabled: Boolean(account && quoteAsset) },
   });
-  const walletToken = (walletTokenRes.data as bigint | undefined) ?? 0n;
   const walletQuote = (walletQuoteRes.data as bigint | undefined) ?? 0n;
 
-  const amountsValid = tokenAmount > 0n && quoteAmount > 0n && tokenAmount <= walletToken && quoteAmount <= walletQuote;
   const needsInitialPrice = !poolExists;
   let initialPriceValid = true;
   if (needsInitialPrice) {
     const p = Number(initialPriceStr);
     initialPriceValid = Number.isFinite(p) && p > 0;
+  } else {
+    initialPriceValid = liveSqrtPriceX96 !== undefined;
   }
-  const canSubmit = amountsValid && initialPriceValid && Boolean(RAMSES_LAUNCHER_ADDRESS) && token0 && token1;
+  const amountsValid = quoteAmount > 0n && quoteAmount <= walletQuote;
+  const canSubmit =
+    amountsValid && initialPriceValid && Boolean(RAMSES_LAUNCHER_ADDRESS) && token0 && token1 && quoteAsset;
 
   const busy = phase === "pending" || phase === "confirming";
 
-  function sqrtPriceX96ForQuotePerToken(quotePerToken: number): bigint {
-    // price (token1/token0) depends on which side is which -- quotePerToken is
-    // always "quote asset units per launched token", so convert to the
-    // token1/token0 ratio before taking the sqrt.
-    const priceToken1PerToken0 = tokenIsToken0 ? quotePerToken : 1 / quotePerToken;
-    const sqrtPrice = Math.sqrt(priceToken1PerToken0);
-    // Q64.96 fixed point.
+  // price (token1/token0) depends on which side is which -- the UI's price
+  // input is always "quote asset units per launched token".
+  function priceToken1PerToken0(quotePerToken: number): number {
+    return tokenIsToken0 ? quotePerToken : 1 / quotePerToken;
+  }
+  function sqrtPriceX96FromPriceToken1PerToken0(p: number): bigint {
     const Q96 = 2 ** 96;
-    return BigInt(Math.round(sqrtPrice * Q96));
+    return BigInt(Math.round(Math.sqrt(p) * Q96));
   }
 
   async function submit() {
@@ -335,56 +359,56 @@ function SetupPanel({
     setErr(undefined);
     setPhase("pending");
     try {
-      let pool = poolAddress;
-      if (!poolExists) {
-        const sqrtPriceX96 = sqrtPriceX96ForQuotePerToken(Number(initialPriceStr));
-        const createHash = await writeContractAsync({
-          address: RAMSES_V3_FACTORY_ADDRESS!,
-          abi: ramsesV3FactoryAbi,
-          functionName: "createPool",
-          args: [token0, token1, RAMSES_TICK_SPACING, sqrtPriceX96],
-          chainId: CHAIN_ID,
-        });
-        setPhase("confirming");
-        const createOutcome = await pollReceipt(publicClient, createHash);
-        if (createOutcome.status !== "success") {
-          setErr(createOutcome.status === "lost" ? undefined : "Pool creation reverted on-chain.");
-          setPhase(createOutcome.status === "lost" ? "lost" : "error");
+      let expectedSqrtPriceX96: bigint;
+      let currentTick: number;
+      if (poolExists) {
+        if (liveSqrtPriceX96 === undefined || liveTick === undefined) {
+          setErr("Could not read the pool's live price.");
+          setPhase("error");
           return;
         }
-        setPhase("pending");
-        const refetched = await poolRes.refetch();
-        pool = refetched.data as Address | undefined;
-      }
-      if (!pool || pool === ZERO) {
-        setErr("Could not resolve the pool address after creation.");
-        setPhase("error");
-        return;
+        expectedSqrtPriceX96 = liveSqrtPriceX96;
+        currentTick = liveTick;
+      } else {
+        const p1per0 = priceToken1PerToken0(Number(initialPriceStr));
+        expectedSqrtPriceX96 = sqrtPriceX96FromPriceToken1PerToken0(p1per0);
+        currentTick = tickFromPriceToken1PerToken0(p1per0);
       }
 
-      const amount0Desired = tokenIsToken0 ? tokenAmount : quoteAmount;
-      const amount1Desired = tokenIsToken0 ? quoteAmount : tokenAmount;
+      // Single-sided by construction: creators hold none of their own
+      // launched token, so this position is ONLY ever the quote asset. The
+      // tick range sits entirely on the correct side of the current/initial
+      // price for that to be valid V3 math (the launcher will also enforce
+      // the price itself -- see RamsesLockLauncher._ensurePoolPrice).
+      let tickLower: number;
+      let tickUpper: number;
+      if (quoteIsToken0) {
+        // Quote = token0 -> valid only when current price is ABOVE the range.
+        tickUpper = alignDown(currentTick, TICK_SPACING) - TICK_SAFETY_BUFFER;
+        tickLower = MIN_TICK;
+      } else {
+        // Quote = token1 -> valid only when current price is BELOW the range.
+        tickLower = alignUp(currentTick, TICK_SPACING) + TICK_SAFETY_BUFFER;
+        tickUpper = MAX_TICK;
+      }
 
-      const approve0Hash = await writeContractAsync({
-        address: token0,
+      const amount0Desired = quoteIsToken0 ? quoteAmount : 0n;
+      const amount1Desired = quoteIsToken0 ? 0n : quoteAmount;
+      // 1% tolerance on the single nonzero leg -- the amount is fully
+      // deterministic given price + range, this only covers price drift
+      // between this read and tx inclusion.
+      const amount0Min = quoteIsToken0 ? (quoteAmount * 99n) / 100n : 0n;
+      const amount1Min = quoteIsToken0 ? 0n : (quoteAmount * 99n) / 100n;
+
+      const quoteApproveHash = await writeContractAsync({
+        address: quoteAsset.address,
         abi: erc20Abi,
         functionName: "approve",
-        args: [RAMSES_LAUNCHER_ADDRESS, amount0Desired],
+        args: [RAMSES_LAUNCHER_ADDRESS, quoteAmount],
         chainId: CHAIN_ID,
       });
       setPhase("confirming");
-      await pollReceipt(publicClient, approve0Hash);
-      setPhase("pending");
-
-      const approve1Hash = await writeContractAsync({
-        address: token1,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [RAMSES_LAUNCHER_ADDRESS, amount1Desired],
-        chainId: CHAIN_ID,
-      });
-      setPhase("confirming");
-      await pollReceipt(publicClient, approve1Hash);
+      await pollReceipt(publicClient, quoteApproveHash);
       setPhase("pending");
 
       const lockHash = await writeContractAsync({
@@ -396,18 +420,20 @@ function SetupPanel({
             token0,
             token1,
             tickSpacing: RAMSES_TICK_SPACING,
-            tickLower: FULL_RANGE_LOWER,
-            tickUpper: FULL_RANGE_UPPER,
+            tickLower,
+            tickUpper,
             amount0Desired,
             amount1Desired,
-            amount0Min: 0n,
-            amount1Min: 0n,
+            amount0Min,
+            amount1Min,
             deadline: BigInt(Math.floor(Date.now() / 1000) + 3600),
           },
           token,
           creator,
           8000,
           2000,
+          expectedSqrtPriceX96,
+          DEFAULT_MAX_PRICE_DEVIATION_BPS,
         ],
         chainId: CHAIN_ID,
       });
@@ -419,7 +445,6 @@ function SetupPanel({
         return setPhase("error");
       }
       setPhase("done");
-      setTokenAmountStr("");
       setQuoteAmountStr("");
       onDone();
     } catch (e) {
@@ -446,8 +471,8 @@ function SetupPanel({
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-faint">
-        Back ${symbol || "this token"} with a permanently locked Ramses pool (1% fee tier). You provide both legs; 80%
-        of fees go to you, 20% to the protocol.
+        Back ${symbol || "this token"} with a permanently locked Ramses pool (1% fee tier). You provide only the quote
+        asset — this token has no creator allocation to pair against. 80% of fees go to you, 20% to the protocol.
       </p>
 
       <select
@@ -462,21 +487,6 @@ function SetupPanel({
           </option>
         ))}
       </select>
-
-      <label className="block">
-        <div className="mb-1 flex justify-between text-xs text-text-secondary">
-          <span>{symbol || "Token"} amount</span>
-          <span>Wallet: {fmt(walletToken, tokenDecimals)}</span>
-        </div>
-        <input
-          className="input w-full"
-          inputMode="decimal"
-          placeholder="0.0"
-          value={tokenAmountStr}
-          onChange={(e) => setTokenAmountStr(e.target.value)}
-          disabled={busy}
-        />
-      </label>
 
       <label className="block">
         <div className="mb-1 flex justify-between text-xs text-text-secondary">
@@ -496,7 +506,8 @@ function SetupPanel({
       {needsInitialPrice ? (
         <label className="block">
           <div className="mb-1 text-xs text-text-secondary">
-            No pool exists yet — set its starting price ({quoteAsset?.symbol ?? "quote"} per {symbol || "token"})
+            No pool exists yet — set its starting price ({quoteAsset?.symbol ?? "quote"} per {symbol || "token"}). This
+            transaction creates the pool at that price atomically — no one else can set it first.
           </div>
           <input
             className="input w-full"
@@ -508,7 +519,11 @@ function SetupPanel({
           />
         </label>
       ) : (
-        <p className="text-xs text-text-faint">Pool already exists at {poolAddress ? shortAddress(poolAddress) : ""}.</p>
+        <p className="text-xs text-text-faint">
+          Pool already exists at {poolAddress ? shortAddress(poolAddress) : ""}. This transaction checks its live
+          price is within {(DEFAULT_MAX_PRICE_DEVIATION_BPS / 100).toFixed(1)}% of what was just read and refuses to
+          lock liquidity if it isn't.
+        </p>
       )}
 
       {!account ? (

@@ -1540,6 +1540,8 @@ export const ramsesLockLauncherAbi = [
       { name: "creatorRecipient", type: "address" },
       { name: "creatorBps", type: "uint16" },
       { name: "protocolBps", type: "uint16" },
+      { name: "expectedSqrtPriceX96", type: "uint160" },
+      { name: "maxPriceDeviationBps", type: "uint16" },
     ],
     outputs: [
       { name: "tokenId", type: "uint256" },
