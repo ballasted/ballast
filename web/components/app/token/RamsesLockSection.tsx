@@ -95,7 +95,7 @@ export function RamsesLockSection({ token, creator, symbol }: { token?: Address;
       {pos.status === "failed" && <p className="text-xs text-text-faint">Unknown (event scan unavailable)</p>}
 
       {pos.position ? (
-        <ExistingPosition token={token} symbol={symbol} pos={pos} />
+        <ExistingPosition token={token} creator={creator} symbol={symbol} pos={pos} />
       ) : (
         pos.status === "ok" &&
         (isCreator ? (
@@ -114,10 +114,12 @@ export function RamsesLockSection({ token, creator, symbol }: { token?: Address;
 
 function ExistingPosition({
   token,
+  creator,
   symbol,
   pos,
 }: {
   token: Address;
+  creator?: Address;
   symbol?: string;
   pos: ReturnType<typeof useRamsesPosition>;
 }) {
@@ -144,6 +146,12 @@ function ExistingPosition({
   const sym1 = (token1SymRes.data as string | undefined) ?? shortAddress(pos.position?.token1 ?? ZERO);
 
   const isLaunchedToken0 = pos.position?.token0.toLowerCase() === token.toLowerCase();
+  // createAndLock is fully permissionless -- anyone can lock a position for
+  // any token and name anyone as creatorRecipient. Never assume the funder
+  // IS this token's creator; only say "creator" when it actually matches.
+  const fundedByCreator = Boolean(
+    creator && pos.position && creator.toLowerCase() === pos.position.creatorRecipient.toLowerCase(),
+  );
   const protocolShareBurned = pos.protocolRecipient
     ? // The sink burns anything that isn't WETH/AssetRegistry-listed -- the
       // launched token side of this pool always qualifies, shown plainly
@@ -227,6 +235,25 @@ function ExistingPosition({
       </div>
 
       <p className="text-xs text-text-faint">
+        {fundedByCreator ? "Funded by this token's creator" : "Funded by"}
+        {!fundedByCreator && pos.position && (
+          <>
+            {" "}
+            <a
+              className="underline hover:text-text-secondary"
+              href={`${activeChain.blockExplorers.default.url}/address/${pos.position.creatorRecipient}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {shortAddress(pos.position.creatorRecipient)}
+            </a>
+            , not this token&apos;s creator — anyone can lock a Ramses position for any token
+          </>
+        )}
+        .
+      </p>
+
+      <p className="text-xs text-text-faint">
         The protocol&apos;s share of fees paid in {isLaunchedToken0 ? sym0 : sym1} is sent to the dead address.
       </p>
 
@@ -273,6 +300,7 @@ function SetupPanel({
   const [assetIdx, setAssetIdx] = useState(0);
   const [quoteAmountStr, setQuoteAmountStr] = useState("");
   const [initialPriceStr, setInitialPriceStr] = useState(""); // quote per launched token, only if pool doesn't exist yet
+  const [confirmed, setConfirmed] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [err, setErr] = useState<string>();
 
@@ -340,7 +368,13 @@ function SetupPanel({
   }
   const amountsValid = quoteAmount > 0n && quoteAmount <= walletQuote;
   const canSubmit =
-    amountsValid && initialPriceValid && Boolean(RAMSES_LAUNCHER_ADDRESS) && token0 && token1 && quoteAsset;
+    amountsValid &&
+    initialPriceValid &&
+    confirmed &&
+    Boolean(RAMSES_LAUNCHER_ADDRESS) &&
+    token0 &&
+    token1 &&
+    quoteAsset;
 
   const busy = phase === "pending" || phase === "confirming";
 
@@ -446,6 +480,7 @@ function SetupPanel({
       }
       setPhase("done");
       setQuoteAmountStr("");
+      setConfirmed(false);
       onDone();
     } catch (e) {
       setErr(decodeTxError(e));
@@ -478,7 +513,10 @@ function SetupPanel({
       <select
         className="input"
         value={assetIdx}
-        onChange={(e) => setAssetIdx(Number(e.target.value))}
+        onChange={(e) => {
+          setAssetIdx(Number(e.target.value));
+          setConfirmed(false);
+        }}
         disabled={busy}
       >
         {listedAssets.map((a, i) => (
@@ -525,6 +563,14 @@ function SetupPanel({
           lock liquidity if it isn't.
         </p>
       )}
+
+      <label className="flex items-start gap-2 text-sm text-text-secondary">
+        <input type="checkbox" className="mt-0.5" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={busy} />
+        <span>
+          This {quoteAsset?.symbol ?? "deposit"} is locked permanently. You keep 80% of the fees it earns; the deposit
+          itself can never be withdrawn.
+        </span>
+      </label>
 
       {!account ? (
         <p className="text-xs text-text-muted">Connect a wallet to continue.</p>
