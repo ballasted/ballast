@@ -11,7 +11,6 @@ import {RamsesLockLauncher} from "../src/RamsesLockLauncher.sol";
 import {BallastFeeSplitterFactory} from "../src/BallastFeeSplitterFactory.sol";
 import {BallastFeeSplitter} from "../src/BallastFeeSplitter.sol";
 import {ProtocolFeeSink} from "../src/ProtocolFeeSink.sol";
-import {MockRamsesVoter} from "./mocks/MockRamsesVoter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {ForkSwapper} from "./BallastFeeSplitterFork.t.sol";
 
@@ -25,20 +24,30 @@ interface IRamsesV3FactoryCreate {
         returns (address pool);
 }
 
-/// @notice Full path, real infrastructure: PositionManager -> locker -> splitter
-///         -> ProtocolFeeSink. Creates a BRAND NEW pool (WETH / a freshly
-///         deployed, deliberately unlisted "launched token") via the real
-///         RamsesV3Factory, rather than reusing a real routing pool like
-///         WETH/NVDA — both sides of that pool ARE AssetRegistry-listed quote
-///         assets, which would route to the Safe either way and never
-///         exercise the sink's burn path. A genuinely unlisted token is the
-///         only honest way to prove "the launched token ends at the dead
-///         address."
+/// @notice Full path, real infrastructure: PositionManager -> REAL canonical
+///         locker -> splitter -> ProtocolFeeSink. Creates a BRAND NEW pool
+///         (WETH / a freshly deployed, deliberately unlisted "launched
+///         token") via the real RamsesV3Factory, rather than reusing a real
+///         routing pool like WETH/NVDA — both sides of that pool ARE
+///         AssetRegistry-listed quote assets, which would route to the Safe
+///         either way and never exercise the sink's burn path. A genuinely
+///         unlisted token is the only honest way to prove "the launched
+///         token ends at the dead address."
+///
+///         LOCKER is Ramses' own canonical deployment (verified in
+///         BallastFeeSplitterFork.t.sol's contract-level doc — same checks
+///         re-run here live). The brand-new pool this test creates has no
+///         gauge, so collectRewards is not exercised here (see
+///         BallastFeeSplitterFork.t.sol for that, against the real
+///         gauged WETH/NVDA pool).
 ///
 /// SKIPS unless RH_RPC_URL_PAID is set.
 contract ProtocolFeeSinkForkTest is Test {
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address constant POSITION_MANAGER = 0x2eBd7B85a4E08D5B508b04BA147976C94afE6590;
+    address constant POOL_DEPLOYER = 0x4b37359BF291AbE8453692DB58d515a8b013Dca9;
+    address constant LOCKER = 0xF6CD2e03259150D4FF745CDd620c09FBF30DE1dC;
+    address constant VOTER = 0x30032D41868906f0376eC4D87B3D3Ac4064e7A97;
     address constant RAMSES_V3_FACTORY = 0xE0c4ceb92d08CA985bB70fe0a22fEb121A9854A8;
     // Real mainnet AssetRegistry -- the freshly-minted "launched token" below is
     // guaranteed NOT listed here (it doesn't exist until this test deploys it).
@@ -73,11 +82,16 @@ contract ProtocolFeeSinkForkTest is Test {
         vm.createSelectFork(url);
         forked = true;
 
+        require(
+            RamsesLocker(LOCKER).positionManager() == INonfungiblePositionManager(POSITION_MANAGER)
+                && RamsesLocker(LOCKER).poolDeployer() == POOL_DEPLOYER && address(RamsesLocker(LOCKER).voter()) == VOTER,
+            "LOCKER wiring does not match expected -- stop"
+        );
+
         sink = new ProtocolFeeSink(WETH, SAFE, ASSET_REGISTRY);
-        MockRamsesVoter voter = new MockRamsesVoter(); // stub -- no real Voter published for Robinhood yet
-        locker = new RamsesLocker(POSITION_MANAGER, address(voter));
+        locker = RamsesLocker(LOCKER);
         factory = new BallastFeeSplitterFactory(address(sink));
-        launcher = new RamsesLockLauncher(POSITION_MANAGER, address(locker), address(factory));
+        launcher = new RamsesLockLauncher(POSITION_MANAGER, LOCKER, address(factory));
         swapper = new ForkSwapper();
 
         launchedToken = new MockERC20("ForkLaunch", "FORK", 18);
