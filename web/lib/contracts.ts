@@ -80,6 +80,32 @@ export const isOpenTreasuryEnabled =
   Boolean(OPEN_TREASURY_FACTORY_ADDRESS) &&
   Boolean(OPEN_TREASURY_LENS_ADDRESS);
 
+// Ramses locked-pool launches — a Ballast token's trading pool lives on
+// Ramses' real Concentrated Liquidity venue instead of the gen-4 Uniswap v4
+// hook, with its LP position permanently locked (contracts/src/RamsesLockLauncher.sol,
+// BallastFeeSplitter{,Factory}.sol, ProtocolFeeSink.sol, docs/RAMSES_FEE_SPLITTER_DESIGN.md).
+// Behind an explicit flag defaulting OFF: every address below AND
+// NEXT_PUBLIC_RAMSES_ENABLED="true" are required, so a half-configured env
+// never silently turns this on. RAMSES_LOCKER_ADDRESS is Ramses' own
+// canonical, externally-deployed contract (not ours) — see .env.example for
+// how it was verified before use.
+export const RAMSES_LOCKER_ADDRESS = asAddress(process.env.NEXT_PUBLIC_RAMSES_LOCKER_ADDRESS);
+export const RAMSES_LAUNCHER_ADDRESS = asAddress(process.env.NEXT_PUBLIC_RAMSES_LAUNCHER_ADDRESS);
+export const RAMSES_V3_FACTORY_ADDRESS = asAddress(process.env.NEXT_PUBLIC_RAMSES_V3_FACTORY_ADDRESS);
+export const RAMSES_V3_POSITION_MANAGER_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_RAMSES_V3_POSITION_MANAGER_ADDRESS,
+);
+export const isRamsesEnabled =
+  process.env.NEXT_PUBLIC_RAMSES_ENABLED === "true" &&
+  Boolean(RAMSES_LOCKER_ADDRESS) &&
+  Boolean(RAMSES_LAUNCHER_ADDRESS) &&
+  Boolean(RAMSES_V3_FACTORY_ADDRESS) &&
+  Boolean(RAMSES_V3_POSITION_MANAGER_ADDRESS);
+// Fixed per docs/RAMSES_FEE_SPLITTER_DESIGN.md / Ramses' own fee-tier table
+// (tickSpacingInitialFee(100) == 10000, i.e. 1%) — not a user choice.
+export const RAMSES_TICK_SPACING = 100;
+export const DEAD_ADDRESS = "0x000000000000000000000000000000000000dEaD" as Address;
+
 // $BALLAST v1 — fixed forever, independent of whichever token is currently
 // pinned as the protocol token (see ProtocolTokenNotice.tsx).
 export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as Address;

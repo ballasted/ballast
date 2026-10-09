@@ -22,7 +22,14 @@ import { MotionSection } from "@/components/app/MotionSection";
 import { PairingScroller, HorizontalScroller, type PairingItem } from "@/components/PairingScroller";
 import { ETH_ROUTE_TICKERS } from "@/lib/pairingAssets";
 import { erc20Abi } from "@/lib/abis";
-import { isFactoryConfigured, isFeeRouterFactoryConfigured, FACTORY_ADDRESS, TOTAL_SUPPLY, WETH_ADDRESS } from "@/lib/contracts";
+import {
+  isFactoryConfigured,
+  isFeeRouterFactoryConfigured,
+  isRamsesEnabled,
+  FACTORY_ADDRESS,
+  TOTAL_SUPPLY,
+  WETH_ADDRESS,
+} from "@/lib/contracts";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -1163,6 +1170,18 @@ function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: strin
           </a>
         </div>
       </section>
+      {isRamsesEnabled && (
+        <section className="card mt-4 p-5">
+          <h3 className="text-sm font-semibold text-text-primary">Optional: back ${symbol} with a Ramses locked pool</h3>
+          <p className="mt-1 text-xs text-text-muted">
+            A separate, permanently locked liquidity position on Ramses (1% fee tier). 80% of its fees go to you, 20% to
+            the protocol. Set it up from the Backing tab on the token page whenever you&apos;re ready.
+          </p>
+          <Link href={`/app/token/${token}`} className="btn-secondary mt-3 inline-block">
+            Set up on the token page
+          </Link>
+        </section>
+      )}
     </div>
   );
 }

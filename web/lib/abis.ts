@@ -1454,3 +1454,205 @@ export const openTreasuryLensAbi = [
     ],
   },
 ] as const;
+
+// Ramses' own canonical RamsesLocker — not a Ballast contract, so only the
+// handful of functions/events we actually call are declared here (see
+// contracts/lib/ramses-v3-contracts/contracts/RamsesLocker.sol for the full
+// vendored source used to verify the real deployment).
+export const ramsesLockerAbi = [
+  {
+    type: "function",
+    name: "pendingFees",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "amount0", type: "uint256" },
+      { name: "amount1", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "collect",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [
+      { name: "amount0", type: "uint256" },
+      { name: "amount1", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "feeReceiverOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "poolOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "isLocked",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "event",
+    name: "FeesCollected",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "feeReceiver", type: "address", indexed: true },
+      { name: "caller", type: "address", indexed: false },
+      { name: "amount0", type: "uint256", indexed: false },
+      { name: "amount1", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+export const ramsesLockLauncherAbi = [
+  {
+    type: "function",
+    name: "createAndLock",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "legs",
+        type: "tuple",
+        components: [
+          { name: "token0", type: "address" },
+          { name: "token1", type: "address" },
+          { name: "tickSpacing", type: "int24" },
+          { name: "tickLower", type: "int24" },
+          { name: "tickUpper", type: "int24" },
+          { name: "amount0Desired", type: "uint256" },
+          { name: "amount1Desired", type: "uint256" },
+          { name: "amount0Min", type: "uint256" },
+          { name: "amount1Min", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      },
+      { name: "launchedToken", type: "address" },
+      { name: "creatorRecipient", type: "address" },
+      { name: "creatorBps", type: "uint16" },
+      { name: "protocolBps", type: "uint16" },
+    ],
+    outputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "splitter", type: "address" },
+    ],
+  },
+  {
+    type: "event",
+    name: "CreatedAndLocked",
+    inputs: [
+      { name: "tokenId", type: "uint256", indexed: true },
+      { name: "splitter", type: "address", indexed: true },
+      { name: "launchedToken", type: "address", indexed: true },
+      { name: "token0", type: "address", indexed: false },
+      { name: "token1", type: "address", indexed: false },
+      { name: "amount0", type: "uint256", indexed: false },
+      { name: "amount1", type: "uint256", indexed: false },
+      { name: "creatorRecipient", type: "address", indexed: false },
+      { name: "creatorBps", type: "uint16", indexed: false },
+      { name: "protocolBps", type: "uint16", indexed: false },
+    ],
+  },
+] as const;
+
+export const ballastFeeSplitterAbi = [
+  { type: "function", name: "token", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "locker", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "positionId", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  {
+    type: "function",
+    name: "creatorRecipient",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "protocolRecipient",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  { type: "function", name: "creatorBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint16" }] },
+  { type: "function", name: "protocolBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint16" }] },
+  {
+    type: "function",
+    name: "distribute",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "token_", type: "address" }],
+    outputs: [
+      { name: "toCreator", type: "uint256" },
+      { name: "toProtocol", type: "uint256" },
+    ],
+  },
+  {
+    type: "event",
+    name: "Distributed",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "toCreator", type: "uint256", indexed: false },
+      { name: "toProtocol", type: "uint256", indexed: false },
+      { name: "creatorPending", type: "uint256", indexed: false },
+      { name: "protocolPending", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+// Ramses' own RamsesV3Factory / pool — minimal, only what the create flow needs
+// to find or create a pool at the fixed 1% tier (tickSpacing 100).
+export const ramsesV3FactoryAbi = [
+  {
+    type: "function",
+    name: "getPool",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+      { name: "tickSpacing", type: "int24" },
+    ],
+    outputs: [{ name: "pool", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "createPool",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+      { name: "tickSpacing", type: "int24" },
+      { name: "sqrtPriceX96", type: "uint160" },
+    ],
+    outputs: [{ name: "pool", type: "address" }],
+  },
+] as const;
+
+export const ramsesV3PoolAbi = [
+  { type: "function", name: "token0", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "token1", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "tickSpacing", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "int24" }] },
+  { type: "function", name: "fee", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint24" }] },
+  {
+    type: "function",
+    name: "slot0",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "observationIndex", type: "uint16" },
+      { name: "observationCardinality", type: "uint16" },
+      { name: "observationCardinalityNext", type: "uint16" },
+      { name: "feeProtocol", type: "uint24" },
+      { name: "unlocked", type: "bool" },
+    ],
+  },
+] as const;
