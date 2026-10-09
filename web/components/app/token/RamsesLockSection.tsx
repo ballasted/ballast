@@ -414,16 +414,23 @@ function SetupPanel({
       // tick range sits entirely on the correct side of the current/initial
       // price for that to be valid V3 math (the launcher will also enforce
       // the price itself -- see RamsesLockLauncher._ensurePoolPrice).
+      //
+      // V3 math: a position holds 100% token0 when the CURRENT price is
+      // BELOW the whole range (sqrtPriceX96 <= sqrtRatioAtTickLower), and
+      // 100% token1 when it's ABOVE the whole range (sqrtPriceX96 >=
+      // sqrtRatioAtTickUpper) -- see LiquidityAmounts.getAmountsForLiquidity.
+      // So depositing ONLY token0 needs the range entirely ABOVE current
+      // price, and ONLY token1 needs it entirely BELOW.
       let tickLower: number;
       let tickUpper: number;
       if (quoteIsToken0) {
-        // Quote = token0 -> valid only when current price is ABOVE the range.
-        tickUpper = alignDown(currentTick, TICK_SPACING) - TICK_SAFETY_BUFFER;
-        tickLower = MIN_TICK;
-      } else {
-        // Quote = token1 -> valid only when current price is BELOW the range.
+        // Quote = token0 -> range entirely ABOVE current price.
         tickLower = alignUp(currentTick, TICK_SPACING) + TICK_SAFETY_BUFFER;
         tickUpper = MAX_TICK;
+      } else {
+        // Quote = token1 -> range entirely BELOW current price.
+        tickUpper = alignDown(currentTick, TICK_SPACING) - TICK_SAFETY_BUFFER;
+        tickLower = MIN_TICK;
       }
 
       const amount0Desired = quoteIsToken0 ? quoteAmount : 0n;
