@@ -15,6 +15,7 @@ import {
   RAMSES_LOCKER_ADDRESS,
   RAMSES_LAUNCHER_ADDRESS,
   RAMSES_V3_FACTORY_ADDRESS,
+  RAMSES_V3_POSITION_MANAGER_ADDRESS,
   RAMSES_TICK_SPACING,
   DEAD_ADDRESS,
   isRamsesEnabled,
@@ -145,6 +146,16 @@ function ExistingPosition({
   const sym0 = (token0SymRes.data as string | undefined) ?? shortAddress(pos.position?.token0 ?? ZERO);
   const sym1 = (token1SymRes.data as string | undefined) ?? shortAddress(pos.position?.token1 ?? ZERO);
 
+  const poolRes = useReadContract({
+    address: RAMSES_V3_FACTORY_ADDRESS,
+    abi: ramsesV3FactoryAbi,
+    functionName: "getPool",
+    args: pos.position ? [pos.position.token0, pos.position.token1, RAMSES_TICK_SPACING] : undefined,
+    chainId: CHAIN_ID,
+    query: { enabled: Boolean(pos.position) },
+  });
+  const poolAddress = poolRes.data as Address | undefined;
+
   const isLaunchedToken0 = pos.position?.token0.toLowerCase() === token.toLowerCase();
   // createAndLock is fully permissionless -- anyone can lock a position for
   // any token and name anyone as creatorRecipient. Never assume the funder
@@ -268,14 +279,26 @@ function ExistingPosition({
       {phase === "lost" && <p className="text-xs text-warning">Lost track of this transaction — check Blockscout before retrying.</p>}
       {err && <p className="text-xs text-negative">{err}</p>}
 
-      <a
-        className="block text-xs text-text-faint underline hover:text-text-secondary"
-        href={`${activeChain.blockExplorers.default.url}/token/${RAMSES_LOCKER_ADDRESS}?a=${pos.position?.tokenId}`}
-        target="_blank"
-        rel="noreferrer"
-      >
-        View locked position ↗
-      </a>
+      <div className="space-y-1">
+        <a
+          className="block text-xs text-text-faint underline hover:text-text-secondary"
+          href={`${activeChain.blockExplorers.default.url}/token/${RAMSES_V3_POSITION_MANAGER_ADDRESS}/instance/${pos.position?.tokenId}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View locked position ↗
+        </a>
+        {poolAddress && poolAddress !== ZERO && (
+          <a
+            className="block text-xs text-text-faint underline hover:text-text-secondary"
+            href={`${activeChain.blockExplorers.default.url}/address/${poolAddress}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View Ramses pool ↗
+          </a>
+        )}
+      </div>
     </div>
   );
 }
