@@ -27,7 +27,7 @@ stated plainly, not glossed over.
 | Contract | Address | Owner |
 |---|---|---|
 | AssetRegistry | `0x427764d0d19aB765c35A41A5aa4771580307dA81` | old EOA `0xA277…37D1` |
-| BackingLens | `0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770` | — (no admin surface) |
+| BackingLens | `0x73Ac3574c8743553f41C6E25F92A145b5c0e7240` | — (no admin surface); redeployed 2026-07-30, see `docs/ENV-AUDIT.md` |
 
 ### Prior generations (still live — see `docs/seeded-hook-history.md`)
 

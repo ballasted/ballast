@@ -59,21 +59,30 @@ contract OpenTreasuryForkTest is Test {
     }
 
     function test_fork_vaultCreation_realGen4Token() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address vault = factory.getOrCreateVault(REAL_GEN4_TOKEN);
         assertEq(vault, factory.vaultFor(REAL_GEN4_TOKEN));
         assertEq(factory.getOrCreateVault(REAL_GEN4_TOKEN), vault); // idempotent
     }
 
     function test_fork_vaultCreation_notLaunchedToken_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address randomAddr = makeAddr("notAToken");
         vm.expectRevert(abi.encodeWithSelector(OpenTreasuryVaultFactory.NotLaunchedToken.selector, randomAddr));
         factory.getOrCreateVault(randomAddr);
     }
 
     function test_fork_depositRealListedAsset_withdrawAfterHoldTime() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         OpenTreasuryVault vault = OpenTreasuryVault(factory.getOrCreateVault(REAL_GEN4_TOKEN));
 
         uint256 amount = 10e18; // SGOV is an 18-decimal ERC-8056 token
@@ -96,7 +105,10 @@ contract OpenTreasuryForkTest is Test {
     }
 
     function test_fork_fundRewardsWithRealWeth_streamsAndClaims() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         OpenTreasuryVault vault = OpenTreasuryVault(factory.getOrCreateVault(REAL_GEN4_TOKEN));
 
         uint256 amount = 5e18;
@@ -127,7 +139,10 @@ contract OpenTreasuryForkTest is Test {
     /// real owed() ledger for the token's real creator around a full deposit/
     /// notify/withdraw sequence, not merely asserted from the absence of imports.
     function test_fork_hookAccountingUnaffectedByOpenTreasuryActivity() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address creator = IBallastTokenLike(REAL_GEN4_TOKEN).creator();
         uint256 owedBefore = IBallastHookOwed(BALLAST_HOOK).owed(creator);
 

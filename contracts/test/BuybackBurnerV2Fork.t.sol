@@ -204,7 +204,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Happy path: both pools work end to end ──────────────────────────────
 
     function test_fork_buybackWeth_burnsAtDead() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(1 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 0.01 ether);
 
@@ -220,7 +223,10 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_buybackNvda_burnsAtDead() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(1 ether, 1000e18, 1 hours, 2000);
         _fundNvda(address(bb), 10e18);
 
@@ -236,7 +242,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Per-call cap clamps spend, doesn't revert ───────────────────────────
 
     function test_fork_perCallCap_clampsSpend() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 cap = 0.001 ether;
         BuybackBurnerV2 bb = _deploy(cap, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 1 ether); // far more than the cap
@@ -251,7 +260,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Cooldown ─────────────────────────────────────────────────────────────
 
     function test_fork_cooldown_blocksImmediateSecondCall() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 1 ether);
 
@@ -264,7 +276,10 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_cooldown_isPerAsset_notGlobal() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 1 ether);
         _fundNvda(address(bb), 100e18);
@@ -279,7 +294,10 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_cooldown_expiresAndAllowsAgain() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 cooldown = 1 hours;
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, cooldown, 2000);
         _fundWeth(address(bb), 1 ether);
@@ -297,7 +315,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── minAmountOut (caller quote bound) ───────────────────────────────────
 
     function test_fork_minAmountOutNotMet_reverts_movesNothing() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 0.001 ether);
 
@@ -314,7 +335,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Unsupported asset ────────────────────────────────────────────────────
 
     function test_fork_unsupportedAsset_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         vm.expectRevert(BuybackBurnerV2.UnsupportedAsset.selector);
         bb.buybackAndBurn(address(0xdead), 1, 0);
@@ -323,7 +347,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Zero slippage on the real thin pool reverts cleanly, moves nothing ──
 
     function test_fork_zeroSlippage_revertsCleanly_noFundsMoved() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 0);
         _fundWeth(address(bb), 0.001 ether);
         uint256 deadBefore = IERC20(BALLAST).balanceOf(DEAD);
@@ -343,7 +370,10 @@ contract BuybackBurnerV2ForkTest is Test {
     //    fully-immutable parameter set IS the invariant.
 
     function test_allParametersAreImmutable_noSetterExists() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         // Every one of these is a `public immutable` getter with no corresponding
         // setter anywhere in the contract -- compiles only because no setter exists
@@ -358,7 +388,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── Sandwich attempt bounded by the slippage guard ──────────────────────
 
     function test_fork_sandwich_burnerImpactStillBoundedBySlippageAfterFrontRun() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint16 slippageBps = 1000; // 10%
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, slippageBps);
         _fundWeth(address(bb), 0.005 ether);
@@ -407,7 +440,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      to the PoolManager), and BALLAST never sits in the contract
     ///      outside of the burn.
     function test_fork_invariant_wethOnlyViaSwap_ballastOnlyViaBurn() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 0.003 ether);
         _fundNvda(address(bb), 30e18);
@@ -487,7 +523,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      fix, totalSpent(NVDA) and the event's `spent` both read the full 10e18
     ///      requested; after the fix, both must read the real ~2.7e18 settled.
     function test_fork_partialFill_recordsRealSettledAmount_notRequested() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundNvda(address(bb), 30e18);
 
@@ -507,7 +546,10 @@ contract BuybackBurnerV2ForkTest is Test {
     /// @dev A small request against real depth fully fills -- requested == settled
     ///      == totalSpent == event.spent, unchanged from before this fix.
     function test_fork_fullFill_totalSpentAndEventStillMatchTheRequest() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 0.001 ether);
         uint256 wethBefore = IERC20(WETH).balanceOf(address(bb));
@@ -542,7 +584,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      Transfer from the contract -- the event never over- or under-reports
     ///      relative to what actually moved, in aggregate, not just per-call.
     function test_fork_sumOfBuybackBurnedSpent_equalsSumOfTransfersOut() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.001 ether, 1000e18, 1 hours, 2000);
         _fundWeth(address(bb), 1 ether);
         _fundNvda(address(bb), 30e18);
@@ -568,7 +613,10 @@ contract BuybackBurnerV2ForkTest is Test {
     // ── claimFees integration: a real buyback funded by the platform's hook fee ──
 
     function test_fork_claimFees_fundsAndExecutesARealBuyback() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address[] memory hooks = new address[](1);
         hooks[0] = HOOK;
         BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
@@ -594,7 +642,10 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_claimFees_standalone_doesNotRequireABuyback() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address[] memory hooks = new address[](1);
         hooks[0] = HOOK;
         BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
@@ -624,7 +675,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      by buybackAndBurn's NVDA path (via _claimNvda(), owedIn/claimIn) and
     ///      burned, exactly like a WETH buyback already was.
     function test_fork_nvdaPlatformFeeIsClaimedAndBurned_afterSetPlatformVault() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address[] memory hooks = new address[](1);
         hooks[0] = HOOK;
         BuybackBurnerV2 bb = _deployWithClaimHooks(0.01 ether, 1000e18, 1 hours, 2000, hooks);
@@ -673,7 +727,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      downstream (claimIn, the forward, the Safe's real balance) is real.
     ///      SGOV is a real, registry-listed asset (AssetRegistry, GREEN-eligible).
     function test_fork_thirdAssetPlatformFee_claimedAndLandsInSafe_exactAmount() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
         address[] memory hooks = new address[](1);
         hooks[0] = HOOK;
@@ -698,21 +755,30 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_claimOtherFees_revertsForWeth() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
         vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
         bb.claimOtherFees(WETH);
     }
 
     function test_fork_claimOtherFees_revertsForNvda() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
         vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
         bb.claimOtherFees(NVDA);
     }
 
     function test_fork_claimOtherFees_revertsForBallast() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
         vm.expectRevert(BuybackBurnerV2.CannotForwardThisAsset.selector);
         bb.claimOtherFees(BALLAST);
@@ -724,7 +790,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      — this half shows the POSITIVE path: a plain donation really can be
     ///      bought-and-burned, not just that the wrong function reverts).
     function test_fork_donation_nonBurnableIsForwardable_wethNvdaOnlySpendableViaBuyback() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
 
@@ -747,7 +816,10 @@ contract BuybackBurnerV2ForkTest is Test {
     }
 
     function test_fork_claimOtherFees_reentrantHook_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
         ReentrantClaimInHookFork hook = new ReentrantClaimInHookFork();
         address[] memory hooks = new address[](1);
@@ -764,7 +836,10 @@ contract BuybackBurnerV2ForkTest is Test {
     ///      `fallbackRecipient`, never anywhere else, proven directly from the
     ///      Transfer log.
     function test_fork_invariant_thirdAssetLeavesOnlyToFallbackRecipient() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address sgov = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
         BuybackBurnerV2 bb = _deploy(0.01 ether, 1000e18, 1 hours, 2000);
         deal(sgov, address(bb), 777e6, true);

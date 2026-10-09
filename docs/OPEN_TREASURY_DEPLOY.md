@@ -24,31 +24,42 @@ redeployed:
 - **A fresh deploy wallet**, created specifically for this deploy. Must NOT be
   `0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1` (compromised) or depend on it
   in any way.
-- A Foundry keystore for that wallet: `cast wallet import opentreasury-deployer
-  --interactive` (you will be prompted for the private key and a password —
-  Claude Code never sees or handles either).
+- A Foundry keystore for that wallet: `cast wallet new ~/.foundry/keystores opentreasury-deployer`
+  (prompts for a password interactively — Claude Code never sees or handles
+  it; this writes a NEW keystore and prints its address, no private key to
+  import from anywhere else).
 - The wallet funded with a small amount of ETH for gas (see §3 for the
   estimate once a dry-run has actually run).
 - `RH_RPC_URL_PAID` (or any working mainnet RPC) set in your own shell — never
   pasted into chat, never committed.
+- **Never use `--password-file`** for the broadcast step — that puts the
+  keystore password in a file this process (or anything else on the machine)
+  could read. Use `--account <keystore> --sender <address>` and type the
+  password at the interactive prompt when `forge` asks for it.
 
 ## 2. Exact commands, in order
 
-**Step 1 — dry run (no `--broadcast`), confirm predicted addresses and gas:**
+**Step 1 — dry run (no `--broadcast`), confirm predicted addresses:**
+```bash
+DRY_RUN=true forge script script/DeployOpenTreasury.s.sol:DeployOpenTreasury \
+  --rpc-url "$RH_RPC_URL_PAID" --sender <your-address>
+```
+Prints the predicted `OpenTreasuryVaultFactory`, `OpenTreasuryVault`
+implementation, and `OpenTreasuryLens` addresses (does not broadcast). Confirm
+these look right, then run WITHOUT `DRY_RUN` and WITHOUT `--broadcast` to get
+a real gas estimate from forge's own simulation:
 ```bash
 forge script script/DeployOpenTreasury.s.sol:DeployOpenTreasury \
-  --rpc-url "$RH_RPC_URL_PAID"
+  --rpc-url "$RH_RPC_URL_PAID" --sender <your-address>
 ```
-Read the predicted `OpenTreasuryVaultFactory`/`OpenTreasuryLens` addresses and
-total gas from the output before proceeding. See §3 for why this sandbox
-could not run this step itself this round.
+See §3 for why this sandbox could not run either of these itself this round.
 
-**Step 2 — broadcast, signed by the keystore:**
+**Step 2 — broadcast, signed by the keystore (you type the password):**
 ```bash
 forge script script/DeployOpenTreasury.s.sol:DeployOpenTreasury \
   --rpc-url "$RH_RPC_URL_PAID" \
   --account opentreasury-deployer \
-  --password-file ~/.foundry/keystores/opentreasury-deployer.pass \
+  --sender <your-address> \
   --broadcast
 ```
 
@@ -70,8 +81,15 @@ forge verify-contract <LENS_ADDRESS> \
   --verifier blockscout \
   --verifier-url https://robinhoodchain.blockscout.com/api \
   --chain-id 4663 \
-  --constructor-args $(cast abi-encode "constructor(address)" 0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770)
+  --constructor-args $(cast abi-encode "constructor(address)" 0x73ac3574c8743553f41c6e25f92a145b5c0e7240)
 ```
+`0x73ac3574c8743553f41c6e25f92a145b5c0e7240` is the **current, live**
+BackingLens — confirmed 2026-10-09 by reading it directly out of production's
+own JS bundle (`NEXT_PUBLIC_LENS_ADDRESS` is a public env var, shipped to
+every browser). The older `0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770` (still
+referenced in `docs/BALLAST_STATE.md`/`docs/codex-indexing-form.md`, both
+stale as of this redeploy) was superseded 2026-07-30 per `docs/ENV-AUDIT.md`
+— using it here would have wired `OpenTreasuryLens` to a dead reference.
 
 **Step 4 — verify on Sourcify** (same artifacts, no constructor-args flag needed —
 Sourcify recovers them from the on-chain creation bytecode):
@@ -85,31 +103,35 @@ forge verify-contract <LENS_ADDRESS> src/OpenTreasuryLens.sol:OpenTreasuryLens \
 trying this — it silently hijacks non-Etherscan verifiers. Already removed,
 just don't reintroduce it.)
 
-## 3. Dry-run — what this session could and couldn't confirm
+## 3. Dry-run — confirmed live against mainnet 2026-10-09
 
-The dry-run command in Step 1 was attempted from this sandbox against the
-documented public RPC (`https://rpc.mainnet.chain.robinhood.com`,
-`docs/robinhood-chain-research.md`) and failed at the network layer:
-```
-Error: error sending request for url (https://rpc.mainnet.chain.robinhood.com/)
-Error #1: invalid peer certificate: NotValidForName
-```
-This is a TLS/certificate issue specific to this sandbox's outbound network
-(not a statement about the chain or RPC itself — memory from a prior session
-recorded the same public RPC as reachable). **Predicted addresses, total gas,
-and ETH needed at current gas price are therefore Unknown from this session** —
-run Step 1 yourself before Step 2 and read those numbers from its output; the
-script prints the factory's `implementation()` address too, so you can confirm
-the clone implementation deployed correctly before broadcasting anything.
+The public RPC (`https://rpc.mainnet.chain.robinhood.com`) was reachable this
+session (a prior session's TLS error was specific to that sandbox run, not
+the chain). Ran both the `DRY_RUN=true` address-prediction path and a plain
+`forge script` simulation (no `--broadcast`) with a placeholder sender
+(`0x000...dEaD`) — real numbers, real chain state, nothing broadcast:
 
-What IS confirmed from this session: the script compiles cleanly against the
-same Foundry profile as every other contract in this repo (`forge build`,
-exit 0), and `OpenTreasuryVaultFactory`/`OpenTreasuryLens`'s own constructors
-contain no logic beyond wiring immutables — the actual deploy gas cost is
-bounded by `OpenTreasuryVault`'s and `OpenTreasuryLens`'s compiled
-deployment sizes, both well within normal single-contract deploy ranges (see
-the Phase 4 gas report in the final report for the clone/function-level
-numbers already measured against local state).
+```
+Estimated gas price: 0.042532001 gwei
+Estimated total gas used for script: 3,562,114
+Estimated amount required: 0.000151503836210114 ETH
+```
+
+That's the real cost on real mainnet gas pricing right now — fund the deploy
+wallet with a healthy margin anyway (gas price moves): **0.01 ETH is ~66x the
+estimate and plenty.**
+
+Predicted addresses from that same run are **illustrative only** — they're
+computed from the placeholder sender's nonce, not your real keystore's. Once
+you've created your keystore (§1) and have its address, give it to me and
+I'll re-run `DRY_RUN=true` with your real `--sender` to get the actual
+predicted `OpenTreasuryVaultFactory`/`OpenTreasuryVault` implementation/
+`OpenTreasuryLens` addresses before you broadcast anything.
+
+Also confirmed in this run: the script compiles cleanly, and the address
+ordering is factory (sender tx 1) → implementation (factory's own internal
+`new`, factory's nonce 1, NOT a sender-nonce tx) → lens (sender tx 2) — the
+script's dry-run output computes all three correctly with that ordering.
 
 ## 4. Vercel environment variables
 

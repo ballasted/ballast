@@ -106,7 +106,10 @@ contract BallastV1ClaimForkTest is Test {
     // ── Both paths, happy path ───────────────────────────────────────────
 
     function test_fork_claimETH_paysExactEntitlement() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 ethBefore = SECOND.balance;
         uint256 deadBefore = IERC20(V1_TOKEN).balanceOf(claimC.DEAD());
         vm.prank(SECOND);
@@ -118,7 +121,10 @@ contract BallastV1ClaimForkTest is Test {
     }
 
     function test_fork_claimToken_swapsThroughRealPool_paysBallastV2() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         // A generous but real floor: at least 50% of a naive spot-price
         // estimate is impossible to get exactly on-chain without a quoter
         // call from the test itself, so this just proves minOut=1 (passing
@@ -139,7 +145,10 @@ contract BallastV1ClaimForkTest is Test {
     // ── One path per holder, enforced across BOTH directions ────────────
 
     function test_fork_ethThenToken_sameHolder_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.startPrank(SECOND);
         claimC.claimETH(SECOND_BAL / 2, SECOND_BAL, SECOND_ETH, secondProof());
         vm.expectRevert(BallastV1Claim.WrongPath.selector);
@@ -148,7 +157,10 @@ contract BallastV1ClaimForkTest is Test {
     }
 
     function test_fork_tokenThenEth_sameHolder_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.startPrank(LARGEST);
         claimC.claimToken(LARGEST_BAL / 2, LARGEST_BAL, LARGEST_ETH, largestProof(), 1, block.timestamp + 600);
         vm.expectRevert(BallastV1Claim.WrongPath.selector);
@@ -159,7 +171,10 @@ contract BallastV1ClaimForkTest is Test {
     // ── minOut failure leaves the claim completely untouched ────────────
 
     function test_fork_minOutNotMet_revertsEntireClaim_touchesNothing() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 v1Before = IERC20(V1_TOKEN).balanceOf(LARGEST);
         uint256 contractEthBefore = address(claimC).balance;
 
@@ -176,7 +191,10 @@ contract BallastV1ClaimForkTest is Test {
     // ── 7-day deadline ────────────────────────────────────────────────────
 
     function test_fork_claimOnDaySix_works() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.warp(deployedAt + 6 days);
         vm.prank(SECOND);
         uint256 paid = claimC.claimETH(SECOND_BAL, SECOND_BAL, SECOND_ETH, secondProof());
@@ -184,7 +202,10 @@ contract BallastV1ClaimForkTest is Test {
     }
 
     function test_fork_claimAfterDaySeven_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.warp(deployedAt + 7 days);
         vm.prank(SECOND);
         vm.expectRevert(BallastV1Claim.DeadlinePassed.selector);
@@ -194,13 +215,19 @@ contract BallastV1ClaimForkTest is Test {
     // ── Sweep ────────────────────────────────────────────────────────────
 
     function test_fork_sweepBeforeDeadline_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.expectRevert(BallastV1Claim.DeadlineNotYetPassed.selector);
         claimC.sweep();
     }
 
     function test_fork_sweepAfterDeadline_sendsExactRemainder() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         // Only SECOND claims (in ETH); LARGEST's full entitlement is never
         // claimed and must sweep in full.
         vm.prank(SECOND);
@@ -229,7 +256,10 @@ contract BallastV1ClaimForkTest is Test {
     /// exceed the budget": no single holder, on either path, can ever be paid
     /// more than their own fixed leaf allows.
     function test_fork_totalPaidOut_neverExceedsBudget() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint256 contractEthBefore = address(claimC).balance;
         assertEq(contractEthBefore, TOTAL_BUDGET);
 

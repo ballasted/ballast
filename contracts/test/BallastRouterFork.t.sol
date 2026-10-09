@@ -84,7 +84,10 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_buyWithETH_intoWethQuotedPool() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.prank(trader);
         uint256 out = router.buyWithETH{value: 1 ether}(WETH, 0, ballastToken, address(hook), 0, block.timestamp + 300);
         assertGt(out, 0, "must receive ballast token");
@@ -93,7 +96,10 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_buyWithNVDA_viaCuratedRoute_intoWethQuotedPool() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.startPrank(trader);
         IERC20(NVDA).approve(address(router), 100e18);
         uint256 out = router.buy(NVDA, 100e18, WETH, 0, ballastToken, address(hook), 0, block.timestamp + 300);
@@ -109,7 +115,10 @@ contract BallastRouterForkTest is Test {
     ///         NVDA-aware factory here instead of assuming the WETH-quoted
     ///         proof above generalizes.
     function test_buyWithETH_intoNvdaQuotedPool() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         address nvdaFeed = 0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15; // real Chainlink NVDA/USD, live-verified 2026-09-26
         registry.setAsset(NVDA, nvdaFeed, 96 hours, 1e17);
 
@@ -132,7 +141,10 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_sellToETH_afterBuy() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.startPrank(trader);
         uint256 bought = router.buyWithETH{value: 1 ether}(WETH, 0, ballastToken, address(hook), 0, block.timestamp + 300);
         IERC20(ballastToken).approve(address(router), bought);
@@ -145,14 +157,20 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_buy_impossibleMinOut_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.prank(trader);
         vm.expectRevert(BallastRouter.InsufficientOutput.selector);
         router.buyWithETH{value: 1 ether}(WETH, 0, ballastToken, address(hook), type(uint256).max, block.timestamp + 300);
     }
 
     function test_buy_expiredDeadline_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.warp(block.timestamp + 1000);
         vm.prank(trader);
         vm.expectRevert(BallastRouter.DeadlineExpired.selector);
@@ -160,7 +178,10 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_buy_unknownRouteIndex_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         vm.startPrank(trader);
         IERC20(NVDA).approve(address(router), 100e18);
         vm.expectRevert(); // out-of-bounds array access — no route[1] exists
@@ -169,7 +190,10 @@ contract BallastRouterForkTest is Test {
     }
 
     function test_buy_routeIndexPointsToWrongPair_reverts() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         // routes[0] is WETH<->NVDA; asking it to serve a WETH<->WETH "swap"
         // (quoteAsset==tokenIn would never call _swapDirect at all, so instead
         // exercise the real mismatch: claim tokenIn=NVDA but request quoteAsset

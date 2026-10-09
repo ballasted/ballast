@@ -115,7 +115,10 @@ contract BuybackBurnerForkTest is Test {
     // ── Happy path: a real buy on the real pool, burned at DEAD ──────────────────
 
     function test_fork_buybackAndBurn_burnsAtDead() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurner bb = _deploy(0.001 ether, 2000); // generous cap so the buy fills
         _fundWeth(address(bb), 0.01 ether);
 
@@ -142,7 +145,10 @@ contract BuybackBurnerForkTest is Test {
     // ── Below threshold: a permissionless call reverts BEFORE moving any funds ───
 
     function test_fork_belowThreshold_movesNothing() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurner bb = _deploy(1 ether, 2000);
         _fundWeth(address(bb), 0.2 ether); // under threshold
 
@@ -165,7 +171,10 @@ contract BuybackBurnerForkTest is Test {
     //    burner and nothing reaches DEAD. Assert that, not a specific selector.
 
     function test_fork_zeroSlippage_revertsCleanly_noFundsMoved() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurner bb = _deploy(0.001 ether, 0); // 0% move allowed
         _fundWeth(address(bb), 0.01 ether);
         uint256 wethIn = IERC20(WETH).balanceOf(address(bb));
@@ -186,7 +195,10 @@ contract BuybackBurnerForkTest is Test {
     //    seed, ~1 ETH FDV), so a tight cap against a large-ish buy is expected to bite.
 
     function test_fork_thinPool_slippageBound_and_rollover() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint16 cap = 100; // 1% max price move per buyback
         BuybackBurner bb = _deploy(0.001 ether, cap);
 
@@ -228,7 +240,10 @@ contract BuybackBurnerForkTest is Test {
     //    the owner's only powers are tuning, and that funds only ever exit via burn.
 
     function test_fork_ownerCannotRecoverFunds() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         BuybackBurner bb = _deploy(0.001 ether, 2000);
         _fundWeth(address(bb), 0.01 ether);
 

@@ -9,28 +9,44 @@ import {OpenTreasuryLens} from "../src/OpenTreasuryLens.sol";
 ///        on top of the already-live, UNTOUCHED gen-4 core
 ///
 /// @notice No private key read by this script — sign with a BRAND NEW keystore
-///         created specifically for this deploy, e.g.:
-///         `--account opentreasury-deployer --password-file
-///         ~/.foundry/keystores/opentreasury-deployer.pass`. Must NOT be the
-///         compromised deployer 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1 — that
-///         address must sign nothing here.
+///         created specifically for this deploy: `--account opentreasury-deployer
+///         --sender <address>`. The human types the keystore password
+///         themselves at the broadcast prompt; never pass `--password-file`
+///         (that puts the password in a file this process could read — see
+///         docs/OPEN_TREASURY_DEPLOY.md). Must NOT be the compromised deployer
+///         0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1 — that address must sign
+///         nothing here.
 ///
 ///         Deploys only NEW, additive contracts. Does not modify, redeploy, or
 ///         call any owner-only function on BallastFactory, BallastHook,
 ///         AssetRegistry, BackingLens, FeeConfig, BallastSeeder, or any router.
 ///
-/// @dev Addresses below are the real, live, VERIFIED gen-4 mainnet addresses
-///      (docs/BALLAST_STATE.md, this task's own brief) — a deploy script
-///      targeting a specific known deployment is expected to reference it
-///      directly; this is not the same as the app-code "never hardcode"
-///      convention, which governs runtime reads, not one-time deploy wiring.
+/// @dev Addresses below are the real, live, VERIFIED gen-4 mainnet addresses.
+///      BACKING_LENS is the POST-REDEPLOY address (2026-07-30) — see
+///      docs/ENV-AUDIT.md and docs/RUNBOOK.md; the pre-redeploy address
+///      (0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770) is stale and must never
+///      be used for a new deploy. Confirmed live 2026-10-09 by reading the
+///      production JS bundle at ballasted.fun directly (NEXT_PUBLIC_LENS_ADDRESS
+///      is a public env var, visible to every browser once built — this is
+///      not a credential, just confirming which value Vercel's "Sensitive"
+///      tag was hiding from `vercel env pull`). A deploy script targeting a
+///      specific known deployment is expected to reference it directly; this
+///      is not the same as the app-code "never hardcode" convention, which
+///      governs runtime reads, not one-time deploy wiring.
 ///      minHoldTime (24h) and rewardsDuration (7d) match
 ///      docs/OPEN_TREASURY_DESIGN.md decisions D9/D10 — override via env for a
 ///      testnet dry-run only, never for the real mainnet deploy.
+///
+/// Usage:
+///   DRY_RUN=true forge script script/DeployOpenTreasury.s.sol:DeployOpenTreasury \
+///     --rpc-url robinhood_mainnet --sender <your-address>
+///
+///   forge script script/DeployOpenTreasury.s.sol:DeployOpenTreasury \
+///     --rpc-url robinhood_mainnet --account opentreasury-deployer --sender <your-address> --broadcast
 contract DeployOpenTreasury is Script {
     address constant BALLAST_FACTORY = 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67;
     address constant ASSET_REGISTRY = 0x427764d0d19aB765c35A41A5aa4771580307dA81;
-    address constant BACKING_LENS = 0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770;
+    address constant BACKING_LENS = 0x73Ac3574c8743553f41C6E25F92A145b5c0e7240;
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     uint256 constant MIN_HOLD_TIME = 24 hours;
     uint256 constant REWARDS_DURATION = 7 days;
@@ -42,12 +58,44 @@ contract DeployOpenTreasury is Script {
         address weth = vm.envOr("OPEN_TREASURY_WETH", WETH);
         uint256 minHoldTime = vm.envOr("OPEN_TREASURY_MIN_HOLD_TIME", MIN_HOLD_TIME);
         uint256 rewardsDuration = vm.envOr("OPEN_TREASURY_REWARDS_DURATION", REWARDS_DURATION);
+        bool dryRun = vm.envOr("DRY_RUN", false);
+        address sender = msg.sender;
+
+        console2.log("=== DeployOpenTreasury ===");
+        console2.log("mode:", dryRun ? "DRY-RUN (no broadcast)" : "BROADCAST");
+        console2.log("sender:", sender);
+        console2.log("ballastFactory:", ballastFactory);
+        console2.log("assetRegistry:", registry);
+        console2.log("backingLens:", backingLens);
+        console2.log("weth:", weth);
+        console2.log("minHoldTime:", minHoldTime);
+        console2.log("rewardsDuration:", rewardsDuration);
+
+        if (dryRun) {
+            uint256 nonce = vm.getNonce(sender);
+            address predictedFactory = vm.computeCreateAddress(sender, nonce);
+            // The factory's OWN constructor internally does `new OpenTreasuryVault()`
+            // -- that CREATE is from the FACTORY's address, not the sender's, at the
+            // factory's own first nonce (1, per EIP-161 contract nonce start).
+            address predictedImplementation = vm.computeCreateAddress(predictedFactory, 1);
+            // OpenTreasuryLens is the sender's SECOND tx (nonce+1), not third --
+            // the implementation deploy above doesn't consume a sender nonce.
+            address predictedLens = vm.computeCreateAddress(sender, nonce + 1);
+            console2.log("");
+            console2.log("predicted OpenTreasuryVaultFactory:", predictedFactory);
+            console2.log("predicted OpenTreasuryVault implementation:", predictedImplementation);
+            console2.log("predicted OpenTreasuryLens:", predictedLens);
+            console2.log("(predictions assume these are the sender's next two txs on this");
+            console2.log(" chain, in this exact order, nothing else broadcast from this account first)");
+            return (factory, lens);
+        }
 
         vm.startBroadcast();
         factory = new OpenTreasuryVaultFactory(ballastFactory, registry, weth, minHoldTime, rewardsDuration);
         lens = new OpenTreasuryLens(backingLens);
         vm.stopBroadcast();
 
+        console2.log("");
         console2.log("OpenTreasuryVaultFactory deployed:", address(factory));
         console2.log("OpenTreasuryLens deployed:", address(lens));
         console2.log("implementation (logic contract):", factory.implementation());

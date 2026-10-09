@@ -23,7 +23,7 @@ memory. ABIs exported as JSON: `docs/abi/*.json`.
 | BallastRouterV2 (current, pay with ETH into any quote asset via Fables or Ramses) | `0xa0Aba92d3D99eC905BcFc8a6aCfC889468a747E0` | `docs/abi/BallastRouterV2.json` |
 | FeeConfig (gen-4) | `0xE09F093595045E8765F420Cb12E0AA250910E5AD` | `docs/abi/FeeConfig.json` |
 | AssetRegistry (shared, all generations) | `0x427764d0d19aB765c35A41A5aa4771580307dA81` | `docs/abi/AssetRegistry.json` |
-| BackingLens | `0x21fdE9AcFb45DA09262672b9f35FB3b4Fe91d770` | `docs/abi/BackingLens.json` |
+| BackingLens | `0x73Ac3574c8743553f41C6E25F92A145b5c0e7240` | `docs/abi/BackingLens.json` (redeployed 2026-07-30, see `docs/ENV-AUDIT.md`) |
 | BallastToken (per-launch template) | one per launch, see below | `docs/abi/BallastToken.json` |
 | ProjectTreasury (per-launch template) | one per launch, see below | `docs/abi/ProjectTreasury.json` |
 

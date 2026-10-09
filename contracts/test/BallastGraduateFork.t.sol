@@ -122,7 +122,10 @@ contract BallastGraduateForkTest is Test {
     ///      ("opens at 1x backing") described the mechanism this workstream
     ///      deliberately removed; kept here renamed, now proving the opposite.
     function test_backedLaunch_opensAtFixed1Eth_regardlessOfBackingSize_thenBuyAndClaim() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         // A fresh backing asset ($100) with a mock feed.
         MockStockToken stock = new MockStockToken("Mock NVDA", "MNVDA", 18);
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
@@ -173,7 +176,10 @@ contract BallastGraduateForkTest is Test {
     /// @dev Item 5, currency1 ordering: same fixed-opening proof as the
     ///      currency0 test above, for the token-sorts-above-WETH case.
     function test_backedLaunch_currency1_opensAtFixed1Eth_regardlessOfBackingSize() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         MockStockToken stock = new MockStockToken("Mock NVDA", "MNVDA", 18);
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
@@ -220,7 +226,10 @@ contract BallastGraduateForkTest is Test {
     }
 
     function test_unbackedLaunch_constantP0_endToEnd() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         _forceNextLaunchCurrency0();
         (, address token,) = factory.launch("Meme", "MEME", 7 days, "", _one(WETH));
         factory.graduate(token); // no treasury assets -> UNBACKED_TICK
@@ -280,7 +289,10 @@ contract BallastGraduateForkTest is Test {
         uint256 ethUsd,
         uint8 decSel
     ) public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         uint8 feedDec = [6, 8, 18][decSel % 3];
         amount = bound(amount, 1e18, 1_000_000e18);
         ethUsd = bound(ethUsd, 200e8, 10_000e8);
@@ -296,7 +308,10 @@ contract BallastGraduateForkTest is Test {
     }
 
     function test_uiMultiplier_notApplied_toFeedPrice() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         // Two identical launches; one asset has uiMultiplier 3x. Backing (hence P0)
         // must be IDENTICAL — the feed price already embeds the multiplier (rule 7).
         _forceNextLaunchCurrency0();
@@ -319,7 +334,10 @@ contract BallastGraduateForkTest is Test {
     ///      Graduated event's informational figure (see the event-decoding
     ///      test below) but must have NO effect on the opening tick at all.
     function test_mixedAssets_neverAffectOpenTick() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         _forceNextLaunchCurrency0();
         (, address token, address treasury) = factory.launch("Mix", "MIX", 30 days, "", _one(WETH));
         _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
@@ -335,7 +353,10 @@ contract BallastGraduateForkTest is Test {
     ///      test) but should still sum real holdings correctly, so a future
     ///      consumer isn't silently fed a wrong number.
     function test_graduatedEvent_reportsRealBackingSum_despiteFixedOpenTick() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         _forceNextLaunchCurrency0();
         (, address token, address treasury) = factory.launch("Mix2", "MIX2", 30 days, "", _one(WETH));
         _addBackedAsset(treasury, 8, 100e8, 500e18, 0); // $50k
@@ -361,7 +382,10 @@ contract BallastGraduateForkTest is Test {
     // on-chain depends on freshness) — it should just degrade the
     // informational figure by omitting that asset's contribution.
     function test_graduateSucceeds_whenBackingFeedStale_omittedFromInformationalSum() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         MockStockToken stock = new MockStockToken("Mock AAPL", "MAAPL", 18);
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 4 days); // > 3d staleAfter
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
@@ -391,7 +415,10 @@ contract BallastGraduateForkTest is Test {
     // deviation-threshold feed, so graduation now proceeds instead of reverting.
     // The old 1h constant would have bricked this launch.
     function test_graduateSucceeds_whenBackingFeedQuietButWithinBound() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         MockStockToken stock = new MockStockToken("Mock AAPL", "MAAPL", 18);
         MockAggregator feed = new MockAggregator(8, 200e8, block.timestamp - 2 hours); // quiet, < 3d bound
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
@@ -411,7 +438,10 @@ contract BallastGraduateForkTest is Test {
     // for that specific case — so a dead ETH feed must NOT block graduation
     // of a WETH-quoted launch anymore, even though the treasury feed is fine.
     function test_graduateSucceeds_wethQuoted_evenWhenEthFeedDead() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         MockStockToken stock = new MockStockToken("Mock NVDA", "MNVDA", 18);
         MockAggregator feed = new MockAggregator(8, 100e8, block.timestamp);
         registry.setAsset(address(stock), address(feed), 3 days, 1e12, MarketHours.UsEquities24_5);
@@ -435,7 +465,10 @@ contract BallastGraduateForkTest is Test {
     // still revert graduation, since it would otherwise set an immutable
     // price from a dead read permanently.
     function test_graduateReverts_stockQuoted_whenEthFeedDead() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         MockStockToken quoteAsset = new MockStockToken("Mock TSLA", "MTSLA", 18);
         registry.setAsset(
             address(quoteAsset), address(new MockAggregator(8, 50e8, block.timestamp)), 3 days, 1e12, MarketHours.UsEquities24_5
@@ -476,7 +509,10 @@ contract BallastGraduateForkTest is Test {
     ///      `owed` for WETH, `owedIn[...][X]` for the stock quote asset —
     ///      proving no cross-pool leakage.
     function test_multiQuoteAsset_graduate_seedsAllPools_equalSplit_isolatedFeeLedgers() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
 
         MockStockToken quoteB = new MockStockToken("Mock TSLA", "MTSLA", 18);
         registry.setAsset(

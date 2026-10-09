@@ -178,7 +178,10 @@ contract FeeRouterForkTest is Test {
     // --------------------------------------------------------------------- //
 
     function test_fork_allFourBuckets_endToEnd() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         (FeeRouter router, address token, address treasury) = _launchViaRouter(1000);
         assertEq(MockRouterCheck(token).creator(), address(router), "router must be on-chain creator");
 
@@ -228,7 +231,10 @@ contract FeeRouterForkTest is Test {
     // --------------------------------------------------------------------- //
 
     function test_fork_treasurySwap_minOutNotMet_revertsCleanly() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         (FeeRouter router, address token,) = _launchViaRouter(1000);
         factory.graduate(token);
         PoolKey memory tokenKey =
@@ -249,7 +255,10 @@ contract FeeRouterForkTest is Test {
     // --------------------------------------------------------------------- //
 
     function test_fork_buybackDeferredThenFlushed() public {
-        if (!forked) return;
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
         (FeeRouter router, address token,) = _launchViaRouter(1000);
 
         // Fees can only accrue via a real swap, which needs a seeded pool, which
