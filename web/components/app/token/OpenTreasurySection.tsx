@@ -20,7 +20,7 @@ import { cn } from "@/lib/cn";
 const CHAIN_ID = activeChain.id;
 type Phase = "idle" | "pending" | "confirming" | "lost" | "error" | "done";
 const CONFIRM_TEXT =
-  "You can withdraw your deposit after the minimum holding time. You earn a variable share of trading fees, which can be zero. This is not a promise of returns. The value of deposited assets can go down.";
+  "You can withdraw your deposit after the minimum holding time. Rewards depend on what is sent to this vault, not automatic trading fees, and can be zero. The value of deposited assets can go down.";
 
 function fmt(v: bigint, decimals: number, opts?: Intl.NumberFormatOptions): string {
   return Number(formatUnits(v, decimals)).toLocaleString("en", { maximumFractionDigits: 6, ...opts });
@@ -46,8 +46,10 @@ export function OpenTreasurySection({ token, creator, symbol }: { token?: Addres
       <div>
         <h2 className="section-label">Open Treasury</h2>
         <p className="mt-1 text-xs text-text-faint">
-          Anyone can deposit a listed asset and earn a variable share of trading fees. Not creator-funded ballast —
-          separate, always withdrawable by whoever deposited it.
+          Anyone can deposit a listed asset. Rewards sent to this vault, usually from the creator&apos;s share of
+          trading fees, are shared by deposit weight over 7 days. Nothing arrives automatically, so rewards can be
+          zero. Deposits are separate from the creator&apos;s treasury and always withdrawable by whoever deposited
+          them, after 24 hours.
         </p>
       </div>
 
@@ -85,6 +87,7 @@ export function OpenTreasurySection({ token, creator, symbol }: { token?: Addres
         rewardLast30d={activity.rewardLast30d}
         communityWithdrawableUsd={ot.backing?.communityWithdrawableUsd}
         rewardsDuration={ot.rewardsDuration}
+        totalRewardDeposited={ot.totalRewardDeposited}
         status={activity.status}
       />
 
@@ -485,7 +488,7 @@ function RewardsPanel({
       </button>
       {err && <p className="mt-2 text-xs text-negative">{err}</p>}
       <p className="mt-2 text-[11px] text-text-faint">
-        Rewards come only from real trading fees. They are never minted and never paid from principal.
+        Rewards come only from what is sent to this vault. They are never minted and never paid from principal.
       </p>
     </div>
   );
@@ -617,12 +620,14 @@ function AprBlock({
   rewardLast30d,
   communityWithdrawableUsd,
   rewardsDuration,
+  totalRewardDeposited,
   status,
 }: {
   rewardLast7d?: bigint;
   rewardLast30d?: bigint;
   communityWithdrawableUsd?: bigint;
   rewardsDuration?: bigint;
+  totalRewardDeposited?: bigint;
   status: string;
 }) {
   // APR = (rewards actually streamed over the window / annualization factor) /
@@ -630,6 +635,7 @@ function AprBlock({
   // time-weighted-average TVL, which this app doesn't track). "Not enough
   // history" when the scan failed or there's been no stream of at least the
   // window length yet.
+  const noHistory = totalRewardDeposited !== undefined && totalRewardDeposited === 0n;
   const enoughHistory = status === "ok" || status === "partial";
   const apr7d =
     enoughHistory && rewardLast7d !== undefined && communityWithdrawableUsd && communityWithdrawableUsd > 0n
@@ -644,16 +650,16 @@ function AprBlock({
     <div className="rounded-card border border-border p-3">
       <div className="grid grid-cols-2 gap-3 text-center">
         <div>
-          <div className="figure-primary text-lg">{apr7d !== undefined ? `${apr7d.toFixed(1)}%` : "Unknown"}</div>
+          <div className="figure-primary text-lg">{noHistory ? "—" : apr7d !== undefined ? `${apr7d.toFixed(1)}%` : "Unknown"}</div>
           <div className="mt-0.5 text-[11px] text-text-faint">Past 7d</div>
         </div>
         <div>
-          <div className="figure-primary text-lg">{apr30d !== undefined ? `${apr30d.toFixed(1)}%` : "Unknown"}</div>
+          <div className="figure-primary text-lg">{noHistory ? "—" : apr30d !== undefined ? `${apr30d.toFixed(1)}%` : "Unknown"}</div>
           <div className="mt-0.5 text-[11px] text-text-faint">Past 30d</div>
         </div>
       </div>
       <p className="mt-2 text-center text-[11px] text-text-faint">
-        Variable. Based on past fees. Not a promise of future returns.
+        {noHistory ? "No reward history yet" : "Variable. Based on past fees. Not a promise of future returns."}
       </p>
     </div>
   );
