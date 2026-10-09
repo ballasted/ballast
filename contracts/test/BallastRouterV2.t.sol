@@ -233,17 +233,26 @@ contract BallastRouterV2ForkTest is Test {
     //  Fallback: a size that genuinely reverts the preferred venue           //
     // ===================================================================== //
 
-    /// @notice Fables-team guidance (2026-10-03): QQQ's Fables path is deep only for
-    ///         small tickets. Verified on this fork: it fills at 0.1 and 1 ETH but
-    ///         reverts (NotEnoughLiquidity) at 2 ETH. This is the real fallback case,
-    ///         not a mock — preferFables=true, Fables genuinely reverts, Ramses picks
-    ///         it up in the SAME transaction.
+    /// @notice Was previously live-liquidity-dependent (Fables-team guidance
+    ///         2026-10-03: QQQ's Fables path was deep only for small tickets,
+    ///         reverting at 2 ETH on that date's real pool state) -- flaky by
+    ///         construction, since real market depth moves over time (it since
+    ///         stopped reverting at 2 ETH, failing this test on unrelated
+    ///         liquidity changes, not a router bug). Now forces the fallback
+    ///         deterministically: `attemptFablesBuy` is `onlySelf` and only
+    ///         ever called via `this.attemptFablesBuy{value}(...)` inside
+    ///         `_tryFablesBuy`'s try/catch, so mocking that exact selector to
+    ///         always revert on the router's own address exercises the real
+    ///         fallback code path without depending on any pool's real state.
     function test_fallback_whenPreferredVenueReverts() public {
         if (!forked) {
             vm.skip(true);
             return;
         }
         Ticker memory qqq = _tickers()[10];
+        vm.mockCallRevert(
+            address(router), abi.encodeWithSelector(router.attemptFablesBuy.selector), "forced: preferred venue unavailable"
+        );
         (uint256 out, bool usedFables) = router.buyWithETH{value: 2 ether}(
             qqq.fablesHopIdx, qqq.ramsesHopIdx, true, qqq.token, address(ballastToken), qqq.hook, 1, block.timestamp + 300
         );

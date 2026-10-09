@@ -59,9 +59,14 @@ contract BuybackBurnerForkTest is Test {
     address owner = makeAddr("owner");
     address anyone = makeAddr("anyone");
 
+    // $BALLAST v1 -- this suite tests the superseded (non-V2) BuybackBurner,
+    // which only ever burned v1. Default so the suite runs instead of always
+    // skipping; override via BALLAST_TOKEN if that ever changes.
+    address constant DEFAULT_BALLAST_V1 = 0x069a260370C61d91bd3e9842d81D378F9750F7F3;
+
     function setUp() public {
         string memory url = vm.envOr("RH_RPC_URL_PAID", string(""));
-        ballast = vm.envOr("BALLAST_TOKEN", address(0));
+        ballast = vm.envOr("BALLAST_TOKEN", DEFAULT_BALLAST_V1);
         hook = vm.envOr("BUYBACK_POOL_HOOK", DEFAULT_PRIOR_HOOK);
         if (bytes(url).length == 0 || ballast == address(0)) return;
 
