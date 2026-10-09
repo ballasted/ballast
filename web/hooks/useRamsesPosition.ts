@@ -67,9 +67,19 @@ export function useRamsesPosition(token?: Address) {
           toBlock: "latest",
         })) as CreatedAndLockedLog[];
         if (cancelled) return;
+        // Never trust `launchedToken` (the indexed filter above) alone --
+        // derive the token this position actually belongs to from the
+        // position's own token0/token1 and require a match. The contract
+        // enforces this on-chain too (RamsesLockLauncher.LaunchedTokenMismatch),
+        // but the UI verifies independently rather than assuming every log it
+        // reads was emitted by a version that does.
+        const lower = token.toLowerCase();
+        const matching = logs.filter(
+          (l) => l.args.token0.toLowerCase() === lower || l.args.token1.toLowerCase() === lower,
+        );
         // A token could in principle back multiple positions over time (e.g. a
         // creator adding more later) — show the most recent one.
-        const latest = logs.sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)))[0];
+        const latest = matching.sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)))[0];
         setPosition(
           latest
             ? {

@@ -59,7 +59,8 @@ contract RamsesLockLauncherHandler is Test {
             amount1Min: 0,
             deadline: block.timestamp + 1
         });
-        launcher.createAndLock(legs, address(0xBA17), creator, 8000, 2000, PRICE_1_TO_1, 0);
+        // launchedToken must be one of the position's legs (RamsesLockLauncher.LaunchedTokenMismatch).
+        launcher.createAndLock(legs, address(tokenA), creator, 8000, 2000, PRICE_1_TO_1, 0);
         calls++;
     }
 }

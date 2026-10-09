@@ -46,7 +46,10 @@ contract RamsesLockLauncherTest is Test {
     address safe = makeAddr("safe");
     address creator = makeAddr("creator");
     address caller = makeAddr("caller"); // the account funding createAndLock
-    address launchedToken = makeAddr("launchedToken");
+    // Set in setUp() to address(tokenA) -- must be legs.token0 or legs.token1
+    // (RamsesLockLauncher.LaunchedTokenMismatch), so it can't be a field
+    // initializer (tokenA doesn't exist yet at that point).
+    address launchedToken;
 
     function setUp() public {
         v3Factory = new MockRamsesV3Factory();
@@ -64,6 +67,7 @@ contract RamsesLockLauncherTest is Test {
         // tokenA as token0, so enforce that ordering here regardless of each
         // mock's deployed address.
         if (address(tokenA) > address(tokenB)) (tokenA, tokenB) = (tokenB, tokenA);
+        launchedToken = address(tokenA);
     }
 
     function _legs(uint256 amount0, uint256 amount1) internal view returns (RamsesLockLauncher.MintLegs memory) {
@@ -210,7 +214,7 @@ contract RamsesLockLauncherTest is Test {
         // The launcher pulls by actual balance delta (950 ether), not the
         // requested 1000 — so the mint uses 950, not a reverting/incorrect 1000.
         vm.prank(caller);
-        (uint256 tokenId,) = _createAndLock(legs, launchedToken, creator, 8000, 2000);
+        (uint256 tokenId,) = _createAndLock(legs, address(fot), creator, 8000, 2000);
         assertEq(pm.ownerOf(tokenId), address(locker));
         assertEq(fot.balanceOf(address(launcher)), 0, "no stuck balance");
     }
@@ -236,7 +240,7 @@ contract RamsesLockLauncherTest is Test {
             deadline: block.timestamp + 1
         });
         vm.prank(caller);
-        (uint256 tokenId,) = _createAndLock(legs, launchedToken, creator, 8000, 2000);
+        (uint256 tokenId,) = _createAndLock(legs, address(usdtLike), creator, 8000, 2000);
         assertEq(pm.ownerOf(tokenId), address(locker));
         assertEq(usdtLike.balanceOf(address(launcher)), 0);
     }
@@ -449,5 +453,34 @@ contract RamsesLockLauncherTest is Test {
         _createAndLock(_legs(1_000 ether, 0), launchedToken, creator, 8000, 2000);
 
         assertEq(uninitialized.sqrtPriceX96(), PRICE_1_TO_1, "launcher must initialize the uninitialized pool");
+    }
+
+    // --------------------------------------------------------------------- //
+    //  launchedToken must actually be one of the position's legs            //
+    // --------------------------------------------------------------------- //
+
+    /// @notice ADVERSARIAL: a position must never be emitted (discoverable)
+    ///         under a token it isn't actually paired with — e.g. a stranger
+    ///         minting a tokenA/tokenB position while naming an unrelated
+    ///         token as `launchedToken`, which the frontend would otherwise
+    ///         have to trust blindly when discovering positions by event.
+    function test_createAndLock_launchedTokenNotAPositionLeg_reverts() public {
+        _fundAndApprove(1_000 ether, 0);
+        address unrelated = makeAddr("unrelatedToken");
+
+        vm.prank(caller);
+        vm.expectRevert(RamsesLockLauncher.LaunchedTokenMismatch.selector);
+        launcher.createAndLock(_legs(1_000 ether, 0), unrelated, creator, 8000, 2000, PRICE_1_TO_1, 0);
+
+        // Nothing was pulled from the caller on the reverted attempt.
+        assertEq(tokenA.balanceOf(address(launcher)), 0);
+    }
+
+    function test_createAndLock_launchedTokenIsToken1_succeeds() public {
+        _fundAndApprove(1_000 ether, 0);
+        vm.prank(caller);
+        (uint256 tokenId,) =
+            launcher.createAndLock(_legs(1_000 ether, 0), address(tokenB), creator, 8000, 2000, PRICE_1_TO_1, 0);
+        assertEq(pm.ownerOf(tokenId), address(locker));
     }
 }

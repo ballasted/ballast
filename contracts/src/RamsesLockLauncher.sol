@@ -73,6 +73,10 @@ contract RamsesLockLauncher {
     error ZeroAddress();
     /// @notice `maxPriceDeviationBps` exceeded MAX_PRICE_DEVIATION_BPS.
     error DeviationTooWide();
+    /// @notice `launchedToken` was neither `legs.token0` nor `legs.token1` —
+    ///         a position can never be emitted under a token it doesn't
+    ///         actually belong to.
+    error LaunchedTokenMismatch();
     /// @notice The pool already exists and is already initialized, at a price
     ///         outside the caller's expected tolerance band — refuses to lock
     ///         liquidity into a pool whose price it didn't set and can't trust.
@@ -108,9 +112,11 @@ contract RamsesLockLauncher {
     ///         to that splitter forever — all in this one call.
     /// @param legs The position to mint. `recipient` is NOT part of this struct:
     ///             it is always `address(this)`, set internally.
-    /// @param launchedToken The Ballast token this position's fees belong to
-    ///        (informational on the splitter; never checked against token0/token1
-    ///        here — the splitter is balance-based and prices nothing).
+    /// @param launchedToken The Ballast token this position's fees belong to.
+    ///        Must be `legs.token0` or `legs.token1` (enforced below) — the
+    ///        splitter itself is balance-based and prices nothing, but a
+    ///        position must never be discoverable under a token it isn't
+    ///        actually paired with.
     /// @param creatorRecipient Where the creator's share of fees goes.
     /// @param creatorBps / protocolBps Must sum to 10,000 (enforced by the
     ///        splitter's own `initialize`).
@@ -132,6 +138,7 @@ contract RamsesLockLauncher {
         uint16 maxPriceDeviationBps
     ) external returns (uint256 tokenId, address splitter) {
         if (maxPriceDeviationBps > MAX_PRICE_DEVIATION_BPS) revert DeviationTooWide();
+        if (launchedToken != legs.token0 && launchedToken != legs.token1) revert LaunchedTokenMismatch();
         _ensurePoolPrice(legs.token0, legs.token1, legs.tickSpacing, expectedSqrtPriceX96, maxPriceDeviationBps);
 
         // Pull by ACTUAL balance delta, not the requested amount — a

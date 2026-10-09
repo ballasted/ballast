@@ -86,6 +86,9 @@ interface IRamsesV3PoolSwap {
 contract BallastFeeSplitterForkTest is Test {
     address constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;
     address constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
+    // A real, unrelated listed asset — neither WETH nor NVDA — used only to
+    // prove LaunchedTokenMismatch reverts for a real (not fabricated) address.
+    address constant SGOV = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5;
     // WETH/NVDA Ramses v3 CL pool — from contracts/script/DeployBallastRouterV2.s.sol
     // buildRamsesRoutes()[0], read directly from chain during that script's own
     // Fables-vs-Ramses venue comparison.
@@ -177,6 +180,46 @@ contract BallastFeeSplitterForkTest is Test {
             POOL_DEPLOYER, PoolAddress.PoolKey({token0: token0, token1: token1, tickSpacing: tickSpacing})
         );
         assertEq(computed, WETH_NVDA_POOL, "vendored PoolAddress init code hash does not match the real deployed pool");
+    }
+
+    /// @notice ADVERSARIAL, against the real chain: a position must never be
+    ///         emitted (discoverable) under a token it isn't actually paired
+    ///         with. Mints a real WETH/NVDA position but names an unrelated
+    ///         real token (SGOV) as `launchedToken` -- must revert before any
+    ///         token is pulled or any pool-price check even runs.
+    function test_fork_createAndLock_revertsIfLaunchedTokenNotAPositionLeg() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
+        address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
+        int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
+        (uint160 realSqrtPriceX96, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
+        int24 tickLower = ((currentTick / tickSpacing) + 1) * tickSpacing;
+        int24 tickUpper = tickLower + 2 * tickSpacing;
+
+        uint256 seedAmount = 1 ether;
+        _fund(token0, seedAmount);
+        IERC20(token0).approve(address(launcher), seedAmount);
+        RamsesLockLauncher.MintLegs memory legs = RamsesLockLauncher.MintLegs({
+            token0: token0,
+            token1: token1,
+            tickSpacing: tickSpacing,
+            tickLower: tickLower,
+            tickUpper: tickUpper,
+            amount0Desired: seedAmount,
+            amount1Desired: 0,
+            amount0Min: 0,
+            amount1Min: 0,
+            deadline: block.timestamp + 1 hours
+        });
+
+        address unrelatedRealToken = SGOV; // neither WETH nor NVDA
+        vm.expectRevert(RamsesLockLauncher.LaunchedTokenMismatch.selector);
+        launcher.createAndLock(legs, unrelatedRealToken, creator, 8000, 2000, realSqrtPriceX96, 0);
+
+        assertEq(IERC20(token0).balanceOf(address(launcher)), 0, "nothing pulled on revert");
     }
 
     /// @notice ADVERSARIAL, against the real chain: a caller who expects a
