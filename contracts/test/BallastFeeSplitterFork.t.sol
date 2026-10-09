@@ -168,11 +168,14 @@ contract BallastFeeSplitterForkTest is Test {
         address token0 = IRamsesV3Pool(WETH_NVDA_POOL).token0();
         address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
         int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
-        address poolDeployer = IRamsesV3Pool(WETH_NVDA_POOL).factory();
-        assertEq(poolDeployer, POOL_DEPLOYER, "pool.factory() != the published PoolDeployer constant");
-
-        address computed =
-            PoolAddress.computeAddress(poolDeployer, PoolAddress.PoolKey({token0: token0, token1: token1, tickSpacing: tickSpacing}));
+        // NOTE: pool.factory() is NOT the CREATE2 deployer on Ramses (unlike
+        // vanilla Uniswap V3, where factory() IS the deployer) -- confirmed
+        // live: it returns RamsesV3Factory (0xE0c4ce...), the governance/config
+        // contract, which is a DIFFERENT contract from RamsesV3PoolDeployer
+        // (POOL_DEPLOYER). Use the verified POOL_DEPLOYER constant directly.
+        address computed = PoolAddress.computeAddress(
+            POOL_DEPLOYER, PoolAddress.PoolKey({token0: token0, token1: token1, tickSpacing: tickSpacing})
+        );
         assertEq(computed, WETH_NVDA_POOL, "vendored PoolAddress init code hash does not match the real deployed pool");
     }
 
@@ -193,9 +196,13 @@ contract BallastFeeSplitterForkTest is Test {
 
         // Range entirely ABOVE the current tick -> single-sided in token0 only
         // (same "fully above current price needs only the lower-address token"
-        // shape BallastSeeder uses for its own one-sided seed).
-        int24 tickLower = ((currentTick / tickSpacing) + 10) * tickSpacing;
-        int24 tickUpper = tickLower + 20 * tickSpacing;
+        // shape BallastSeeder uses for its own one-sided seed). Only 1-2
+        // tick-spacings wide so a real swap against this pool's REAL (deep)
+        // liquidity actually crosses it fully -- the original +10/+20 spacing
+        // offset needed a ~6%+ price move to even enter, which a modest test
+        // swap never reached against real mainnet depth.
+        int24 tickLower = ((currentTick / tickSpacing) + 1) * tickSpacing;
+        int24 tickUpper = tickLower + 2 * tickSpacing;
 
         uint256 seedAmount = 1 ether; // of token0, whichever token that is
         _fund(token0, seedAmount);
@@ -218,16 +225,25 @@ contract BallastFeeSplitterForkTest is Test {
         assertEq(IERC20(token0).balanceOf(address(launcher)), 0);
         assertEq(IERC20(token1).balanceOf(address(launcher)), 0);
 
-        // Swap token0 -> token1 (pushes price up, into/through the position's range).
-        _fund(token0, 5 ether);
-        IERC20(token0).approve(address(swapper), 5 ether);
-        swapper.swap(WETH_NVDA_POOL, true, 5 ether, 4295128740 + 1); // MIN_SQRT_RATIO+1 bound, exact-input
+        // Swap token1 -> token0 (zeroForOne=false INCREASES price/tick --
+        // Uniswap V3 convention: price = token1/token0, so swapping token1 IN
+        // for token0 OUT raises it). Our range sits ABOVE the current tick, so
+        // this is the direction that actually enters/crosses it. (The
+        // original version of this test had zeroForOne=true here, which
+        // *decreases* price -- moving AWAY from the range -- hence it always
+        // collected exactly zero fees regardless of swap size or range width.)
+        // 30 ETH-equivalent of token1 against this pool's real liquidity,
+        // generous margin over what's needed to cross a 2-tickSpacing range.
+        _fund(token1, 30 ether);
+        IERC20(token1).approve(address(swapper), 30 ether);
+        swapper.swap(WETH_NVDA_POOL, false, 30 ether, 1461446703485210103287273052203988822378723970341); // MAX_SQRT_RATIO-1 bound, exact-input
 
-        // Swap token1 -> token0 (price back down), realizing fees on the other leg too.
-        uint256 token1Bal = IERC20(token1).balanceOf(address(this));
-        require(token1Bal > 0, "swap produced no token1 to swap back");
-        IERC20(token1).approve(address(swapper), token1Bal);
-        swapper.swap(WETH_NVDA_POOL, false, int256(token1Bal / 2), 1461446703485210103287273052203988822378723970341); // MAX_SQRT_RATIO-1
+        // Swap token0 -> token1 (zeroForOne=true, price back down), realizing
+        // fees on the other leg too.
+        uint256 token0Bal = IERC20(token0).balanceOf(address(this));
+        require(token0Bal > 0, "swap produced no token0 to swap back");
+        IERC20(token0).approve(address(swapper), token0Bal);
+        swapper.swap(WETH_NVDA_POOL, true, int256(token0Bal / 2), 4295128740 + 1); // MIN_SQRT_RATIO+1
 
         // Permissionless collect, pays BOTH legs directly to the splitter.
         vm.prank(makeAddr("stranger"));
@@ -265,8 +281,8 @@ contract BallastFeeSplitterForkTest is Test {
         address token1 = IRamsesV3Pool(WETH_NVDA_POOL).token1();
         int24 tickSpacing = IRamsesV3Pool(WETH_NVDA_POOL).tickSpacing();
         (, int24 currentTick,,,,,) = IRamsesV3Pool(WETH_NVDA_POOL).slot0();
-        int24 tickLower = ((currentTick / tickSpacing) + 10) * tickSpacing;
-        int24 tickUpper = tickLower + 20 * tickSpacing;
+        int24 tickLower = ((currentTick / tickSpacing) + 1) * tickSpacing;
+        int24 tickUpper = tickLower + 2 * tickSpacing;
 
         uint256 seedAmount = 1 ether;
         _fund(token0, seedAmount);

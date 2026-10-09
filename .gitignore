@@ -5,6 +5,7 @@
 
 # Foundry
 /contracts/out/
+/contracts/out-ramses-verify/
 /contracts/cache/
 /contracts/broadcast/
 

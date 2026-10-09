@@ -51,6 +51,31 @@ fs_permissions = [
     { access = "read", path = "./out" },
 ]
 
+# Dedicated profile for re-verifying the vendored RamsesLocker's bytecode
+# against whatever is actually deployed on-chain. NEVER used by any deploy
+# script (those all build under [profile.default] above, unchanged — solc
+# auto-detect, optimizer_runs=200). Ramses' own canonical deploy
+# (0xF6CD2e03259150D4FF745CDd620c09FBF30DE1dC) used solc 0.8.30, optimizer
+# 300 runs, evm cancun, via_ir=true — matched exactly here so
+# `FOUNDRY_PROFILE=ramses_verify forge build --contracts src` (or just this
+# lib path) reproduces byte-identical output without a separate scratch
+# project. See lib/ramses-v3-contracts/VENDORED.md for the full verification
+# writeup (immutable-masked diff, CBOR metadata hash explained).
+[profile.ramses_verify]
+src = "lib/ramses-v3-contracts/contracts"
+test = "lib/ramses-v3-contracts/contracts"
+script = "lib/ramses-v3-contracts/contracts"
+out = "out-ramses-verify"
+libs = ["lib"]
+solc = "0.8.30"
+optimizer = true
+optimizer_runs = 300
+evm_version = "cancun"
+via_ir = true
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+]
+
 # Robinhood Chain — mainnet 4663, testnet 46630. Verify with blockscout.
 # See docs/robinhood-chain-research.md for RPCs and the sequencer/oracle gotchas.
 [rpc_endpoints]
