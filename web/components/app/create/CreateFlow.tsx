@@ -11,6 +11,7 @@ import { useFeeRouterLaunchRunner, type FeeSplitBps } from "@/hooks/useFeeRouter
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { FeesSection } from "@/components/app/create/FeesSection";
+import { LaunchTemplates } from "@/components/app/create/LaunchTemplates";
 import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -480,14 +481,24 @@ export function CreateFlow() {
               ) : quoteAssetsLoading ? (
                 <AssetPickerSkeleton />
               ) : (
-                <PairingScroller
-                  items={quoteCandidates.map((c) => candidateToPairingItem(c))}
-                  selectable
-                  selectedKeys={new Set(quoteAssets)}
-                  onToggle={(key) => toggleQuoteAsset(key as Address)}
-                  atCap={quoteAssets.length >= maxQuotes}
-                  size="lg"
-                />
+                <>
+                  <LaunchTemplates
+                    candidates={quoteCandidates}
+                    maxQuotes={maxQuotes}
+                    onApply={(addresses, suggestedDescription) => {
+                      setQuoteAssets(addresses);
+                      setDescription(suggestedDescription.slice(0, DESC_MAX));
+                    }}
+                  />
+                  <PairingScroller
+                    items={quoteCandidates.map((c) => candidateToPairingItem(c))}
+                    selectable
+                    selectedKeys={new Set(quoteAssets)}
+                    onToggle={(key) => toggleQuoteAsset(key as Address)}
+                    atCap={quoteAssets.length >= maxQuotes}
+                    size="lg"
+                  />
+                </>
               )}
               <p className="mt-2 text-xs text-text-faint">
                 Each pick gets its own Uniswap v4 pool with an equal share of the supply. Every pool opens at 1 ETH.
