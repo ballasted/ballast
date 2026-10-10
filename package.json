@@ -1,0 +1,17 @@
+{
+  "name": "ballast-scripts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Repo-root, read-only operational scripts (growth/reporting). The app itself lives in web/ — this is intentionally separate so these scripts never pull in Next.js/wagmi.",
+  "scripts": {
+    "weekly-stats": "tsx scripts/weekly-stats.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "viem": "^2.21.55"
+  }
+}
