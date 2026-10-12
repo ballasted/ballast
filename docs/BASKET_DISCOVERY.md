@@ -172,3 +172,5 @@ directly. **Next step for a human:** ask Robinhood/Uniswap/Pleiades directly
 for the canonical stock-token AMM hook address, or get access to a less
 RPC-range-restricted provider / an indexer that already covers this chain's
 v4 pools.
+
+See `docs/BASKET_DEPLOY.md` for the deploy/verify runbook once ready to ship.
