@@ -35,3 +35,12 @@ scripts/.solc-cache/
 # clobbering something real (see Milestone 1 retro: a scratch script
 # overwrote an existing untracked file at the repo root instead of here).
 .scratch/
+
+# Playwright e2e output + its own generated fixture/backup/pid files
+# (web/e2e/global-setup.ts / global-teardown.ts)
+/test-results/
+/playwright-report/
+/blob-report/
+e2e/.fixture.json
+e2e/.basketRoutes.ts.bak
+e2e/.pids.json

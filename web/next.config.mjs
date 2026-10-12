@@ -66,6 +66,17 @@ const nextConfig = {
       { source: "/landing", destination: "/", permanent: true },
     ];
   },
+  async rewrites() {
+    // ONLY exists when E2E_WALLET_BRIDGE_URL is set — i.e. only under
+    // `npm run e2e` (web/e2e/global-setup.ts sets it for its own `next dev`
+    // instance). Proxies the injected test wallet's JSON-RPC calls
+    // (web/e2e/inject-wallet.js, web/e2e/wallet-bridge.mjs) through a
+    // same-origin path so they satisfy the real CSP's `connect-src 'self'`
+    // instead of needing it loosened for a local test-only port. Absent in
+    // every other context, including production.
+    if (!process.env.E2E_WALLET_BRIDGE_URL) return [];
+    return [{ source: "/__e2e-bridge", destination: process.env.E2E_WALLET_BRIDGE_URL }];
+  },
   webpack: (config, { webpack }) => {
     // wagmi's connectors barrel drags in the Base/Coinbase account connector,
     // which lazily requires optional @x402/* payment packages we don't install
