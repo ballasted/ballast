@@ -110,6 +110,7 @@ contract BasketZap is ReentrancyGuard {
         uint256 ethIn,
         uint256 ethRefunded,
         address[] assets,
+        uint16[] weightsBps,
         uint256[] amountsOut
     );
 
@@ -188,11 +189,13 @@ contract BasketZap is ReentrancyGuard {
 
         amountsOut = new uint256[](n);
         address[] memory assetsOut = new address[](n);
+        uint16[] memory weightsOut = new uint16[](n);
         uint256 spent;
 
         for (uint256 i = 0; i < n; i++) {
             Leg calldata leg = legs[i];
             assetsOut[i] = leg.asset;
+            weightsOut[i] = leg.weightBps;
 
             if (!registry.isAllowed(leg.asset)) revert AssetNotAllowed(leg.asset);
             if (leg.minOut == 0) revert MinOutTooLow();
@@ -212,7 +215,7 @@ contract BasketZap is ReentrancyGuard {
             IERC20(weth).safeTransfer(creator, refund);
         }
 
-        emit BasketSwapped(launchToken, creator, msg.value, refund, assetsOut, amountsOut);
+        emit BasketSwapped(launchToken, creator, msg.value, refund, assetsOut, weightsOut, amountsOut);
     }
 
     /// @dev Same staleness bound + 20% (widening) deviation breaker

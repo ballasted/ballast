@@ -48,6 +48,7 @@ contract BasketZapTest is Test {
         uint256 ethIn,
         uint256 ethRefunded,
         address[] assets,
+        uint16[] weightsBps,
         uint256[] amountsOut
     );
 
@@ -146,11 +147,13 @@ contract BasketZapTest is Test {
 
         address[] memory assets_ = new address[](1);
         assets_[0] = address(assetA);
+        uint16[] memory weights_ = new uint16[](1);
+        weights_[0] = 10_000;
         uint256[] memory amounts_ = new uint256[](1);
         amounts_[0] = 1 ether;
 
         vm.expectEmit(true, true, false, true, address(zap));
-        emit BasketSwapped(address(launchToken), creator, 1 ether, 0, assets_, amounts_);
+        emit BasketSwapped(address(launchToken), creator, 1 ether, 0, assets_, weights_, amounts_);
 
         vm.prank(creator);
         zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
