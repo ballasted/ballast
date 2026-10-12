@@ -26,10 +26,12 @@ import {
   isFactoryConfigured,
   isFeeRouterFactoryConfigured,
   isRamsesEnabled,
+  isBasketEnabled,
   FACTORY_ADDRESS,
   TOTAL_SUPPLY,
   WETH_ADDRESS,
 } from "@/lib/contracts";
+import { BasketPicker } from "@/components/app/basket/BasketPicker";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -359,7 +361,14 @@ export function CreateFlow() {
   // has started, routerIsDefault stays stable (the Fees section isn't rendered
   // mid-flow), so activeRunner keeps pointing at the one actually running.
   if (activeRunner.result) {
-    return <SuccessCard token={activeRunner.result.token} symbol={symbolClean} logoUri={logoUri} />;
+    return (
+      <SuccessCard
+        token={activeRunner.result.token}
+        treasury={activeRunner.result.treasury}
+        symbol={symbolClean}
+        logoUri={logoUri}
+      />
+    );
   }
   const running = pinning || activeRunner.steps.length > 0;
   if (running) {
@@ -1151,7 +1160,18 @@ function LaunchProgress(p: {
   );
 }
 
-function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: string; logoUri: string }) {
+function SuccessCard({
+  token,
+  treasury,
+  symbol,
+  logoUri,
+}: {
+  token: Address;
+  treasury: Address;
+  symbol: string;
+  logoUri: string;
+}) {
+  const [addingBasket, setAddingBasket] = useState(false);
   return (
     <div className="mx-auto max-w-md">
       <section className="card p-6 text-center">
@@ -1170,6 +1190,24 @@ function SuccessCard({ token, symbol, logoUri }: { token: Address; symbol: strin
           </a>
         </div>
       </section>
+      {isBasketEnabled && (
+        <section className="card mt-4 p-5">
+          {addingBasket ? (
+            <BasketPicker launchToken={token} treasury={treasury} onDone={() => setAddingBasket(false)} />
+          ) : (
+            <>
+              <h3 className="text-sm font-semibold text-text-primary">Optional: add a basket</h3>
+              <p className="mt-1 text-xs text-text-muted">
+                Swap ETH into up to 6 stock tokens and deposit them into ${symbol}&apos;s treasury. Can also be done
+                later from the token page.
+              </p>
+              <button type="button" className="btn-secondary mt-3" onClick={() => setAddingBasket(true)}>
+                Add basket
+              </button>
+            </>
+          )}
+        </section>
+      )}
       {isRamsesEnabled && (
         <section className="card mt-4 p-5">
           <h3 className="text-sm font-semibold text-text-primary">Optional: back ${symbol} with a Ramses locked pool</h3>

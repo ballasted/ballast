@@ -18,6 +18,7 @@ import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice"
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
 import { OpenTreasurySection } from "@/components/app/token/OpenTreasurySection";
+import { BasketSection } from "@/components/app/token/BasketSection";
 import { RamsesLockSection } from "@/components/app/token/RamsesLockSection";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
@@ -219,6 +220,14 @@ export default function TokenDetailPage() {
                 pending={pending}
                 symbol={symbol}
                 now={now}
+              />
+              <BasketSection
+                token={token}
+                treasury={treasury}
+                creator={creator}
+                symbol={symbol}
+                noticePeriod={noticePeriod}
+                backing={backing}
               />
               <OpenTreasurySection token={token!} creator={creator} symbol={symbol} />
               <RamsesLockSection token={token!} creator={creator} symbol={symbol} />

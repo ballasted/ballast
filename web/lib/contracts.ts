@@ -80,6 +80,21 @@ export const isOpenTreasuryEnabled =
   Boolean(OPEN_TREASURY_FACTORY_ADDRESS) &&
   Boolean(OPEN_TREASURY_LENS_ADDRESS);
 
+// Stock Basket — swap ETH into up to 6 AssetRegistry-listed stock tokens in
+// one tx via BasketZap (contracts/src/BasketZap.sol), forwarded to the
+// launch creator's own wallet for them to then deposit into their treasury
+// themselves (BasketZap can never call ProjectTreasury.deposit() on a
+// creator's behalf — see docs/DECISIONS.md §1). Behind an explicit flag
+// defaulting OFF, same convention as Open Treasury: both the address AND
+// NEXT_PUBLIC_BASKET_ENABLED="true" are required, so a half-configured env
+// never silently turns the section on. As of this build, NO on-chain WETH
+// route exists for any AssetRegistry asset (see docs/BASKET_DISCOVERY.md §2,
+// web/lib/basketRoutes.ts) — the picker renders an honest "not routable yet"
+// state even when this flag is on.
+export const BASKET_ZAP_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BASKET_ZAP_ADDRESS);
+export const isBasketEnabled =
+  process.env.NEXT_PUBLIC_BASKET_ENABLED === "true" && Boolean(BASKET_ZAP_ADDRESS);
+
 // Ramses locked-pool launches — a Ballast token's trading pool lives on
 // Ramses' real Concentrated Liquidity venue instead of the gen-4 Uniswap v4
 // hook, with its LP position permanently locked (contracts/src/RamsesLockLauncher.sol,
