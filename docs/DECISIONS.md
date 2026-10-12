@@ -50,10 +50,28 @@ presets (Index, AI chips, Cash-like) are routable right now as a result.
 `PoolKey` per leg as a parameter (see §2 above), so it works the instant a
 real route is sourced, with zero contract changes. The frontend's route table
 (`web/lib/basketRoutes.ts`) ships empty and the UI honestly reports "no
-routable assets yet" rather than faking a working preset. Fork tests run
-everything provable against real chain state and `vm.skip` only the
-swap-execution assertions, with the reason recorded in the skip message
-itself per the hard rule ("skipped ≠ passed").
+routable assets yet" rather than faking a working preset.
+
+**Update — the fork tests are NOT skipped.** Routability (a pool existing)
+and AssetRegistry allowlisting are independent: NVDA/SGOV/AMD are already
+real-allowlisted, only their *pool* is missing, and anyone may
+permissionlessly initialize a v4 pool and add liquidity to it — no privileged
+access needed. `contracts/test/helpers/TestPoolSeeder.sol` (test-only, never
+deployed to mainnet) does exactly that on the fork, funded via forge-std's
+`deal()` cheatcode (already proven against real stock tokens elsewhere in
+this suite — `BuybackBurnerV2Fork.t.sol`, `BallastRouterFork.t.sol`). This
+touches no privileged contract: `AssetRegistry` is never written to, and its
+real owner — the compromised deployer — is never impersonated, not even
+locally for a read-only `vm.prank` (deliberately avoided even though it would
+have been harmless in isolation, to respect the hard rule's letter, not just
+its spirit). Result: `contracts/test/BasketZapFork.t.sol` — 8/8 passed, 0
+skipped, including a full swap → approve → deposit → real `BackingLens`
+readback on BOTH a fresh gen-4 launch and a real existing launch (id 2). The
+seeded pool's price is an arbitrary 1:1 in raw units (these tests prove the
+pipeline, not a dollar figure) — a genuinely separate concern from the
+*production* routability gap above, which still has zero real routes and
+still needs a human to source one for `web/lib/basketRoutes.ts` before the
+frontend can do a real mainnet swap.
 
 **BasketZap never calls `ProjectTreasury.deposit()` itself** — it swaps and forwards the resulting stock tokens to the creator's own wallet in the same transaction (via explicit `safeTransfer`, exactly like `BallastV1Claim` forwards its swap output — it cannot rely on `TAKE_ALL`'s implicit recipient since BasketZap itself is the caller of `execute()`, not the creator). The creator then does their own `approve` + `deposit()` per asset afterward, same as if they'd never used BasketZap at all.
 

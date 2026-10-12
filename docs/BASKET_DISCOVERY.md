@@ -122,12 +122,15 @@ against at any size — see §2.3.
   asset marked not-yet-routable), so the UI honestly shows "no routable
   assets yet" for every preset rather than pretending something works. Adding
   a real route later is a one-line config change, not a contract change.
-- Fork tests (`contracts/test/BasketZapFork.t.sol`) run everything that CAN
-  be proven against real mainnet state without a real pool (deploying against
-  the real factory/registry/WETH/router/permit2, resolving a real launch's
-  creator, the Chainlink freshness gate against a real live feed) and
-  `vm.skip(true)` the end-to-end swap assertions with an explicit reason —
-  per the hard rule "skipped ≠ passed."
+- Fork tests (`contracts/test/BasketZapFork.t.sol`) are NOT skipped: pool
+  existence and AssetRegistry allowlisting are independent, so
+  `contracts/test/helpers/TestPoolSeeder.sol` (test-only) seeds a real v4
+  pool on the fork for three already-allowlisted real assets (NVDA/SGOV/AMD),
+  funded via `deal()`, touching no privileged contract. 8/8 fork tests pass,
+  including a full swap → approve → deposit → real `BackingLens` readback on
+  both a fresh launch and a real existing one. See `docs/DECISIONS.md` §3 for
+  the full writeup — this is a test-only unblock, NOT a production route; the
+  frontend's route table still ships empty until a human sources a real one.
 
 ### 2.4 What was tried (so a later session doesn't repeat it) and what's left
 
