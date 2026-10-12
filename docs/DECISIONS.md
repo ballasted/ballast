@@ -29,6 +29,32 @@ Autonomous build on `feat/stock-basket`. Each entry: decision, alternatives cons
 
 **Why Option 2 is still worth building even though it can't reduce the irreducible `approve`+`deposit` cost:** it moves the ENTIRE swap leg (wrap ETH, multi-leg swap, per-leg Chainlink gate, minOut, refund, forwarding to the creator) into one audited, atomic, all-or-nothing call instead of raw frontend-built calldata. That is a strict safety improvement over Option 1 for the part of the flow that touches money before the creator even gets to the treasury.
 
+**Implementation detail — N separate `execute()` calls, not one batched multi-action call.** Within `BasketZap`, each leg is its own `UniversalRouter.execute()` call (the exact SWAP_EXACT_IN_SINGLE + SETTLE_ALL + TAKE_ALL shape `BallastV1Claim` already proved on a live mainnet pool), looped inside the one user-signed `swapBasket` transaction — not the fancier single-call multi-action batch described above. That shape is reachable on this fork (v4 flash-accounting allows multiple swap/settle/take actions in one `execute()`), but it has never been proven against this specific router, and untested code in the swap-execution path is exactly the attack surface CLAUDE.md's multi-hop warning is about. N proven single-leg calls inside one transaction costs the caller nothing extra (still exactly one signature) and carries far less risk. Most conservative reasonable option, per the run's working mode.
+
+## 3. BLOCKED: no routable WETH pool found for any of the 16 AssetRegistry-listed assets
+
+**Status: blocked, with evidence — not a reason to stop building.** See
+`docs/BASKET_DISCOVERY.md` §2 for full detail. Summary: an exhaustive
+(within this session's RPC constraints) search found zero stock-token/WETH
+v4 pools — not for SPY, QQQ, NVDA, AMD, PLTR, SGOV, or any of the other 10
+registered assets. Five independent methods were tried (Initialize-log sweep,
+blocked by Alchemy's ~5,000-block `eth_getLogs` range cap; `StateView`
+brute-force across both the four standard fee/tickSpacing tiers and the
+specific 2500/25 and 2500/60 tiers Uniswap's own blog post describes for its
+Robinhood Chain stock-token AMM; a V4Quoter probe; Blockscout's API,
+Cloudflare-blocked; a web search for a documented hook address, which
+confirmed no v4 subgraph exists for this chain). None of the spec's suggested
+presets (Index, AI chips, Cash-like) are routable right now as a result.
+
+**Why this doesn't block the rest of the build:** `BasketZap` takes the full
+`PoolKey` per leg as a parameter (see §2 above), so it works the instant a
+real route is sourced, with zero contract changes. The frontend's route table
+(`web/lib/basketRoutes.ts`) ships empty and the UI honestly reports "no
+routable assets yet" rather than faking a working preset. Fork tests run
+everything provable against real chain state and `vm.skip` only the
+swap-execution assertions, with the reason recorded in the skip message
+itself per the hard rule ("skipped ≠ passed").
+
 **BasketZap never calls `ProjectTreasury.deposit()` itself** — it swaps and forwards the resulting stock tokens to the creator's own wallet in the same transaction (via explicit `safeTransfer`, exactly like `BallastV1Claim` forwards its swap output — it cannot rely on `TAKE_ALL`'s implicit recipient since BasketZap itself is the caller of `execute()`, not the creator). The creator then does their own `approve` + `deposit()` per asset afterward, same as if they'd never used BasketZap at all.
 
 ---

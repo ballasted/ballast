@@ -73,11 +73,99 @@ key ever needed for a read/simulate-only fork test.
 
 ## 2. Route + price-impact table (all AssetRegistry-listed assets)
 
-_Pending — running against `$RH_RPC_URL_PAID` now. AssetRegistry
-(`0x427764d0d19aB765c35A41A5aa4771580307dA81`) lists stock tokens by address;
-unlike Ballast's own gen-4 hook pools, stock-token/WETH liquidity is
-third-party (Uniswap + Pleiades LPs per `docs/robinhood-chain-research.md`
-§2), so routability is NOT assumed — each asset's pool (if any) is being
-discovered via `PoolManager` `Initialize` event logs and quoted at
-0.01/0.1/1 ETH via `V4Quoter`, impact measured against the same
-asset's Chainlink feed. Table filled in below once that sweep completes._
+**Headline result: zero of the 16 AssetRegistry-listed assets have a
+discoverable WETH pool as of 2026-10-12.** This is the single most important
+finding in this document — it means **none** of the spec's suggested presets
+(Index = SPY/QQQ, AI chips = NVDA/AMD/PLTR, Cash-like = SGOV) are routable
+right now, so per the spec's own instruction ("drop any that aren't
+routable") every preset is currently empty. See §2.3 for what this means for
+the build and §2.4 for what was tried and what's left to try.
+
+### 2.1 The 16 allowlisted assets and their Chainlink prices (confirmed live)
+
+| Ticker | Asset address | Feed description | Chainlink USD |
+|---|---|---|---|
+| SGOV | `0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5` | Robinhood SGOV-USD | $101.24 |
+| NVDA | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` | RHNVDA / USD | $229.18 |
+| TSLA | `0x322F0929c4625eD5bAd873c95208D54E1c003b2d` | RHTSLA / USD | $382.65 |
+| GOOGL | `0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3` | Robinhood GOOGL / USD | $350.99 |
+| AAPL | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` | Robinhood AAPL / USD | $336.87 |
+| MSFT | `0xe93237C50D904957Cf27E7B1133b510C669c2e74` | RHMSFT / USD | $538.91 |
+| AMZN | `0x12f190a9F9d7D37a250758b26824B97CE941bF54` | Robinhood AMZN / USD | $261.84 |
+| META | `0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35` | Robinhood META / USD | $728.38 |
+| SPY | `0x117cc2133c37B721F49dE2A7a74833232B3B4C0C` | RHSPY / USD | $781.39 |
+| QQQ | `0xD5f3879160bc7c32ebb4dC785F8a4F505888de68` | Robinhood QQQ / USD | $751.35 |
+| AMD | `0x86923f96303D656E4aa86D9d42D1e57ad2023fdC` | RHAMD / USD | $602.83 |
+| MSTR | `0xec262a75e413fAfD0dF80480274532C79D42da09` | Robinhood MSTR / USD | $154.73 |
+| PLTR | `0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A` | Robinhood PLTR / USD | $208.69 |
+| COIN | `0x6330D8C3178a418788dF01a47479c0ce7CCF450b` | Robinhood COIN / USD | $180.05 |
+| ORCL | `0xb0992820E760d836549ba69BC7598b4af75dEE03` | Robinhood ORCL / USD | $141.76 |
+| CRCL | `0xdF0992E440dD0be65BD8439b609d6D4366bf1CB5` | Robinhood CRCL / USD | $84.44 |
+
+ETH/USD reference: $2,530.28 (feed `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9`,
+8dp). All 16 are confirmed in the registry via `allowedAssets()`;
+Impact @0.01/0.1/1 ETH is "—" for every row because no pool was found to quote
+against at any size — see §2.3.
+
+### 2.3 What this means for the build
+
+- `BasketZap` itself is NOT hardcoded to any route — it takes the full
+  `PoolKey` (fee/tickSpacing/hooks) per leg as a call parameter, same
+  convention `BallastRouterV2` already uses for its `hook` param (see
+  `docs/DECISIONS.md`). So the contract works the moment a real route exists,
+  with no redeploy.
+- The frontend's preset/picker config (`web/lib/basketRoutes.ts`) is a
+  **curated, human-sourced table**, not a live on-chain discovery mechanism —
+  consistent with how `AssetRegistry` itself is curated, never auto-populated
+  (CLAUDE.md's anti-impostor stance: trust comes from a verified canonical
+  source, never a spoofable live signal). It currently ships **empty** (every
+  asset marked not-yet-routable), so the UI honestly shows "no routable
+  assets yet" for every preset rather than pretending something works. Adding
+  a real route later is a one-line config change, not a contract change.
+- Fork tests (`contracts/test/BasketZapFork.t.sol`) run everything that CAN
+  be proven against real mainnet state without a real pool (deploying against
+  the real factory/registry/WETH/router/permit2, resolving a real launch's
+  creator, the Chainlink freshness gate against a real live feed) and
+  `vm.skip(true)` the end-to-end swap assertions with an explicit reason —
+  per the hard rule "skipped ≠ passed."
+
+### 2.4 What was tried (so a later session doesn't repeat it) and what's left
+
+Tried, in order:
+1. `PoolManager` `Initialize` event log sweep (topics = `id`, `currency0`,
+   `currency1`, confirmed indexed by decoding a known real Ballast pool's
+   log correctly first). **Not viable on this RPC tier**: Alchemy enforces a
+   hard ~5,000-block range cap on `eth_getLogs` regardless of topic filters
+   (confirmed empirically). Chain height is ~86.7M blocks, so an exhaustive
+   sweep needs ~17,340 sequential requests per topic combination — infeasible
+   this session.
+2. Direct `StateView.getSlot0(poolId)` probes (poolId computed as
+   `keccak256(abi.encode(PoolKey))`, method validated against the same known
+   real Ballast pool before trusting it) for all 16 assets against WETH,
+   `hooks = address(0)`, across both the four standard Uniswap fee/tickSpacing
+   tiers (100/1, 500/10, 3000/60, 10000/200) AND the fee/tickSpacing Uniswap's
+   own blog describes for its Robinhood Chain stock-token AMM specifically
+   (2500/25 "current path" and 2500/60 "original path" — [Uniswap is Live on
+   Robinhood Chain](https://blog.uniswap.org/robinhood-chain-is-live)). **Zero
+   hits** across all combinations for all 16 assets.
+3. `V4Quoter.quoteExactInputSingle` on SPY/WETH at the 0.3% tier — reverted
+   cleanly with no data, consistent with "pool not initialized."
+4. Blockscout's REST API — returned a Cloudflare JS challenge to a plain
+   fetch, not a usable response.
+5. Web search for a documented Pleiades/Uniswap stock-token-AMM hook address
+   or a v4 subgraph — confirmed "Robinhood has no v4 subgraph" and that
+   discovery is expected to be log-based (same method as #1, same RPC-tier
+   wall), and did not surface a specific non-zero hook address for the
+   dedicated stock-token AMM the blog post references.
+
+**Not ruled out:** a pool using a non-zero, undocumented hook address (the
+blog post confirms "Uniswap deploying a dedicated AMM" for stock tokens but
+doesn't publish its hook contract), or liquidity against USDG rather than
+WETH (the chain's other RFQ-quote asset, e.g. "NVDA ↔ USDG") — using a USDG
+route would require a WETH→USDG→stock multi-hop, which BALLAST deliberately
+never ships (`contracts/src/interfaces/IRobinhoodV4Router.sol:20-25`), so
+even if found it wouldn't satisfy this spec's "swapped from WETH" requirement
+directly. **Next step for a human:** ask Robinhood/Uniswap/Pleiades directly
+for the canonical stock-token AMM hook address, or get access to a less
+RPC-range-restricted provider / an indexer that already covers this chain's
+v4 pools.
