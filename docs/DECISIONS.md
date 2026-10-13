@@ -213,3 +213,59 @@ this plainly** — "1 signature to swap, then N confirmations to add each asset 
 treasury; if you stop partway, the swapped assets stay in your wallet." `useBasketRunner`
 already renders the step list this way; the copy must not imply the whole basket lands in
 one signature.
+
+## 8. Fewer signatures without touching gen-4: EIP-5792 atomic batching + approve-once + resume flow
+
+Builds on §7's constraint (deposit() is onlyCreator, immutable). Three layers,
+all frontend/wallet-level — no contract change:
+
+**a. EIP-5792 batching (`web/lib/eip5792.ts`, `useBasketRunner.runBatched`).**
+If the connected wallet reports atomic-batch support for chain 4663 via
+`wallet_getCapabilities` (both the current `atomic.status: supported|ready`
+shape and the older `atomicBatch.supported` draft are accepted —
+`atomicStatusFor()`), the WHOLE basket — `swapBasket` + every `approve` + every
+`deposit` — is sent as ONE `wallet_sendCalls` batch with `atomicRequired: true`.
+One confirmation, all-or-nothing across every call. `msg.sender == creator`
+holds for the inner `deposit()` calls because the smart account IS the creator.
+**Deposit amounts in the batch are each leg's `minOut`, not the exact swap
+output** — the calls are pre-encoded and can't read the swap's result; since the
+contract guarantees `received >= minOut`, the deposits always succeed, and any
+better-than-quoted surplus stays in the wallet (picked up by (c) below when it
+clears the asset's registry minDeposit; below that floor it's dust that
+deposit() would revert on anyway). `wallet_getCallsStatus` is polled on the
+WALLET client, not the public RPC client — the node doesn't implement it.
+
+**b. Step-flow improvements (no 5792 support).** The approve is now
+`approve(treasury, MAX)` — "approve once for future baskets" — and every
+approve step has an allowance precheck that skips it when the standing
+allowance already covers the deposit, so a repeat basket for the same assets is
+`1 + N` signatures instead of `1 + 2N`. The picker shows the REAL upfront
+count ("this basket needs 3 confirmations"), computed from live allowances
+(`stepSignatureCount()`), and distinct copy for the batched case ("needs 1
+confirmation"). MAX-approval trade-off considered and accepted: the treasury's
+`deposit()` is the only puller and it's immutable, creator-only-initiated, and
+pulls only what the creator passes — a standing allowance to one's own
+treasury is not a third-party-risk surface.
+
+**c. Resume flow (`ResumeDepositBanner`, `useBasketRunner.runDeposits`).** If a
+step flow stops after the swap (or a batched run leaves a >minDeposit surplus),
+the swapped assets sit in the creator's wallet, invisible to BackingLens. The
+backing page now shows the creator a "Resume deposit" banner scoped to EXACTLY
+the assets this launch's own BasketSwapped events swapped (never arbitrary
+wallet holdings), filtered to balances ≥ the asset's registry minDeposit
+(depositing below reverts BelowMinimum). One click runs the deposit-only step
+flow (approve-skip applies).
+
+**Signature counts** (1 asset / 6 assets): batched wallet **1 / 1**; step flow
+first time **3 / 13**; step flow repeat (same assets, MAX approvals standing)
+**2 / 7**.
+
+**Tests:** `lib/eip5792.test.ts` (capability detection across both spec shapes,
+call-building order/values, allowance-skip count math — 10 tests),
+`lib/basketRoutes.test.ts` (routable set + presets — 5 tests), Playwright
+`basket.spec.ts` (step flow, asserts the upfront "3 confirmations" count) +
+`basket-batched.spec.ts` (mocked 5792 wallet in web/e2e/inject-wallet.js behind
+`window.__E2E_ATOMIC__`: capability detection → 1-confirmation copy → single
+batch step → deposit lands; the mock executes the batch as sequential real txs
+on the fork — it asserts the app's batched-flow contract, while contract-level
+all-or-nothing is proven in the forge fork suite).

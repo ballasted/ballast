@@ -136,15 +136,21 @@ NEXT_PUBLIC_BASKET_ZAP_ADDRESS=<BASKET_ZAP_ADDRESS>
 NEXT_PUBLIC_BASKET_ENABLED=true
 ```
 
-**Do not set `NEXT_PUBLIC_BASKET_ENABLED=true` until `web/lib/basketRoutes.ts`
-marks the human-verified routable set** (the 7 assets that cleared ≤3% impact at
-0.1 ETH vs Chainlink on Ramses — SGOV, AAPL, GOOGL, NVDA, SPY, PLTR, CRCL —
-per `docs/BASKET_DISCOVERY.md` §2.2) **and the frontend hooks build the new
-index-based `Leg` shape** (`asset, weightBps, preferFables, fablesHopIdx,
-ramsesHopIdx, minOut`) from `web/lib/routerV2.ts`. Both the address and the flag
-are required (`web/lib/contracts.ts` `isBasketEnabled`), so a half-configured env
-never silently turns the section on — deploying the contract and flipping the
-flag are deliberately separate steps.
+The frontend side is already wired as of this branch: `web/lib/basketRoutes.ts`
+ships the human-verified routable set (the 7 assets that cleared ≤3% impact at
+0.1 ETH vs Chainlink on Ramses — SGOV, AAPL, GOOGL, NVDA, SPY, PLTR, CRCL — per
+`docs/BASKET_DISCOVERY.md` §2.2), and the hooks build the index-based `Leg`
+shape (`asset, weightBps, preferFables, fablesHopIdx, ramsesHopIdx, minOut`)
+from `web/lib/routerV2.ts`. So the only remaining gate is this deploy: set the
+address, then flip the flag. Both are required (`web/lib/contracts.ts`
+`isBasketEnabled`), so a half-configured env never silently turns the section
+on — deploying the contract and flipping the flag are deliberately separate
+steps.
+
+Wallets with EIP-5792 atomic-batch support (e.g. a Safe, or a 7702-enabled
+EOA) get the whole flow — swap + approvals + deposits — as ONE confirmation;
+others get the step flow with an upfront real signature count and
+approve-once-per-asset (docs/DECISIONS.md §8). No extra env needed for either.
 
 ### g. Post-deploy smoke test
 

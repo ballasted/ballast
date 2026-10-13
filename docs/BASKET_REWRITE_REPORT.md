@@ -97,7 +97,11 @@ creator signature, so it's strictly worse (full analysis: `docs/DECISIONS.md`
 - **Plain-EOA creator:** `1` signature for `BasketZap.swapBasket()` (all N legs
   swap atomically, outputs land in the creator's wallet) + `2` per asset
   (`approve` + `deposit`), because only the creator's EOA can call `deposit()`.
-  - **1 asset → 3 signatures.  6 assets → 13 signatures.**
+  - **1 asset → 3 signatures.  6 assets → 13 signatures.** (First basket.
+    Repeat baskets for the same assets drop to **2 / 7** — the step flow now
+    approves MAX once per asset and skips approvals that already stand; and
+    wallets with EIP-5792 atomic-batch support get **1 / 1** via
+    `wallet_sendCalls`. See `docs/DECISIONS.md` §8.)
 - **Smart-account creator (Safe / EIP-7702):** the whole thing — swap + all
   approves + all deposits — is **1 atomic batched signature** (the account *is*
   the creator). Launches 0 and 1 on the current factory are Safe-created, so
