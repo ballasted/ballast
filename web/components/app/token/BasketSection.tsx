@@ -5,6 +5,7 @@ import { formatUnits, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { useBasketHistory } from "@/hooks/useBasketHistory";
 import { BasketPicker } from "@/components/app/basket/BasketPicker";
+import { ResumeDepositBanner } from "@/components/app/basket/ResumeDepositBanner";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { formatUsd, formatDuration, shortAddress } from "@/lib/format";
 import { isBasketEnabled } from "@/lib/contracts";
@@ -59,6 +60,16 @@ export function BasketSection({
           </button>
         )}
       </div>
+
+      {/* Resume deposit — creator stopped a step flow after the swap (or a
+          batched run left a better-than-minOut surplus): the swapped assets sit
+          in their wallet, invisible to BackingLens, until deposited. */}
+      {isCreator && !adding && history.hasHistory && (
+        <ResumeDepositBanner
+          treasury={treasury}
+          swappedAssets={history.swaps.flatMap((s) => s.legs.map((l) => l.asset))}
+        />
+      )}
 
       {adding && (
         <div className="rounded-input border border-border p-4">

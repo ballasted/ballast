@@ -1,17 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Address } from "viem";
-import { formatUnits } from "viem";
-import { useAccount } from "wagmi";
+import { formatUnits, erc20Abi } from "viem";
+import { useAccount, useCapabilities, useReadContracts } from "wagmi";
 import { useBasket } from "@/hooks/useBasket";
 import { useBasketRunner, type BasketLeg } from "@/hooks/useBasketRunner";
 import { BASKET_PRESETS } from "@/lib/basketRoutes";
 import { routerV2RoutesFor } from "@/lib/routerV2";
+import { supportsAtomicBatch, stepSignatureCount } from "@/lib/eip5792";
 import { computeMinOut, swapDeadline } from "@/lib/swap";
+import { activeChain } from "@/lib/chain";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/cn";
+
+const CHAIN_ID = activeChain.id;
 
 /// Picker used by the creator-only "Add basket" flow on the dedicated backing
 /// page (/app/backing/[address], via BasketSection). Deliberately honest about
@@ -31,6 +35,40 @@ export function BasketPicker({
   const { address: account } = useAccount();
   const basket = useBasket();
   const runner = useBasketRunner();
+
+  // EIP-5792: does the connected wallet support a single atomic batch on this
+  // chain? If so the whole basket (swap + approves + deposits) is ONE
+  // confirmation; otherwise it's the step flow.
+  const { data: capabilities } = useCapabilities({ account, query: { enabled: Boolean(account) } });
+  const canBatch = supportsAtomicBatch(capabilities as never, CHAIN_ID);
+
+  const activeLegs = basket.legs.filter((l) => l.weightBps > 0);
+
+  // Current treasury allowance per leg — lets the step-flow signature count skip
+  // approves the creator already granted (e.g. from a previous basket).
+  const allowanceReads = useReadContracts({
+    allowFailure: true,
+    contracts:
+      account && activeLegs.length > 0
+        ? activeLegs.map((l) => ({
+            address: l.address,
+            abi: erc20Abi,
+            functionName: "allowance" as const,
+            args: [account, treasury] as const,
+            chainId: CHAIN_ID,
+          }))
+        : [],
+    query: { enabled: Boolean(account) && activeLegs.length > 0 },
+  });
+  const allowances = activeLegs.map((_, i) => {
+    const r = allowanceReads.data?.[i];
+    return r?.status === "success" ? (r.result as bigint) : 0n;
+  });
+  const stepSigs = stepSignatureCount(
+    activeLegs.map((l) => ({ minOut: computeMinOut(l.quoteOut, basket.slippageBps) || 1n })),
+    allowances,
+  );
+  const sigCount = canBatch ? 1 : stepSigs;
 
   if (!basket.isConfigured) {
     return <InlineNotice>Deploy the AssetRegistry and set NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS to enable a basket.</InlineNotice>;
@@ -74,13 +112,17 @@ export function BasketPicker({
           minOut: minOut > 0n ? minOut : 1n,
         };
       });
-    await runner.run({
+    const params = {
       launchToken,
       treasury,
       ethIn: basket.ethWei,
       legs,
       deadline: swapDeadline(Math.floor(Date.now() / 1000)),
-    });
+    };
+    // One atomic confirmation when the wallet supports EIP-5792 atomic batching
+    // (all-or-nothing across swap + approves + deposits); step flow otherwise.
+    if (canBatch) await runner.runBatched(params);
+    else await runner.run(params);
   }
 
   const totalUsd =
@@ -105,7 +147,7 @@ export function BasketPicker({
       </div>
 
       <div>
-        <div className="field-label mb-2">Assets (routable only)</div>
+        <div className="field-label mb-2">Assets</div>
         <div className="flex flex-wrap gap-2">
           {basket.routable.map((a) => {
             const picked = basket.legs.some((l) => l.address === a.address);
@@ -113,7 +155,6 @@ export function BasketPicker({
               <button
                 key={a.address}
                 type="button"
-                disabled={a === undefined}
                 onClick={() => basket.toggleAsset(a.address)}
                 className={cn("chip", picked ? "chip-active" : "chip-idle")}
               >
@@ -122,6 +163,19 @@ export function BasketPicker({
               </button>
             );
           })}
+          {basket.nonRoutable.map((a) => (
+            <button
+              key={a.address}
+              type="button"
+              disabled
+              title="Not routable yet — no verified on-chain route at ≤3% impact"
+              className="chip chip-idle cursor-not-allowed opacity-40"
+            >
+              <AssetDisc identity={{ status: "recognized", symbol: a.symbol ?? "" }} size={18} />
+              {a.symbol}
+              <span className="ml-1 text-[10px] uppercase tracking-wide text-text-faint">not routable yet</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -174,8 +228,14 @@ export function BasketPicker({
       </div>
 
       <p className="text-xs text-text-faint">
-        One signature swaps ETH into every asset above; each asset then needs its own approve + deposit confirmation into
-        your treasury — {basket.legs.filter((l) => l.weightBps > 0).length * 2 + 1} signatures total.
+        {canBatch ? (
+          <>This basket needs 1 confirmation — your wallet batches the swap and every treasury deposit atomically.</>
+        ) : (
+          <>
+            This basket needs {sigCount} confirmation{sigCount === 1 ? "" : "s"}: one swaps ETH into every asset above,
+            then each asset is approved once (skipped when already approved) and deposited into your treasury.
+          </>
+        )}
       </p>
 
       {!account ? (
@@ -233,7 +293,8 @@ function LegRow({
   );
 }
 
-function BasketProgress({
+// Exported for reuse by ResumeDepositBanner (deposit-only resume flow).
+export function BasketProgress({
   steps,
   isRunning,
   done,

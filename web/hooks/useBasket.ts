@@ -35,6 +35,13 @@ export function useBasket(launchTokenSymbol?: string) {
   const now = useNow();
 
   const routable = useMemo(() => assets.filter((a) => isRoutable(a.address)), [assets]);
+  // Registry assets with NO verified route — shown in the picker as disabled
+  // "not routable yet" chips (never selectable), so the set is visible rather
+  // than silently hidden.
+  const nonRoutable = useMemo(
+    () => assets.filter((a) => a.symbol && !isRoutable(a.address)),
+    [assets],
+  );
 
   const [preset, setPreset] = useState<BasketPresetId>("index");
   const [selected, setSelected] = useState<Address[]>([]);
@@ -51,6 +58,9 @@ export function useBasket(launchTokenSymbol?: string) {
   }
 
   function toggleAsset(addr: Address) {
+    // Never allow a non-routable asset to be selected, even if called outside
+    // the (already-disabled) picker chip. Deselecting is always allowed.
+    if (!isRoutable(addr) && !selected.includes(addr)) return;
     setPreset("custom");
     setSelected((prev) => {
       const next = prev.includes(addr)
@@ -167,6 +177,7 @@ export function useBasket(launchTokenSymbol?: string) {
     isConfigured,
     isLoading,
     routable,
+    nonRoutable,
     hasRoutableAssets: routable.length > 0,
     preset,
     applyPreset,
