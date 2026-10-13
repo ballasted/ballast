@@ -1,5 +1,38 @@
 # Stock Basket — deploy & verify
 
+## ✅ DEPLOYED & LIVE — 2026-10-13
+
+| | |
+|---|---|
+| **BasketZap** | `0x87c046aB0fB8B7B86BA1a62A956242d499051aBA` |
+| Deploy tx | `0x3d74937cea90ad36d9e75ea191c4fde21d8c9d82507a733f4d4402c5da4ee18a` |
+| Block | `87541981` |
+| Deployer | `0x71048f3796C7679ce2C7af2C13B7436bdF59023d` (fresh keystore — NOT the compromised old deployer) |
+| Chain | `4663` (Robinhood Chain mainnet) |
+
+**On-chain verification (read-only, this repo's `script/smoke/SmokeBasketLive.s.sol` + `cast`):**
+- `cast code` non-empty (12,380 bytes runtime).
+- Constructor args match the broadcast file exactly: `factory 0xa32b9870…1f67`, `registry 0x427764d0…dA81`, `poolManager 0x8366a39C…0951`, `weth 0x0Bd7D308…AD73`.
+- Route tables **byte-identical to the live `BallastRouterV2` (`0xa0Aba92d…47E0`)** — `fablesHops` length 12, `ramsesRoutes` length 17; spot-checked indices 0/5/11 (fables) and 0/5 (ramses) match.
+- **Runtime bytecode is an EXACT match** to a fresh `forge clean && forge build` (identical including trailing CBOR metadata; only the 14 immutable-address slots differ, as expected).
+
+**Source verification:**
+- **Sourcify: `exact_match` ✅** (`forge verify-contract … --verifier sourcify --guess-constructor-args`).
+- **Blockscout: not completed via CLI** — `robinhoodchain.blockscout.com/api` sits behind a Cloudflare managed bot-challenge that returns an HTML "Just a moment…" page to forge's request (not a verification failure; the CLI can't solve the JS challenge). Remedy: verify through the Blockscout web UI in a browser, or rely on Blockscout's automatic Sourcify import. The Sourcify `exact_match` is the authoritative proof.
+
+**Fork smoke test** (anvil fork of mainnet @ block 87551930, impersonating launch-2 creator `0x3b4f…BD85`, **no broadcast** — `script/smoke/SmokeBasketLive.s.sol`):
+
+| Basket | Amounts out (18dp) | Venue | swapBasket gas | BackingLens Δ (1e18 USD) |
+|---|---|---|---|---|
+| NVDA 100% (0.01 ETH) | NVDA 0.111846 | Ramses | 328,312 | +$25.07 |
+| NVDA 40 / SPY 30 / SGOV 30 (0.15 ETH) | NVDA 0.670972 · SPY 0.144560 · SGOV 1.112900 | Ramses ×3 | 861,498 | +$375.63 |
+
+Both executed end-to-end (swap → approve → deposit → `BackingLens` readback); `usedFables=false` (Ramses, Fables as in-tx fallback). Deltas reconcile with Chainlink (NVDA ≈ $224.15). Note: the 3-asset basket used 0.15 ETH (the brief gave no size) so each leg clears the treasury's 0.1-token `minDeposit`; at 0.01 ETH the 30–40% legs fall below it (a treasury rule, not a basket fault).
+
+**Frontend:** merged to `main` (fast-forward, PR #41 closed); Production env `NEXT_PUBLIC_BASKET_ZAP_ADDRESS` + `NEXT_PUBLIC_BASKET_ENABLED=true` set; redeployed (`https://www.ballasted.fun`). Live-site check (read-only creator connect, no signing): Basket section renders, picker lists the 7 routable assets + presets, the 9 non-routable assets are disabled, and the zap address is in the deployed JS bundle. Screenshots: `docs/screenshots/basket-live-1440.png`, `docs/screenshots/basket-live-390.png`.
+
+---
+
 `BasketZap` is immutable and ownerless. **REWRITE (docs/DECISIONS.md §6):** it
 no longer takes a UniversalRouter + Permit2; it now inherits v4-periphery's
 `V4Router` and takes the PoolManager plus the fixed Fables/Ramses route tables,

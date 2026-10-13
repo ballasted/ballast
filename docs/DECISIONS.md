@@ -307,3 +307,41 @@ varies run to run — specs now swap 0.2 ETH (was 0.5) to stay far inside any
 plausible depth, and the terms-dialog helper now gates on the accept button
 actually ENABLING (with a toggle-recovery for the pre-hydration DOM/React
 checkbox desync that stranded one run) instead of trusting `isChecked()`.
+
+## 10. GO-LIVE — BasketZap deployed, verified, and shipped (2026-10-13)
+
+`BasketZap` `0x87c046aB0fB8B7B86BA1a62A956242d499051aBA` (deploy tx
+`0x3d74937cea90ad36d9e75ea191c4fde21d8c9d82507a733f4d4402c5da4ee18a`, block
+`87541981`, fresh deployer `0x71048f37…9023d` — never the compromised old
+deployer) is live on chain 4663. Full numbers in `docs/BASKET_DEPLOY.md`.
+
+**What was done (all read-only / no mainnet broadcast, no Safe signing):**
+- **On-chain verify:** code non-empty; `factory/registry/poolManager/weth`
+  getters match the broadcast constructor args; `fablesHops`(12)/`ramsesRoutes`(17)
+  tables byte-identical to live `BallastRouterV2` `0xa0Aba92d…47E0` (spot-checked);
+  **runtime bytecode EXACT-matches a fresh `forge clean && forge build`** (only
+  the 14 immutable slots differ).
+- **Source verify:** Sourcify **`exact_match`**. Blockscout CLI verify blocked by
+  a Cloudflare bot-challenge (HTML "Just a moment…") — not a failure; verify via
+  the Blockscout web UI or rely on its Sourcify import. Sourcify is authoritative.
+- **Fork smoke (real deployed address, impersonated launch-2 creator, no
+  broadcast):** 1-asset NVDA (0.01 ETH) → 0.111846 NVDA, gas 328,312, BackingLens
+  +$25.07; 3-asset NVDA40/SPY30/SGOV30 (0.15 ETH) → 0.670972/0.144560/1.112900,
+  gas 861,498, +$375.63. All Ramses; swap→approve→deposit→readback end-to-end.
+- **Frontend:** `main` fast-forwarded to `feat/stock-basket` (PR #41 auto-closed);
+  Vercel Production vars set (`NEXT_PUBLIC_BASKET_ZAP_ADDRESS`,
+  `NEXT_PUBLIC_BASKET_ENABLED=true`); redeployed to `www.ballasted.fun`.
+- **Live check (read-only creator connect, no signing):** Basket section + picker
+  render; 7 routable assets enabled, 9 non-routable disabled; zap address present
+  in the deployed bundle. Screenshots under `docs/screenshots/basket-live-*.png`.
+
+**Decision — 3-asset smoke used 0.15 ETH, not 0.01:** the brief gave no size for
+the 3-asset basket, and 30–40% of 0.01 ETH lands each leg below the treasury's
+0.1-token `minDeposit` (deposit reverts `BelowMinimum`). 0.15 ETH clears it for
+all three while staying a small, low-impact ticket. This is a treasury rule, not
+a basket fault — the swaps themselves succeed at any size.
+
+**Decision — Blockscout verification left to a browser/human:** repeated CLI
+attempts hit Cloudflare's managed challenge; retrying from a headless tool can't
+pass it, so we stopped rather than loop. The contract is fully verified on
+Sourcify (exact match), which is sufficient proof of source↔bytecode.
