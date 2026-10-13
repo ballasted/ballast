@@ -96,3 +96,120 @@ frontend can do a real mainnet swap.
 **Logged, unresolved, non-blocking: a second, separate layer of flakiness remains, NOT fixed by the selector/retry changes above.** Three consecutive full-suite runs after the fixes above: 6/6, then 4/6 (failures: the summary-card link not found at all, `Ramses locked pool` section not found, `Basket` section not found on the detail page, and the basket e2e's "Add basket" button never appearing), then 6/6 again. The failure signature is the tell: when it fails, it's always the sections/elements that depend on a live on-chain read against the Anvil-forked node (basket history, Ramses position, the summary card's own badge reads) failing together in the same run, never an isolated single assertion — consistent with an intermittent RPC hiccup against the fork (this sandbox's network has shown exactly this class of transient failure earlier in this build, e.g. the `next build`/`next/font` TLS disconnects in `docs/DECISIONS.md` history), not a bug in the moved code itself. `tsc --noEmit` and `vitest` (85/85) are both deterministic and green regardless. Not chasing full e2e determinism further under the "decide, log it, keep going" mandate — flagged for a human to either add a retry/backoff around the affected hooks' RPC calls or accept this as inherent sandbox-network flakiness.
 
 ---
+
+## 6. REWRITE — BasketZap routes through V4Router (Fables/Ramses), not the UniversalRouter. Supersedes §2 and §3.
+
+**What changed and why.** §2/§3 above were written on the premise that each basket
+leg is a single-hop WETH→stock swap through the external UniversalRouter, and §3
+concluded "zero routable WETH pools exist for any of the 16 assets." Both are now
+overturned by two findings this session:
+
+1. **No WETH/<stock> pool exists — the real liquidity is multi-hop or on Ramses.**
+   Stock-token liquidity on this chain is ETH→USDG→stock (Fables v4 hooks, same
+   PoolManager we use) or on Ramses v3 pools. `BallastRouterV2` already discovered
+   and productionised these exact routes (its `fablesHops`/`ramsesRoutes` tables,
+   `contracts/script/DeployBallastRouterV2.s.sol`). BasketZap now reuses those
+   tables verbatim.
+2. **The external UniversalRouter cannot execute these routes.** Ramses v3 pools
+   aren't reachable through it at all (its V3 path is bound to Uniswap's own
+   factory/init-code-hash), and the Fables multi-hop path needs the
+   `poolManager.unlock()` flash-accounting shape, not a `UniversalRouter.execute()`
+   call BasketZap can safely assemble. `BallastRouterV2` solved this by inheriting
+   v4-periphery's `V4Router` directly (for Fables) and implementing the
+   Uniswap-v3-style swap callback directly (for Ramses).
+
+**Decision.** BasketZap is rewritten to the identical pattern as `BallastRouterV2`:
+it inherits `V4Router`, executes each leg through `poolManager.unlock()` (Fables) or
+a direct v3 callback (Ramses), picks the preferred venue per leg from an off-chain
+quote, and falls back to the other venue in the same tx if the first reverts. It
+stops at the stock token and forwards the output to the launch creator (it does NOT
+continue into a Ballast pool the way BallastRouterV2's leg 2 does — that leg is not
+optional in BallastRouterV2's code, so it couldn't be reused as-is). Routes are now
+selected by INDEX into fixed construction-time tables (not caller-supplied PoolKeys),
+which is strictly safer than the old design — a wrong index can only fail to chain
+(`BadHopChain`), never reach an address outside the fixed tables.
+
+**Constructor changed.** Old: `(factory, registry, weth, universalRouter, permit2)`.
+New: `(factory, registry, IPoolManager, weth, FablesHop[], RamsesRoute[])`. The
+`universalRouter`/`permit2` args are gone. `DeployBasketZap.s.sol` carries the same
+verified tables as `DeployBallastRouterV2.s.sol` (diffable side by side).
+
+**Verified against real mainnet state (fork tests, this session):** 17 unit + 11 fork
+tests pass. The fork tests execute real Fables/Ramses swaps end to end — swap →
+approve → deposit → real `BackingLens` readback — on both a fresh gen-4 launch and the
+real existing launch id 2, plus per-leg venue fallback (SGOV, no Fables route, falls
+through to Ramses and succeeds) and the all-venues-failed revert. No TestPoolSeeder
+shim any more — the routes are real.
+
+**One real liquidity fact surfaced by the fork tests, not a bug:** META's *direct*
+WETH Ramses pool (route index 2) returns ~0 output at ~0.3–0.4 ETH on live mainnet
+(floored/near-dead, consistent with the deploy-script routing note). The
+deposit-pipeline fork tests therefore use NVDA + SPY (the two confirmed-deep direct
+WETH Ramses pools) — see `docs/BASKET_DISCOVERY.md` for the full per-asset route table.
+
+---
+
+## 7. Blocker 2 (fuller analysis) — atomic deposit is impossible for a plain-EOA creator; fewest-signature flows and exact counts
+
+This extends §1 with the specific options the brief asked to evaluate. The core fact
+from §1 is unchanged and re-confirmed on-chain this session: `ProjectTreasury.deposit()`
+is `onlyCreator` (`contracts/src/ProjectTreasury.sol:180`, modifier at :160 checks
+`msg.sender == creator`, `creator` immutable). `launches(2)` on the live factory
+returns creator `0x3b4f9a42…`, matching the fork-test constant — the resolution path
+BasketZap uses is correct.
+
+**Option (a) — can the treasury accept a deposit "on behalf of the launch" from the
+zap?** The only on-behalf path is `proposeDeposit(asset, amount, disclosureVersion)`
+(anyone may call — `contracts/src/ProjectTreasury.sol:202`) followed by
+`acceptDeposit(id)` (`:226`, `onlyCreator`). BasketZap could hold the swapped tokens
+mid-tx and call `proposeDeposit` itself. **Rejected — it does not give an atomic,
+creator-withdrawable deposit:**
+  - Acceptance is still `onlyCreator`, so it's still a separate creator signature —
+    no signature is saved versus `approve`+`deposit`.
+  - Accepted proposals land in `lockedBalance` (permanent, third-party bucket), NOT
+    `creatorWithdrawable`. A creator funding a basket with their own ETH would be
+    permanently locking it — a different economic meaning, and worse for the creator
+    (they lose the withdrawal right the two-phase notice flow is designed to give them).
+  - It carries a 7-day `ACCEPT_WINDOW` and a required `disclosureVersion`.
+  So (a) is strictly worse than the plain `approve`+`deposit` path, not a shortcut.
+
+**Option (b) — creator approves BasketZap once per asset (or Permit2 batch), zap pulls
+and deposits in the same tx as the creator's call.** **Rejected — it cannot work at
+all:** `deposit()` checks the *caller's identity* (`msg.sender == creator`), not an
+allowance. When the creator calls `BasketZap.swapBasket()`, the treasury sees
+`msg.sender == BasketZap`, never the creator, so BasketZap calling `deposit()` reverts
+regardless of any ERC-20/Permit2 approval the creator granted. The deployed treasury
+has no `depositFor`/`onBehalfOf` variant and no meta-tx support, and we cannot change it.
+
+**Option (c) — the honest answer: atomic single-action deposit is impossible for a
+plain-EOA creator without changing gen-4 `ProjectTreasury`, which is forbidden.** The
+fewest-signature flows:
+
+  - **Plain-EOA creator:** `1` signature for `BasketZap.swapBasket()` (all N legs swap
+    atomically, outputs land in the creator's wallet), then `2` signatures per asset
+    (`approve` + `deposit`) directly against the treasury, because only the creator's
+    EOA can call `deposit()`. Total `1 + 2N`:
+      - **1 asset → 3 signatures.**
+      - **6 assets → 13 signatures.**
+    The `approve`+`deposit` pair per asset is irreducible at the contract level (the
+    treasury pulls via `safeTransferFrom` and is immutable).
+
+  - **Smart-account creator (Safe, or an EIP-7702-enabled EOA):** the ENTIRE flow —
+    `swapBasket` + all N `approve`s + all N `deposit`s — collapses into **one** signed,
+    atomic batch (a Safe `multiSend` / 7702 bundle). The account IS the creator, so
+    `msg.sender == creator` holds for every inner `deposit()` call. This is the
+    recommended path and it uses existing wallet capability, no new contract. Note:
+    launches 0 and 1 on the current factory were created by the Safe
+    (`0xEFC97e16…`) — for those, the atomic one-signature batch is available today.
+
+**All-or-nothing.** Holds WITHIN the swap (any leg failing both venues or undershooting
+its own `minOut` reverts the whole `swapBasket`, including legs that already succeeded —
+proven by `test_fork_revertsAllVenuesFailed…` / the unit `test_revert_failingLeg…`
+equivalent) and WITHIN a smart-account batch (one atomic tx). It does **NOT** hold across
+the plain-EOA `swap → approve → deposit` sequence: those are separate transactions, so a
+wallet that dies after the swap but before depositing leaves the creator holding the
+stock tokens in their own wallet (not lost, but not in the treasury). **The UI must say
+this plainly** — "1 signature to swap, then N confirmations to add each asset to your
+treasury; if you stop partway, the swapped assets stay in your wallet." `useBasketRunner`
+already renders the step list this way; the copy must not imply the whole basket lands in
+one signature.

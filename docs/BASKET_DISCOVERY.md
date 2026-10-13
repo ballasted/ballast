@@ -71,106 +71,116 @@ Launch 2 (a non-Safe creator) is the fork-test target for "a basket on an
 existing launch" — fork tests impersonate the creator via `vm.prank`, no real
 key ever needed for a read/simulate-only fork test.
 
-## 2. Route + price-impact table (all AssetRegistry-listed assets)
 
-**Headline result: zero of the 16 AssetRegistry-listed assets have a
-discoverable WETH pool as of 2026-10-12.** This is the single most important
-finding in this document — it means **none** of the spec's suggested presets
-(Index = SPY/QQQ, AI chips = NVDA/AMD/PLTR, Cash-like = SGOV) are routable
-right now, so per the spec's own instruction ("drop any that aren't
-routable") every preset is currently empty. See §2.3 for what this means for
-the build and §2.4 for what was tried and what's left to try.
+## 2. Route + price-impact table (all 16 AssetRegistry-listed assets)
 
-### 2.1 The 16 allowlisted assets and their Chainlink prices (confirmed live)
+**This section was rewritten this session (see `docs/DECISIONS.md` §6). The
+previous version concluded "zero routable WETH pools exist" — that was wrong,
+because it only looked for direct WETH/<stock> v4 pools.** The real liquidity
+is (a) Fables v4 pools quoted in **USDG** (ETH→USDG→stock, same PoolManager we
+use, Fables hooks) and (b) **Ramses v3** pools (direct WETH/<stock> or
+WETH→USDG→stock). `BallastRouterV2` already discovered and productionised both
+route sets; `BasketZap` now reuses its exact `fablesHops`/`ramsesRoutes` tables
+(`contracts/script/DeployBasketZap.s.sol`, index-for-index identical to
+`DeployBallastRouterV2.s.sol`).
 
-| Ticker | Asset address | Feed description | Chainlink USD |
-|---|---|---|---|
-| SGOV | `0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5` | Robinhood SGOV-USD | $101.24 |
-| NVDA | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` | RHNVDA / USD | $229.18 |
-| TSLA | `0x322F0929c4625eD5bAd873c95208D54E1c003b2d` | RHTSLA / USD | $382.65 |
-| GOOGL | `0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3` | Robinhood GOOGL / USD | $350.99 |
-| AAPL | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` | Robinhood AAPL / USD | $336.87 |
-| MSFT | `0xe93237C50D904957Cf27E7B1133b510C669c2e74` | RHMSFT / USD | $538.91 |
-| AMZN | `0x12f190a9F9d7D37a250758b26824B97CE941bF54` | Robinhood AMZN / USD | $261.84 |
-| META | `0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35` | Robinhood META / USD | $728.38 |
-| SPY | `0x117cc2133c37B721F49dE2A7a74833232B3B4C0C` | RHSPY / USD | $781.39 |
-| QQQ | `0xD5f3879160bc7c32ebb4dC785F8a4F505888de68` | Robinhood QQQ / USD | $751.35 |
-| AMD | `0x86923f96303D656E4aa86D9d42D1e57ad2023fdC` | RHAMD / USD | $602.83 |
-| MSTR | `0xec262a75e413fAfD0dF80480274532C79D42da09` | Robinhood MSTR / USD | $154.73 |
-| PLTR | `0x894E1EC2D74FFE5AEF8Dc8A9e84686acCB964F2A` | Robinhood PLTR / USD | $208.69 |
-| COIN | `0x6330D8C3178a418788dF01a47479c0ce7CCF450b` | Robinhood COIN / USD | $180.05 |
-| ORCL | `0xb0992820E760d836549ba69BC7598b4af75dEE03` | Robinhood ORCL / USD | $141.76 |
-| CRCL | `0xdF0992E440dD0be65BD8439b609d6D4366bf1CB5` | Robinhood CRCL / USD | $84.44 |
+### 2.1 Method
 
-ETH/USD reference: $2,530.28 (feed `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9`,
-8dp). All 16 are confirmed in the registry via `allowedAssets()`;
-Impact @0.01/0.1/1 ETH is "—" for every row because no pool was found to quote
-against at any size — see §2.3.
+Read-only on-chain probe `contracts/script/probe/QuoteBasketRoutes.s.sol` (run
+WITHOUT `--broadcast`), against live mainnet via the paid RPC, 2026-10-13:
+
+- **Ramses** quoted through the live Ramses QuoterV2
+  (`0x4730e03EB4a58A5e20244062D5f9A99bCf5770a6`), chaining
+  `quoteExactInputSingle` per hop (WETH→USDG then USDG→stock for the 2-hop
+  assets).
+- **Fables** attempted through the live V4Quoter
+  (`0x8Dc178eFB8111BB0973Dd9d722ebeFF267c98F94`) `quoteExactInput` multi-hop.
+- **Chainlink fair value** = `ethIn × ethUsd / assetUsd` (both feed prices read
+  live; decimals cancel). ETH/USD = **$2,533.01** at probe time.
+- Sizes: 0.01 / 0.1 / 1 ETH. **Routable = impact ≤ 3% (≤300 bps) at 0.1 ETH**
+  vs Chainlink, per the brief.
+
+> **Fables quoting caveat (honest limitation):** every Fables `quoteExactInput`
+> in this probe returned 0 — uniformly, for all 16 assets at all sizes,
+> including the shared deep ETH/USDG entry hop. This is almost certainly the
+> native-ETH (`currencyIn = address(0)`) multi-hop path reverting inside the
+> fork's V4Quoter rather than genuine zero liquidity (the identical Fables
+> routes execute successfully in `BallastRouterV2`'s own fork suite, and
+> BasketZap's `test_fork_fallsBackToRamses…` proves the contract's venue
+> machinery works). The live frontend (`web/hooks/useRouterV2Swap.ts`,
+> `quoteFablesLeg1`) already attempts Fables per-call and silently falls back to
+> Ramses when the quote fails, so the table below — built on the venue that
+> **demonstrably quotes and executes, Ramses** — is the conservative floor.
+> Fables can only ADD routable assets at small tickets (the deploy-script note
+> flags META / MSTR / SPY-QQQ as Fables-deep only for small size); it never
+> subtracts. A human with a working off-chain Fables quote path should re-run
+> the probe to widen the routable set.
+
+### 2.2 Route + impact table (Ramses venue, measured)
+
+Impact in basis points (100 bps = 1%); "dead" = quote returned 0 or ~100% loss.
+
+| Ticker | Chainlink USD | Ramses path | 0.01 ETH | 0.1 ETH | 1 ETH | Routable (≤3% @0.1)? |
+|---|---|---|---|---|---|---|
+| SGOV | $101.25 | WETH→USDG→SGOV | 0.03% | **0.04%** | 0.10% | ✅ |
+| AAPL | $342.30 | WETH→USDG→AAPL | 0.15% | **0.18%** | 0.49% | ✅ |
+| GOOGL | $352.94 | WETH→USDG→GOOGL | 0.14% | **0.15%** | 0.25% | ✅ |
+| NVDA | $225.32 | WETH→NVDA (direct) | 0.11% | **0.22%** | 1.27% | ✅ |
+| SPY | $778.58 | WETH→SPY (direct) | 0.22% | **0.24%** | 0.46% | ✅ |
+| PLTR | $207.80 | WETH→USDG→PLTR | 0.46% | **0.56%** | 1.57% | ✅ |
+| CRCL | $84.44 | WETH→USDG→CRCL | 0.57% | **0.99%** | 2.38% | ✅ |
+| QQQ | $743.49 | WETH→QQQ (direct) | 1.54% | 56.70% | 95.67% | ❌ (small-ticket only) |
+| MSTR | $156.14 | WETH→USDG→MSTR | 0.12% | 39.13% | 93.86% | ❌ (small-ticket only) |
+| TSLA | $374.59 | WETH→USDG→TSLA | 2.33% | 83.56% | 98.35% | ❌ (small-ticket only) |
+| COIN | $182.97 | WETH→USDG→COIN | 4.35% | 82.48% | 98.24% | ❌ |
+| AMZN | $258.04 | WETH→USDG→AMZN | 50.20% | 90.85% | 99.00% | ❌ |
+| META | $735.06 | WETH→META (direct) | dead | dead | dead | ❌ (pool floored) |
+| MSFT | $542.01 | WETH→USDG→MSFT | ~99% | ~99% | ~99% | ❌ (pool dead) |
+| AMD | $586.40 | WETH→USDG→AMD | ~99% | ~99% | ~99% | ❌ (pool dead) |
+| ORCL | $137.37 | WETH→USDG→ORCL | ~99% | ~99% | ~99% | ❌ (pool dead) |
+
+**Routable on Ramses alone (≤3% @0.1 ETH): SGOV, AAPL, GOOGL, NVDA, SPY, PLTR,
+CRCL — 7 of 16.** All 7 also stay ≤3% at the full 1 ETH size (max ~2.4% for
+CRCL). The direct-WETH pools (NVDA, SPY) and the USDG-bridged majors
+(SGOV/AAPL/GOOGL) are the deepest; CRCL and PLTR are routable but thinner.
+
+**Small-ticket-only (would need Fables for real size):** QQQ, MSTR, TSLA clear
+≤3% at 0.01 ETH but blow past 3% by 0.1 ETH on Ramses — exactly the assets the
+deploy note says are Fables-deep for small tickets only. COIN/AMZN are already
+bad at 0.01 ETH. META/MSFT/AMD/ORCL are dead on Ramses at every size (MSFT/AMD/
+ORCL additionally have NO Fables route — `fablesHopIdx` empty — so they are
+genuinely unroutable until someone adds liquidity).
 
 ### 2.3 What this means for the build
 
-- `BasketZap` itself is NOT hardcoded to any route — it takes the full
-  `PoolKey` (fee/tickSpacing/hooks) per leg as a call parameter, same
-  convention `BallastRouterV2` already uses for its `hook` param (see
-  `docs/DECISIONS.md`). So the contract works the moment a real route exists,
-  with no redeploy.
-- The frontend's preset/picker config (`web/lib/basketRoutes.ts`) is a
-  **curated, human-sourced table**, not a live on-chain discovery mechanism —
-  consistent with how `AssetRegistry` itself is curated, never auto-populated
-  (CLAUDE.md's anti-impostor stance: trust comes from a verified canonical
-  source, never a spoofable live signal). It currently ships **empty** (every
-  asset marked not-yet-routable), so the UI honestly shows "no routable
-  assets yet" for every preset rather than pretending something works. Adding
-  a real route later is a one-line config change, not a contract change.
-- Fork tests (`contracts/test/BasketZapFork.t.sol`) are NOT skipped: pool
-  existence and AssetRegistry allowlisting are independent, so
-  `contracts/test/helpers/TestPoolSeeder.sol` (test-only) seeds a real v4
-  pool on the fork for three already-allowlisted real assets (NVDA/SGOV/AMD),
-  funded via `deal()`, touching no privileged contract. 8/8 fork tests pass,
-  including a full swap → approve → deposit → real `BackingLens` readback on
-  both a fresh launch and a real existing one. See `docs/DECISIONS.md` §3 for
-  the full writeup — this is a test-only unblock, NOT a production route; the
-  frontend's route table still ships empty until a human sources a real one.
+- **Chosen execution venue/router: `BasketZap` inheriting v4-periphery's
+  `V4Router` + direct Ramses v3 callback — NOT the external UniversalRouter.**
+  Rationale and the full rewrite are in `docs/DECISIONS.md` §6. The
+  UniversalRouter cannot reach Ramses pools at all and cannot safely execute the
+  Fables multi-hop; BasketZap now mirrors `BallastRouterV2`'s proven mechanism
+  exactly (per-leg venue preference + in-tx fallback).
+- **The frontend route table (`web/lib/basketRoutes.ts`) should ship with the 7
+  Ramses-routable assets marked routable**, with the per-asset Fables/Ramses hop
+  indices sourced from `web/lib/routerV2.ts` (already the single source of truth
+  for those tables). The remaining 9 stay non-routable until Fables quoting is
+  verified or liquidity deepens — honest "not routable yet" in the picker, same
+  philosophy as before.
+- **Validated end-to-end:** `contracts/test/BasketZapFork.t.sol` — 11/11 fork
+  tests pass against real mainnet state, executing REAL Ramses swaps
+  (swap → approve → deposit → real `BackingLens` readback) on both a fresh and
+  an existing launch, plus per-leg venue fallback and the all-venues-failed
+  revert. No `TestPoolSeeder` shim any more — the routes are real. 17 unit tests
+  also pass (28 total).
 
-### 2.4 What was tried (so a later session doesn't repeat it) and what's left
+### 2.4 Reproduce
 
-Tried, in order:
-1. `PoolManager` `Initialize` event log sweep (topics = `id`, `currency0`,
-   `currency1`, confirmed indexed by decoding a known real Ballast pool's
-   log correctly first). **Not viable on this RPC tier**: Alchemy enforces a
-   hard ~5,000-block range cap on `eth_getLogs` regardless of topic filters
-   (confirmed empirically). Chain height is ~86.7M blocks, so an exhaustive
-   sweep needs ~17,340 sequential requests per topic combination — infeasible
-   this session.
-2. Direct `StateView.getSlot0(poolId)` probes (poolId computed as
-   `keccak256(abi.encode(PoolKey))`, method validated against the same known
-   real Ballast pool before trusting it) for all 16 assets against WETH,
-   `hooks = address(0)`, across both the four standard Uniswap fee/tickSpacing
-   tiers (100/1, 500/10, 3000/60, 10000/200) AND the fee/tickSpacing Uniswap's
-   own blog describes for its Robinhood Chain stock-token AMM specifically
-   (2500/25 "current path" and 2500/60 "original path" — [Uniswap is Live on
-   Robinhood Chain](https://blog.uniswap.org/robinhood-chain-is-live)). **Zero
-   hits** across all combinations for all 16 assets.
-3. `V4Quoter.quoteExactInputSingle` on SPY/WETH at the 0.3% tier — reverted
-   cleanly with no data, consistent with "pool not initialized."
-4. Blockscout's REST API — returned a Cloudflare JS challenge to a plain
-   fetch, not a usable response.
-5. Web search for a documented Pleiades/Uniswap stock-token-AMM hook address
-   or a v4 subgraph — confirmed "Robinhood has no v4 subgraph" and that
-   discovery is expected to be log-based (same method as #1, same RPC-tier
-   wall), and did not surface a specific non-zero hook address for the
-   dedicated stock-token AMM the blog post references.
+```bash
+cd contracts
+set -a; source ../.env; set +a
+forge script script/probe/QuoteBasketRoutes.s.sol:QuoteBasketRoutes --rpc-url "$RH_RPC_URL_PAID"
+```
 
-**Not ruled out:** a pool using a non-zero, undocumented hook address (the
-blog post confirms "Uniswap deploying a dedicated AMM" for stock tokens but
-doesn't publish its hook contract), or liquidity against USDG rather than
-WETH (the chain's other RFQ-quote asset, e.g. "NVDA ↔ USDG") — using a USDG
-route would require a WETH→USDG→stock multi-hop, which BALLAST deliberately
-never ships (`contracts/src/interfaces/IRobinhoodV4Router.sol:20-25`), so
-even if found it wouldn't satisfy this spec's "swapped from WETH" requirement
-directly. **Next step for a human:** ask Robinhood/Uniswap/Pleiades directly
-for the canonical stock-token AMM hook address, or get access to a less
-RPC-range-restricted provider / an indexer that already covers this chain's
-v4 pools.
+Read-only (no `--broadcast`); prints the full per-asset / per-size table the
+numbers above were taken from.
 
-See `docs/BASKET_DEPLOY.md` for the deploy/verify runbook once ready to ship.
+See `docs/BASKET_DEPLOY.md` for the deploy/verify runbook.
