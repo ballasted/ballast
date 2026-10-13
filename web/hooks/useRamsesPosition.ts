@@ -7,6 +7,7 @@ import { ramsesLockerAbi, ramsesLockLauncherAbi, ballastFeeSplitterAbi } from "@
 import { RAMSES_LOCKER_ADDRESS, RAMSES_LAUNCHER_ADDRESS, isRamsesEnabled } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
+import { retryRead } from "@/lib/retryRead";
 
 const CHAIN_ID = activeChain.id;
 
@@ -59,13 +60,15 @@ export function useRamsesPosition(token?: Address) {
     setStatus("loading");
     (async () => {
       try {
-        const logs = (await publicClient.getLogs({
-          address: RAMSES_LAUNCHER_ADDRESS,
-          event: getAbiItem({ abi: ramsesLockLauncherAbi, name: "CreatedAndLocked" }),
-          args: { launchedToken: token },
-          fromBlock: 0n,
-          toBlock: "latest",
-        })) as CreatedAndLockedLog[];
+        const logs = (await retryRead(() =>
+          publicClient.getLogs({
+            address: RAMSES_LAUNCHER_ADDRESS,
+            event: getAbiItem({ abi: ramsesLockLauncherAbi, name: "CreatedAndLocked" }),
+            args: { launchedToken: token },
+            fromBlock: 0n,
+            toBlock: "latest",
+          }),
+        )) as CreatedAndLockedLog[];
         if (cancelled) return;
         // Never trust `launchedToken` (the indexed filter above) alone --
         // derive the token this position actually belongs to from the

@@ -8,6 +8,7 @@ import { BASKET_ZAP_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { backfillLogs } from "@/lib/eventBackfill";
 import { DAY_BLOCKS } from "@/lib/liveRail";
+import { retryRead } from "@/lib/retryRead";
 
 const CHAIN_ID = activeChain.id;
 const MONTH_BLOCKS = DAY_BLOCKS * 30n;
@@ -36,17 +37,25 @@ export function useBasketHistory(launchToken?: Address) {
       setStatus("idle");
       return;
     }
+    const zapAddress = BASKET_ZAP_ADDRESS;
     let cancelled = false;
     setStatus("loading");
     (async () => {
-      const latest = await publicClient.getBlockNumber();
+      const latest = await retryRead(() => publicClient.getBlockNumber());
       const fromBlock = latest > MONTH_BLOCKS ? latest - MONTH_BLOCKS : 0n;
-      const outcome = await backfillLogs(publicClient, {
-        address: BASKET_ZAP_ADDRESS,
-        event: getAbiItem({ abi: basketZapAbi, name: "BasketSwapped" }),
-        fromBlock,
-        toBlock: latest,
-      });
+      // backfillLogs reports failure as a return value (status: "failed"),
+      // never a thrown error, so retryRead's catch-and-retry can't see it —
+      // retry explicitly on that status instead.
+      const outcome = await retryRead(async () => {
+        const result = await backfillLogs(publicClient, {
+          address: zapAddress,
+          event: getAbiItem({ abi: basketZapAbi, name: "BasketSwapped" }),
+          fromBlock,
+          toBlock: latest,
+        });
+        if (result.status === "failed") throw new Error("backfillLogs failed");
+        return result;
+      }).catch(() => ({ logs: [], status: "failed" as const }));
       if (cancelled) return;
       const mine = (outcome.logs as BasketSwappedLog[]).filter(
         (l) => l.args.launchToken?.toLowerCase() === launchToken.toLowerCase(),
