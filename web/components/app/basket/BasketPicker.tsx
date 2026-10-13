@@ -12,8 +12,8 @@ import { AssetDisc } from "@/components/app/AssetDisc";
 import { formatUsd } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-/// Picker used both as the optional post-launch Create step and as the
-/// creator-only "Add basket" flow on the token page. Deliberately honest about
+/// Picker used by the creator-only "Add basket" flow on the dedicated backing
+/// page (/app/backing/[address], via BasketSection). Deliberately honest about
 /// the two-stage signature cost (docs/DECISIONS.md §1): one signature swaps
 /// ETH into every leg at once, but each resulting asset still needs its own
 /// approve + deposit against the treasury directly — BasketZap can never make

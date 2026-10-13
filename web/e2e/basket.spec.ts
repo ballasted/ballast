@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { readFixture } from "./fixture";
+import { acceptTermsIfShown, connectWalletButton } from "./helpers";
 
 // Full picker flow against a real local Anvil fork of Robinhood Chain mainnet
 // (web/e2e/global-setup.ts): a real BasketZap deployed against the real
@@ -10,25 +11,18 @@ import { readFixture } from "./fixture";
 // The connected wallet is Anvil's well-known default dev account #0 (public,
 // zero real value), driven via a local injected-provider bridge
 // (web/e2e/wallet-bridge.mjs) — never a real key, never real mainnet.
-test("creator adds a one-asset basket end-to-end and sees it on the token page", async ({ page }) => {
+test("creator adds a one-asset basket end-to-end and sees it on the backing page", async ({ page }) => {
   const fixture = readFixture();
 
   await page.addInitScript({ path: path.join(__dirname, "inject-wallet.js") });
-  await page.goto(`/app/token/${fixture.token}`);
+  // Backing moved off the token page onto its own route (docs/DECISIONS.md
+  // §5) — the picker now lives here, not behind a token-page tab.
+  await page.goto(`/app/backing/${fixture.token}`);
 
-  await page.getByRole("button", { name: "Connect wallet" }).click();
+  await connectWalletButton(page).click();
   await expect(page.getByText(/0xf39F/i)).toBeVisible({ timeout: 15_000 });
 
-  // First-connect terms gate, if shown.
-  const acceptButton = page.getByRole("button", { name: "Accept and continue" });
-  if (await acceptButton.isVisible().catch(() => false)) {
-    const checkboxes = page.getByRole("checkbox");
-    const count = await checkboxes.count();
-    for (let i = 0; i < count; i++) await checkboxes.nth(i).check();
-    await acceptButton.click();
-  }
-
-  await page.getByRole("button", { name: "Backing" }).click();
+  await acceptTermsIfShown(page);
 
   const basketSection = page.locator("section", { hasText: "Basket" }).first();
   await basketSection.getByRole("button", { name: "Add basket" }).click();
@@ -62,7 +56,6 @@ test("creator adds a one-asset basket end-to-end and sees it on the token page",
   // read back through the same real BackingLens call the rest of the page
   // uses.
   await page.reload();
-  await page.getByRole("button", { name: "Backing" }).click();
   const basketSectionAfter = page.locator("section", { hasText: "Basket" }).first();
   await expect(basketSectionAfter.getByText("100%")).toBeVisible({ timeout: 15_000 });
   await expect(

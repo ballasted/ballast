@@ -18,7 +18,7 @@ type BackingAssetValueView = { asset: Address; withdrawableValueUsd: bigint };
 /// leg is an ordinary treasury deposit the moment the creator calls
 /// deposit()), so "weights at deposit" comes from BasketZap's event log
 /// (useBasketHistory) and "current value" is read live through the SAME
-/// BackingLens call the rest of the token page already uses (`backing`,
+/// BackingLens call the rest of the backing page already uses (`backing`,
 /// passed down rather than re-fetched). Renders nothing when the feature
 /// flag is off or unconfigured — same convention as OpenTreasurySection.
 export function BasketSection({

@@ -149,17 +149,24 @@ export const BASKET_PRESETS: { id: BasketPresetId; label: string; tickers: strin
   });
   await waitForPort(APP_URL, 60_000);
 
-  // Warm-up: hit the token page (and have it settle) once before Playwright's
-  // real test navigates there, so the route's on-demand dev compile and the
-  // first /api/rpc round-trip both happen here, not mid-test.
-  for (let i = 0; i < 3; i++) {
-    try {
-      const res = await fetch(`${APP_URL}/app/token/${fixture.token}`);
-      if (res.ok) break;
-    } catch {
-      /* retry */
+  // Warm-up: hit every route a test will land on (and have each settle) once
+  // before Playwright's real tests navigate there, so each route's on-demand
+  // dev compile and its first /api/rpc round-trip both happen here, not
+  // mid-test. This matters even for routes a test only reaches via a
+  // CLIENT-SIDE <Link> click (never a full page.goto): Next dev's on-demand
+  // compile for a never-before-visited route can race that client-side
+  // transition and silently swallow it (confirmed this session —
+  // /app/backing/[address] via the token page's summary-card link).
+  for (const path of [`/app/token/${fixture.token}`, `/app/backing/${fixture.token}`, "/app/backing"]) {
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch(`${APP_URL}${path}`);
+        if (res.ok) break;
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 2000));
     }
-    await new Promise((r) => setTimeout(r, 2000));
   }
 
   writeFileSync(

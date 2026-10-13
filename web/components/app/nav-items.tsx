@@ -19,6 +19,7 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
   { href: "/app/buyback", label: "Buyback", icon: IconBurn },
+  { href: "/app/backing", label: "Backing", icon: IconBacking },
   { href: "/app/create", label: "Create", icon: IconCreate },
   { href: "/app/portfolio", label: "Portfolio", icon: IconPortfolio },
   { href: "/app/profile", label: "Profile", icon: IconProfile },
@@ -58,6 +59,20 @@ function IconBurn({ active }: { active: boolean }) {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M12 3c1 3-2 4-2 7a2 2 0 004 0c0-1 0-2-.5-3 2 1.5 3.5 4 3.5 6.5a5 5 0 11-10 0C7 10 10 7 12 3z"
+        fill={active ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+function IconBacking({ active }: { active: boolean }) {
+  // A shield outline — treasury/backing. Inline SVG, no icon library or emoji.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor"
         strokeWidth="1.6"

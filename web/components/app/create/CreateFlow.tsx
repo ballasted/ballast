@@ -31,7 +31,6 @@ import {
   TOTAL_SUPPLY,
   WETH_ADDRESS,
 } from "@/lib/contracts";
-import { BasketPicker } from "@/components/app/basket/BasketPicker";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -364,7 +363,6 @@ export function CreateFlow() {
     return (
       <SuccessCard
         token={activeRunner.result.token}
-        treasury={activeRunner.result.treasury}
         symbol={symbolClean}
         logoUri={logoUri}
       />
@@ -1162,16 +1160,13 @@ function LaunchProgress(p: {
 
 function SuccessCard({
   token,
-  treasury,
   symbol,
   logoUri,
 }: {
   token: Address;
-  treasury: Address;
   symbol: string;
   logoUri: string;
 }) {
-  const [addingBasket, setAddingBasket] = useState(false);
   return (
     <div className="mx-auto max-w-md">
       <section className="card p-6 text-center">
@@ -1192,20 +1187,14 @@ function SuccessCard({
       </section>
       {isBasketEnabled && (
         <section className="card mt-4 p-5">
-          {addingBasket ? (
-            <BasketPicker launchToken={token} treasury={treasury} onDone={() => setAddingBasket(false)} />
-          ) : (
-            <>
-              <h3 className="text-sm font-semibold text-text-primary">Optional: add a basket</h3>
-              <p className="mt-1 text-xs text-text-muted">
-                Swap ETH into up to 6 stock tokens and deposit them into ${symbol}&apos;s treasury. Can also be done
-                later from the token page.
-              </p>
-              <button type="button" className="btn-secondary mt-3" onClick={() => setAddingBasket(true)}>
-                Add basket
-              </button>
-            </>
-          )}
+          <h3 className="text-sm font-semibold text-text-primary">Optional: add a basket</h3>
+          <p className="mt-1 text-xs text-text-muted">
+            Swap ETH into up to 6 stock tokens and deposit them into ${symbol}&apos;s treasury. Set it up from the
+            Backing page whenever you&apos;re ready.
+          </p>
+          <Link href={`/app/backing/${token}`} className="btn-secondary mt-3 inline-block">
+            Set up on the Backing page
+          </Link>
         </section>
       )}
       {isRamsesEnabled && (
@@ -1213,10 +1202,10 @@ function SuccessCard({
           <h3 className="text-sm font-semibold text-text-primary">Optional: back ${symbol} with a Ramses locked pool</h3>
           <p className="mt-1 text-xs text-text-muted">
             A separate, permanently locked liquidity position on Ramses (1% fee tier). 80% of its fees go to you, 20% to
-            the protocol. Set it up from the Backing tab on the token page whenever you&apos;re ready.
+            the protocol. Set it up from the Backing page whenever you&apos;re ready.
           </p>
-          <Link href={`/app/token/${token}`} className="btn-secondary mt-3 inline-block">
-            Set up on the token page
+          <Link href={`/app/backing/${token}`} className="btn-secondary mt-3 inline-block">
+            Set up on the Backing page
           </Link>
         </section>
       )}

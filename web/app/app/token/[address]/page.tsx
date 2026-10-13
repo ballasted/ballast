@@ -1,8 +1,8 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useBacking } from "@/hooks/useBacking";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
@@ -10,16 +10,13 @@ import { useDenylistEntry } from "@/hooks/useDenylist";
 import { useMarket } from "@/hooks/useMarket";
 import { useNow } from "@/hooks/useNow";
 import { useAssets } from "@/hooks/useAssets";
+import { useBasketHistory } from "@/hooks/useBasketHistory";
+import { useRamsesPosition } from "@/hooks/useRamsesPosition";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
-import { BackingPanel } from "@/components/app/BackingPanel";
 import { ResumeLaunchPanel } from "@/components/app/ResumeLaunchPanel";
 import { MarketPanel } from "@/components/app/token/MarketPanel";
 import { ProtocolTokenNotice } from "@/components/app/token/ProtocolTokenNotice";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
-import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
-import { OpenTreasurySection } from "@/components/app/token/OpenTreasurySection";
-import { BasketSection } from "@/components/app/token/BasketSection";
-import { RamsesLockSection } from "@/components/app/token/RamsesLockSection";
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import { FeeRouterCard } from "@/components/app/token/FeeRouterCard";
@@ -35,7 +32,7 @@ import {
 import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
 import { PriceChart } from "@/components/app/token/PriceChart";
-import { WETH_ADDRESS } from "@/lib/contracts";
+import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled } from "@/lib/contracts";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
@@ -46,19 +43,28 @@ import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { shortAddress } from "@/lib/format";
+import { shortAddress, formatUsd } from "@/lib/format";
 
 type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
-type TabId = "trades" | "holders" | "backing" | "about";
+type TabId = "trades" | "holders" | "about";
 
 // Token detail — the shareable unit, keyed by the TOKEN address. Header + stat
 // strip + chart/trade side by side, nothing else above the fold; everything
 // else lives behind the four tabs below (UI principles).
 export default function TokenDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const raw = typeof params.address === "string" ? params.address : "";
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(raw);
   const token = isAddr ? (raw as Address) : undefined;
+
+  // Old deep link into the since-removed Backing tab -> its own page now.
+  useEffect(() => {
+    if (token && searchParams.get("tab") === "backing") {
+      router.replace(`/app/backing/${token}`);
+    }
+  }, [token, searchParams, router]);
 
   const now = useNow();
   const {
@@ -71,7 +77,6 @@ export default function TokenDetailPage() {
     metadataChanged,
     creator,
     pending,
-    noticePeriod,
     marketPriceUsd,
     marketPriceWeth,
     hasPool,
@@ -99,6 +104,12 @@ export default function TokenDetailPage() {
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const ballasted = Boolean(backing && backing.totalValueUsd > 0n);
   const backingAsset = (backing?.assets as unknown as BackingAssetView[] | undefined)?.[0];
+
+  // Lazy, best-effort badges for the Backing summary card below — same
+  // event-sourced hooks the dedicated /app/backing/[address] page's sections
+  // already use, just read here for the one-line summary.
+  const basket = useBasketHistory(token);
+  const ramses = useRamsesPosition(token);
 
   // The chart's USD/quote-asset unit switch needs the pool's non-WETH quote asset
   // (a stock, e.g. NVDA) and ITS live USD price from the SAME allowlist feed read
@@ -193,13 +204,23 @@ export default function TokenDetailPage() {
         </div>
       </div>
 
-      {/* ── Tabs: Trades · Holders · Backing · About. ── */}
+      {/* ── Backing summary — a pointer to the dedicated page, not a re-render
+          of its content (no duplicate UI). Always visible, not tab-gated. ── */}
+      <MotionSection>
+        <BackingSummaryCard
+          token={token!}
+          backingUsd={backing?.totalValueUsd}
+          hasBasket={isBasketEnabled && basket.hasHistory}
+          hasRamsesLock={isRamsesEnabled && Boolean(ramses.position)}
+        />
+      </MotionSection>
+
+      {/* ── Tabs: Trades · Holders · About. ── */}
       <MotionSection>
         <TabBar
           tabs={[
             { id: "trades", label: "Trades" },
             { id: "holders", label: "Holders" },
-            { id: "backing", label: "Backing" },
             { id: "about", label: "About" },
           ]}
           active={tab}
@@ -208,33 +229,6 @@ export default function TokenDetailPage() {
 
         {tab === "trades" && <TradesPanel token={token!} symbol={symbol} now={now} />}
         {tab === "holders" && <HoldersPanel token={token!} creator={creator} treasury={treasury} now={now} />}
-        {tab === "backing" &&
-          (backing ? (
-            <div className="space-y-4">
-              <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
-              <CreatorWithdrawalPanel
-                treasury={treasury}
-                creator={creator}
-                assets={(backing.assets as unknown as BackingAssetView[]) ?? []}
-                noticePeriod={noticePeriod}
-                pending={pending}
-                symbol={symbol}
-                now={now}
-              />
-              <BasketSection
-                token={token}
-                treasury={treasury}
-                creator={creator}
-                symbol={symbol}
-                noticePeriod={noticePeriod}
-                backing={backing}
-              />
-              <OpenTreasurySection token={token!} creator={creator} symbol={symbol} />
-              <RamsesLockSection token={token!} creator={creator} symbol={symbol} />
-            </div>
-          ) : (
-            <div className="card p-5 text-sm text-text-muted">No treasury</div>
-          ))}
         {tab === "about" && (
           <div className="space-y-4">
             {metaDenied && (
@@ -318,6 +312,33 @@ function CopyAddress({ address, label }: { address: Address; label?: string }) {
         </svg>
       )}
     </button>
+  );
+}
+
+// One line, links through to /app/backing/[address] (the full treasury,
+// stock basket, and Ramses-lock sections now live there — never duplicated
+// here). Always shown, including $0 backing, so the link is never a surprise.
+function BackingSummaryCard({
+  token,
+  backingUsd,
+  hasBasket,
+  hasRamsesLock,
+}: {
+  token: Address;
+  backingUsd?: bigint;
+  hasBasket: boolean;
+  hasRamsesLock: boolean;
+}) {
+  const bits = [formatUsd(backingUsd ?? 0n, { compact: true }) + " in treasury"];
+  if (hasBasket) bits.push("basket");
+  if (hasRamsesLock) bits.push("Ramses lock");
+  return (
+    <Link href={`/app/backing/${token}`} className="card card-hover flex items-center justify-between gap-3 p-4">
+      <span className="text-sm text-text-secondary">
+        <span className="font-semibold text-text-primary">Backing:</span> {bits.join(" · ")}
+      </span>
+      <span className="text-text-faint" aria-hidden>→</span>
+    </Link>
   );
 }
 
