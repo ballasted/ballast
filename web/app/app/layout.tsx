@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { Ambience } from "@/components/app/Ambience";
 import { BottomNav } from "@/components/app/BottomNav";
 import { EventToasts } from "@/components/app/EventToasts";
+import { MoreMenuProvider } from "@/components/app/MoreMenu";
 import { SideNav } from "@/components/app/SideNav";
 import { TopBar } from "@/components/app/TopBar";
 import { ConfigGuard } from "@/components/app/ConfigGuard";
@@ -30,19 +31,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
       <Ambience variant="page" />
       <EventToasts />
-      {hasRail && <SideNav />}
-      <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
-        <TopBar hasRail={hasRail} />
-        <ConfigGuard />
-        <NetworkGuard />
-        {/* Content sits in a wide column, centred. Bottom padding below lg clears
-            BottomNav's fixed tab bar plus the device safe-area inset; at lg+ the
-            tab bar doesn't render, so padding drops back to normal. */}
-        <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(52px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10">
-          {children}
-        </main>
-        <BottomNav />
-      </div>
+      {/* One shared "More" sheet, opened by both the header hamburger (TopBar)
+          and the bottom bar's More tab (BottomNav) — both live inside here. */}
+      <MoreMenuProvider>
+        {hasRail && <SideNav />}
+        <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
+          <TopBar hasRail={hasRail} />
+          <ConfigGuard />
+          <NetworkGuard />
+          {/* Content sits in a wide column, centred. Bottom padding below lg clears
+              BottomNav's fixed tab bar plus the device safe-area inset; at lg+ the
+              tab bar doesn't render, so padding drops back to normal. */}
+          <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(52px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10">
+            {children}
+          </main>
+          <BottomNav />
+        </div>
+      </MoreMenuProvider>
     </Providers>
   );
 }

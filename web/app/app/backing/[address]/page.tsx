@@ -8,6 +8,7 @@ import { useNow } from "@/hooks/useNow";
 import { useDenylistEntry } from "@/hooks/useDenylist";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { BackingPanel } from "@/components/app/BackingPanel";
+import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
 import { BasketSection } from "@/components/app/token/BasketSection";
 import { OpenTreasurySection } from "@/components/app/token/OpenTreasurySection";
@@ -16,6 +17,7 @@ import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
+import { FACTORY_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 
 type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
@@ -40,10 +42,19 @@ export default function BackingDetailPage() {
     pending,
     noticePeriod,
     metadataURI,
+    ownerFactory,
     isConfigured,
     isLoading,
     found,
   } = useBacking(token);
+  // gen-4 = launched by the CURRENT factory. Only gen-4 launches carry the
+  // creator treasury controls (Add basket / announce withdrawal / Ramses /
+  // Open Treasury); gen-1..3 ($BALLCAT etc.) render read-only — their backing
+  // panel only (CLAUDE.md: creators withdraw only what they deposited, and
+  // these generations predate the controls entirely).
+  const gen4 = Boolean(
+    ownerFactory && FACTORY_ADDRESS && ownerFactory.toLowerCase() === FACTORY_ADDRESS.toLowerCase(),
+  );
   const { meta } = useProjectMeta(metadataURI);
   const { denied: metaDenied } = useDenylistEntry(token);
   const shownMeta = metaDenied ? undefined : meta;
@@ -75,26 +86,37 @@ export default function BackingDetailPage() {
 
       {backing ? (
         <div className="space-y-4">
+          {/* Public disclosure — shown to everyone the moment a withdrawal is
+              announced, before any asset moves (build-spec §9). Not creator-gated. */}
+          {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
           <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
-          <CreatorWithdrawalPanel
-            treasury={treasury}
-            creator={creator}
-            assets={(backing.assets as unknown as BackingAssetView[]) ?? []}
-            noticePeriod={noticePeriod}
-            pending={pending}
-            symbol={symbol}
-            now={now}
-          />
-          <BasketSection
-            token={token}
-            treasury={treasury}
-            creator={creator}
-            symbol={symbol}
-            noticePeriod={noticePeriod}
-            backing={backing}
-          />
-          <OpenTreasurySection token={token!} creator={creator} symbol={symbol} />
-          <RamsesLockSection token={token!} creator={creator} symbol={symbol} />
+          {/* Creator treasury controls — gen-4 only. A non-creator visitor on a
+              gen-4 token still sees BasketSection's read-only composition and the
+              pending-withdrawal disclosure; they just can't act. gen-1..3 get the
+              backing panel above and nothing actionable below. */}
+          {gen4 && (
+            <>
+              <CreatorWithdrawalPanel
+                treasury={treasury}
+                creator={creator}
+                assets={(backing.assets as unknown as BackingAssetView[]) ?? []}
+                noticePeriod={noticePeriod}
+                pending={pending}
+                symbol={symbol}
+                now={now}
+              />
+              <BasketSection
+                token={token}
+                treasury={treasury}
+                creator={creator}
+                symbol={symbol}
+                noticePeriod={noticePeriod}
+                backing={backing}
+              />
+              <OpenTreasurySection token={token!} creator={creator} symbol={symbol} />
+              <RamsesLockSection token={token!} creator={creator} symbol={symbol} />
+            </>
+          )}
 
           <a
             href={`${activeChain.blockExplorers.default.url}/address/${treasury}`}

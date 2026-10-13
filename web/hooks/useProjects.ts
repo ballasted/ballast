@@ -11,6 +11,7 @@ import {
 } from "@/lib/abis";
 import {
   LENS_ADDRESS,
+  FACTORY_ADDRESS,
   FACTORY_ADDRESSES,
   STATE_VIEW_ADDRESS,
   WETH_ADDRESS,
@@ -20,6 +21,8 @@ import {
   isSwapConfigured,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 import { candidatePoolKeys, poolKeyForToken, poolId, tokenIsCurrency0, tokenPriceInQuote } from "@/lib/pool";
 import { usdToDoublePrice } from "@/lib/liquidity";
 import { liveQuery } from "@/lib/refresh";
@@ -44,6 +47,9 @@ export type Project = {
   treasury: Address;
   token: Address;
   creator: Address;
+  factory: Address; // the factory that launched this token (owning registry)
+  isGen4: boolean; // launched by the CURRENT factory — the generation with creator treasury controls
+  hasTreasury: boolean; // a real ProjectTreasury is attached (treasury != address(0))
   name?: string;
   symbol?: string;
   metadataURI?: string; // on-chain ipfs://CID → resolves to the logo/metadata JSON
@@ -251,6 +257,7 @@ export function useProjects() {
     // reads 0 exactly when the current tick sits on the seeded position's boundary
     // (the half-open tick-range artifact, confirmed on real graduated pools
     // 2026-09-25) even though the position is real and fully seeded.
+    const owningFactory = (factories[sorted[rowIndex]?.factoryIndex ?? 0] ?? token) as Address;
     const cs = cands[rowIndex] ?? [];
     const qaForRow = quoteAssetsByRow[rowIndex] ?? [];
     rowIndex += 1;
@@ -292,6 +299,11 @@ export function useProjects() {
       token,
       treasury,
       creator,
+      factory: owningFactory,
+      isGen4: Boolean(
+        FACTORY_ADDRESS && owningFactory.toLowerCase() === FACTORY_ADDRESS.toLowerCase(),
+      ),
+      hasTreasury: Boolean(treasury && treasury.toLowerCase() !== ZERO_ADDRESS),
       name: nm?.status === "success" ? (nm.result as string) : undefined,
       symbol: sy?.status === "success" ? (sy.result as string) : undefined,
       metadataURI: uri?.status === "success" ? (uri.result as string) : undefined,

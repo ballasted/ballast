@@ -18,8 +18,10 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
-  { href: "/app/buyback", label: "Buyback", icon: IconBurn },
   { href: "/app/backing", label: "Backing", icon: IconBacking },
+  { href: "/app/treasury", label: "Treasury", icon: IconTreasury },
+  { href: "/app/baskets", label: "Baskets", icon: IconBaskets },
+  { href: "/app/buyback", label: "Buyback", icon: IconBurn },
   { href: "/app/create", label: "Create", icon: IconCreate },
   { href: "/app/portfolio", label: "Portfolio", icon: IconPortfolio },
   { href: "/app/profile", label: "Profile", icon: IconProfile },
@@ -29,6 +31,18 @@ export const NAV_ITEMS: NavItem[] = [
     ? [{ href: "/app/migrate", label: "Migrate", icon: IconMigrate, expiresAt: V1_CLAIM_DEADLINE_UNIX }]
     : []),
 ];
+
+// The mobile bottom tab bar's fixed set (see BottomNav). Centralised here so the
+// "More" sheet can derive its contents as "everything NOT a bottom tab" without
+// the two lists drifting out of sync. Order matches the bar: Discover, Create,
+// Portfolio, then a "More" button (not a route).
+export const TAB_HREFS = ["/app/discover", "/app/create", "/app/portfolio"] as const;
+
+/** The nav entries that live in the "More" sheet / hamburger menu — every
+ *  visible primary item that isn't already one of the fixed bottom tabs. */
+export function moreNavItems(items: NavItem[] = NAV_ITEMS): NavItem[] {
+  return visibleNavItems(items).filter((item) => !TAB_HREFS.includes(item.href as (typeof TAB_HREFS)[number]));
+}
 
 /** `NAV_ITEMS` filtered for right now — call this from render, not the raw
  *  array, wherever a time-limited entry should actually disappear on time. */
@@ -107,6 +121,25 @@ function IconProfile() {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
       <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconTreasury({ active }: { active: boolean }) {
+  // A vault/strongbox outline — the project treasury directory.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.25 : 0} />
+      <path d="M12 9v-.5M12 15.5V15M15 12h.5M8.5 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconBaskets({ active }: { active: boolean }) {
+  // A basket outline — the stock-basket directory.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 9h16l-1.5 9.5a2 2 0 01-2 1.5H7.5a2 2 0 01-2-1.5L4 9z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.2 : 0} />
+      <path d="M8 9l2-5M16 9l-2-5M9.5 13v3M14.5 13v3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }

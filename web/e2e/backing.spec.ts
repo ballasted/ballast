@@ -65,3 +65,64 @@ test("backing detail page has no horizontal overflow at mobile width", async ({ 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+// --- Public directory + gen-4 gating + mobile "More" nav (this change) -------
+
+// The production bug: a gen-4 launch with a ProjectTreasury but $0 backing was
+// filtered out, so a visitor with NO wallet saw the false "No launch has a
+// treasury yet." The directory must now read on-chain state only (never the
+// wallet) and list every treasury, including $0 ones.
+test("directory lists the gen-4 treasury with NO wallet connected", async ({ page }) => {
+  const fixture = readFixture();
+  await page.goto("/app/backing");
+  const card = page.locator(`a[href="/app/backing/${fixture.token}"]`).first();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("No launch has a treasury yet.")).not.toBeVisible();
+});
+
+// No wallet == not the creator: the backing detail is fully readable but shows
+// zero creator write-controls.
+test("backing detail is read-only with no wallet (no creator controls)", async ({ page }) => {
+  const fixture = readFixture();
+  await page.goto(`/app/backing/${fixture.token}`);
+  await expect(page.getByRole("heading", { name: /backing$/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Add basket" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Withdraw creator deposit/ })).toHaveCount(0);
+});
+
+// Connected wallet IS the fixture's creator and the fixture launch is gen-4 (its
+// own freshly-deployed factory is the current one), so the creator-only "Add
+// basket" control renders — the (c) case the step gating turns on.
+test("creator sees Add basket on the gen-4 backing detail", async ({ page }) => {
+  const fixture = readFixture();
+  await page.addInitScript({ path: path.join(__dirname, "inject-wallet.js") });
+  await page.goto(`/app/backing/${fixture.token}`);
+
+  await connectWalletButton(page).click();
+  await expect(page.getByText(/0xf39F/i)).toBeVisible({ timeout: 15_000 });
+  await acceptTermsIfShown(page);
+
+  await expect(page.getByRole("button", { name: "Add basket" })).toBeVisible({ timeout: 15_000 });
+});
+
+// Mobile nav: the three fixed tabs used to be the ONLY nav, leaving Backing,
+// Treasury, Baskets, Buyback and Profile unreachable. The "More" sheet now
+// carries them — check a couple route through it at a real phone width.
+test("mobile More sheet reaches Treasury and Baskets", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/app/discover");
+
+  const dialog = page.getByRole("dialog", { name: "More navigation" });
+  for (const [label, route] of [
+    ["Treasury", "/app/treasury"],
+    ["Baskets", "/app/baskets"],
+  ] as const) {
+    await page.getByRole("button", { name: "More" }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("link", { name: label, exact: true }).click();
+    await page.waitForURL(`**${route}`, { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`${route}$`));
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  }
+});
