@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+// Floating (not exact-pinned): BasketZap.t.sol (pinned to exactly 0.8.26,
+// because it imports BasketZap.sol's v4-periphery V4Router dependency graph)
+// also imports this contract directly for realistic unit tests. No version-
+// specific syntax here, so widening is safe for every existing 0.8.28 consumer.
+pragma solidity >=0.8.26 <=0.8.28;
 
 import {Ownable} from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import {Ownable2Step} from "openzeppelin-contracts/contracts/access/Ownable2Step.sol";

@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+// Pinned to 0.8.26, not this repo's usual 0.8.28 — this file imports
+// v4-periphery's V4Router.sol, itself pinned to exactly 0.8.26, same reason
+// BallastRouterV2.sol carries the identical pin (one Solidity import graph
+// can only ever compile under one version).
+pragma solidity 0.8.26;
 
 import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
-import {IRobinhoodV4Router, RobinhoodV4} from "./interfaces/IRobinhoodV4Router.sol";
-import {IAllowanceTransfer} from "./interfaces/IPermit2.sol";
 import {IAssetRegistry} from "./interfaces/IAssetRegistry.sol";
 import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
+
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+
+import {V4Router} from "v4-periphery/src/V4Router.sol";
+import {IV4Router} from "v4-periphery/src/interfaces/IV4Router.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
+import {Actions} from "v4-periphery/src/libraries/Actions.sol";
+import {ActionConstants} from "v4-periphery/src/libraries/ActionConstants.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
 interface IWETH9Basket {
     function deposit() external payable;
@@ -30,44 +42,53 @@ interface IBallastFactoryBasket {
 /// @notice Immutable, no owner, no admin, no pause, no upgrade, no rescue
 ///         function of any kind. Holds no funds between calls.
 ///
-/// @dev WHY THIS CONTRACT CANNOT ALSO CALL `ProjectTreasury.deposit()` FOR THE
-///      CREATOR (see docs/DECISIONS.md §1 for the full writeup): `deposit()` is
-///      `onlyCreator`, checking `msg.sender == creator` directly — a fixed EOA
-///      address set at launch. If BasketZap called it, the treasury would see
-///      BasketZap's own address as the caller, never the creator's, and revert.
-///      No amount of contract cleverness changes that without modifying
-///      ProjectTreasury, which is forbidden. So this contract does exactly one
-///      job — wrap ETH, swap it into the requested stock tokens with real
-///      on-chain safety checks, and forward every output straight to the
-///      launch's creator — and stops there. The creator still has to call
-///      `approve` + `deposit` on their treasury themselves, once per asset,
-///      exactly as if they'd sourced the tokens anywhere else.
+/// @dev REWRITE (docs/BASKET_DISCOVERY.md, this session): the original version
+///      of this contract routed each leg through the external UniversalRouter
+///      against a caller-supplied single-hop WETH/<asset> PoolKey. Discovery
+///      found zero such pools exist — real stock-token liquidity on this chain
+///      is multi-hop (ETH -> USDG -> stock, Fables v4 hooks) or lives on Ramses
+///      v3 pools, which the external UniversalRouter cannot reach at all (its
+///      V3 swap path is hardcoded to Uniswap's own V3 factory/init-code-hash,
+///      confirmed empirically — a Ramses pool requires a caller that
+///      implements `uniswapV3SwapCallback` and is willing to target a
+///      non-Uniswap factory's pool directly, which the external router does
+///      not do). `BallastRouterV2` (contracts/src/BallastRouterV2.sol) already
+///      solved exactly this problem for ETH -> quoteAsset acquisition, by
+///      inheriting v4-periphery's `V4Router` directly (calling
+///      `poolManager.unlock()` itself instead of going through the external
+///      UniversalRouter) for Fables, and implementing the Uniswap-v3-style
+///      swap-callback pattern directly for Ramses. BasketZap now follows the
+///      IDENTICAL pattern — same fixed `fablesHops`/`ramsesRoutes` tables,
+///      same per-venue attempt-with-fallback shape — but stops at the stock
+///      token (no leg 2 into a Ballast pool; BallastRouterV2's leg 2 is not
+///      optional in its own code, so it could not be reused directly for a
+///      basket swap, see docs/BASKET_DISCOVERY.md for the full writeup) and
+///      sends the output straight to the launch creator instead of back to
+///      `msg.sender`.
 ///
-///      Each leg is executed as its OWN `UniversalRouter.execute()` call (the
-///      exact single-hop SWAP_EXACT_IN_SINGLE + SETTLE_ALL + TAKE_ALL shape
-///      `BallastV1Claim` already proved against a live mainnet pool), looped
-///      inside one `swapBasket` transaction — never a single batched multi-action
-///      router call. That shape is reachable on this fork (v4's flash-accounting
-///      allows multiple swap/settle/take actions in one `execute()`), but it has
-///      never been proven against this router, and untested code in the
-///      swap-execution path is exactly the attack surface CLAUDE.md warns about
-///      re: multi-hop. N independent, already-proven single-leg calls inside one
-///      user-signed transaction is the conservative choice and costs the caller
-///      nothing extra — it is still exactly one signature.
+///      Routes are NOT caller-supplied: unlike the original version (which let
+///      the caller pick any fee/tickSpacing/hooks — safe only because a bad
+///      choice could only ever hurt the caller themselves), every leg now
+///      selects hops by INDEX into this contract's own fixed, construction-time
+///      `fablesHops`/`ramsesRoutes` tables — exactly `BallastRouterV2`'s own
+///      convention. A wrong index either fails to chain (`BadHopChain`) or
+///      chains to the wrong asset (also `BadHopChain`); it can never reach an
+///      address outside the fixed tables. This is strictly safer than the
+///      prior caller-supplied-PoolKey design, not just a routing fix.
 ///
-///      Routes are NOT hardcoded: unlike Ballast's own gen-4 hook pools,
-///      stock-token/WETH liquidity is third-party (Uniswap + Pleiades LPs,
-///      docs/robinhood-chain-research.md §2) with no fixed fee/tickSpacing/hook,
-///      and no canonical on-chain "get me the pool for this pair" lookup exists
-///      in v4. The caller supplies the full `PoolKey` per leg, exactly like
-///      `BallastRouterV2` already takes `hook` as a parameter rather than a
-///      constant. This cannot be abused to hurt anyone but the caller: funds are
-///      always the caller's own ETH, converted for their own benefit, forwarded
-///      only to the resolved creator address (never an arbitrary address), and
-///      `minOut` is the caller's own slippage protection — a bad PoolKey just
-///      means the swap reverts or fills at a worse price the caller chose to
-///      accept.
-contract BasketZap is ReentrancyGuard {
+///      Each leg tries its preferred venue first (an off-chain quote decides
+///      which, same as `BallastRouterV2.buyWithETH`) and falls back to the
+///      other venue in the SAME transaction if the first reverts — thin
+///      liquidity on one venue for a given ticker (confirmed in research: PLTR
+///      and COIN are routinely thin/reverting on Fables) no longer means the
+///      whole basket has to fail. `minOut` is checked exactly once per leg,
+///      after whichever attempt actually produced an output — never
+///      per-venue — so a too-high minOut fails cleanly regardless of which
+///      venue got further. The WHOLE basket stays all-or-nothing: if a leg
+///      exhausts both venues (or its winning venue undershoots `minOut`), the
+///      entire `swapBasket` call reverts, including every leg that already
+///      succeeded earlier in the loop.
+contract BasketZap is V4Router, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant MAX_LEGS = 6;
@@ -86,8 +107,6 @@ contract BasketZap is ReentrancyGuard {
     IBallastFactoryBasket public immutable factory;
     IAssetRegistry public immutable registry;
     address public immutable weth;
-    address public immutable universalRouter;
-    address public immutable permit2;
 
     /// @notice This contract's own last-seen price per asset, for the deviation
     ///         breaker — scoped to BasketZap globally (every launch, every
@@ -95,12 +114,33 @@ contract BasketZap is ReentrancyGuard {
     mapping(address asset => uint256) public lastPrice;
     mapping(address asset => uint256) public lastPriceAt;
 
-    struct Leg {
-        address asset;
-        uint16 weightBps;
+    /// @notice A fixed Fables v4 PoolKey leg. Dynamic fee pools only (every
+    ///         Fables pool we use runs the v4 dynamic-fee sentinel).
+    struct FablesHop {
+        address currency0;
+        address currency1;
         uint24 fee;
         int24 tickSpacing;
         address hooks;
+    }
+
+    /// @notice A fixed Ramses-v3-style pool, pool address plus its two tokens —
+    ///         exactly `BallastRouterV2.RamsesRoute`.
+    struct RamsesRoute {
+        address pool;
+        address tokenA;
+        address tokenB;
+    }
+
+    FablesHop[] public fablesHops;
+    RamsesRoute[] public ramsesRoutes;
+
+    struct Leg {
+        address asset;
+        uint16 weightBps;
+        bool preferFables;
+        uint256[] fablesHopIdx; // ETH -> ... -> asset; empty = no Fables route for this asset
+        uint256[] ramsesHopIdx; // WETH -> ... -> asset; empty = no Ramses route for this asset
         uint256 minOut;
     }
 
@@ -111,7 +151,8 @@ contract BasketZap is ReentrancyGuard {
         uint256 ethRefunded,
         address[] assets,
         uint16[] weightsBps,
-        uint256[] amountsOut
+        uint256[] amountsOut,
+        bool[] usedFables
     );
 
     error ZeroAddress();
@@ -130,27 +171,66 @@ contract BasketZap is ReentrancyGuard {
     error PriceDeviationTooLarge(address asset, uint256 lastPrice_, uint256 newPrice);
     error MinOutTooLow();
     error InsufficientOutput(address asset, uint256 out, uint256 minOut);
+    error AllVenuesFailedForLeg(address asset);
+    error NoRamsesRoute();
+    error BadHopChain();
+    error NotSelf();
 
-    constructor(address factory_, address registry_, address weth_, address universalRouter_, address permit2_) {
-        if (
-            factory_ == address(0) || registry_ == address(0) || weth_ == address(0) || universalRouter_ == address(0)
-                || permit2_ == address(0)
-        ) revert ZeroAddress();
+    modifier onlySelf() {
+        if (msg.sender != address(this)) revert NotSelf();
+        _;
+    }
+
+    constructor(
+        address factory_,
+        address registry_,
+        IPoolManager poolManager_,
+        address weth_,
+        FablesHop[] memory fablesHops_,
+        RamsesRoute[] memory ramsesRoutes_
+    ) V4Router(poolManager_) {
+        if (factory_ == address(0) || registry_ == address(0) || weth_ == address(0) || address(poolManager_) == address(0)) {
+            revert ZeroAddress();
+        }
         factory = IBallastFactoryBasket(factory_);
         registry = IAssetRegistry(registry_);
         weth = weth_;
-        universalRouter = universalRouter_;
-        permit2 = permit2_;
+        for (uint256 i = 0; i < fablesHops_.length; i++) {
+            fablesHops.push(fablesHops_[i]);
+        }
+        for (uint256 i = 0; i < ramsesRoutes_.length; i++) {
+            ramsesRoutes.push(ramsesRoutes_[i]);
+        }
+    }
+
+    function fablesHopsLength() external view returns (uint256) {
+        return fablesHops.length;
+    }
+
+    function ramsesRoutesLength() external view returns (uint256) {
+        return ramsesRoutes.length;
+    }
+
+    receive() external payable {}
+
+    /// @notice Never actually invoked at runtime: every SETTLE/TAKE action this
+    ///         contract builds uses an explicit payer/recipient (`false` /
+    ///         `creator`), never the MSG_SENDER sentinel — see attemptFablesLeg
+    ///         / attemptRamsesLeg. Still required: V4Router's base contract
+    ///         declares this abstract.
+    function msgSender() public view override returns (address) {
+        return address(this);
     }
 
     /// @notice Swap `msg.value` ETH across `legs` (weights in bps, summing to
     ///         10000) into up to 6 AssetRegistry-listed stock tokens, and send
     ///         every output straight to `launchToken`'s creator. All-or-nothing:
-    ///         any leg failing its own checks (unlisted asset, stale/deviated
-    ///         feed, minOut not met) reverts the ENTIRE call, including legs that
-    ///         already succeeded earlier in the loop. Unused ETH left over from
-    ///         integer-division weight rounding is refunded to the creator as
-    ///         WETH in the same transaction (never left in this contract).
+    ///         any leg failing on BOTH venues (or undershooting its own
+    ///         minOut) reverts the ENTIRE call, including legs that already
+    ///         succeeded earlier in the loop. Unused ETH left over from integer-
+    ///         division weight rounding is refunded to the creator as native
+    ///         ETH (computed before any swap executes, never left in this
+    ///         contract).
     /// @param launchToken The Ballast launch token whose creator receives every
     ///        leg's output. Resolved against the factory, not trusted as a raw
     ///        parameter — see IBallastFactoryBasket above.
@@ -160,7 +240,7 @@ contract BasketZap is ReentrancyGuard {
         external
         payable
         nonReentrant
-        returns (uint256[] memory amountsOut)
+        returns (uint256[] memory amountsOut, bool[] memory usedFables)
     {
         if (block.timestamp > swapDeadline) revert SwapDeadlineExpired();
         if (msg.value == 0) revert ZeroEthIn();
@@ -185,9 +265,8 @@ contract BasketZap is ReentrancyGuard {
         }
         if (sumWeights != BPS) revert WeightsMustSumToBps();
 
-        IWETH9Basket(weth).deposit{value: msg.value}();
-
         amountsOut = new uint256[](n);
+        usedFables = new bool[](n);
         address[] memory assetsOut = new address[](n);
         uint16[] memory weightsOut = new uint16[](n);
         uint256 spent;
@@ -205,17 +284,19 @@ contract BasketZap is ReentrancyGuard {
             if (amountIn == 0) continue;
             spent += amountIn;
 
-            uint256 out = _swapLeg(leg, amountIn, swapDeadline);
+            (uint256 out, bool usedF) = _swapLegToCreator(leg, amountIn, creator, swapDeadline);
+            if (out < leg.minOut) revert InsufficientOutput(leg.asset, out, leg.minOut);
             amountsOut[i] = out;
-            IERC20(leg.asset).safeTransfer(creator, out);
+            usedFables[i] = usedF;
         }
 
         uint256 refund = msg.value - spent;
         if (refund > 0) {
-            IERC20(weth).safeTransfer(creator, refund);
+            (bool sent,) = creator.call{value: refund}("");
+            require(sent, "eth refund failed");
         }
 
-        emit BasketSwapped(launchToken, creator, msg.value, refund, assetsOut, weightsOut, amountsOut);
+        emit BasketSwapped(launchToken, creator, msg.value, refund, assetsOut, weightsOut, amountsOut, usedFables);
     }
 
     /// @dev Same staleness bound + 20% (widening) deviation breaker
@@ -250,53 +331,235 @@ contract BasketZap is ReentrancyGuard {
         lastPriceAt[asset] = block.timestamp;
     }
 
-    /// @dev One single-hop swap, the identical SWAP_EXACT_IN_SINGLE + SETTLE_ALL
-    ///      + TAKE_ALL shape `BallastV1Claim._swapEthForBallastV2` already proved
-    ///      on a live mainnet pool, generalized to a caller-supplied PoolKey
-    ///      instead of a fixed one. Exact-approval hygiene: Permit2 and the
-    ///      router-as-spender allowances are reset to zero immediately after
-    ///      use, every leg, no standing allowance ever survives this call.
-    function _swapLeg(Leg calldata leg, uint256 amountIn, uint256 swapDeadline) internal returns (uint256 out) {
-        bool wethIsCurrency0 = weth < leg.asset;
-        RobinhoodV4.PoolKey memory key = RobinhoodV4.PoolKey({
-            currency0: wethIsCurrency0 ? weth : leg.asset,
-            currency1: wethIsCurrency0 ? leg.asset : weth,
-            fee: leg.fee,
-            tickSpacing: leg.tickSpacing,
-            hooks: leg.hooks
-        });
+    // ===================================================================== //
+    //  Per-leg venue selection + fallback (mirrors BallastRouterV2)         //
+    // ===================================================================== //
 
-        RobinhoodV4.ExactInputSingleParams memory params = RobinhoodV4.ExactInputSingleParams({
-            poolKey: key,
-            zeroForOne: wethIsCurrency0,
-            amountIn: uint128(amountIn),
-            amountOutMinimum: 0, // minOut is enforced below against the real balance delta
-            minHopPriceX36: 0,
-            hookData: ""
-        });
-
-        IERC20(weth).forceApprove(permit2, amountIn);
-        IAllowanceTransfer(permit2).approve(weth, universalRouter, uint160(amountIn), uint48(swapDeadline));
-
-        bytes memory actions = abi.encodePacked(
-            RobinhoodV4.ACT_SWAP_EXACT_IN_SINGLE, RobinhoodV4.ACT_SETTLE_ALL, RobinhoodV4.ACT_TAKE_ALL
-        );
-        bytes[] memory v4Params = new bytes[](3);
-        v4Params[0] = abi.encode(params);
-        v4Params[1] = abi.encode(weth, amountIn);
-        v4Params[2] = abi.encode(leg.asset, uint256(0));
-
-        bytes[] memory inputs = new bytes[](1);
-        inputs[0] = abi.encode(actions, v4Params);
-        bytes memory commands = abi.encodePacked(RobinhoodV4.CMD_V4_SWAP);
-
-        uint256 before = IERC20(leg.asset).balanceOf(address(this));
-        IRobinhoodV4Router(universalRouter).execute(commands, inputs, swapDeadline);
-        out = IERC20(leg.asset).balanceOf(address(this)) - before;
-
-        IAllowanceTransfer(permit2).approve(weth, universalRouter, 0, 0);
-        IERC20(weth).forceApprove(permit2, 0);
-
-        if (out < leg.minOut) revert InsufficientOutput(leg.asset, out, leg.minOut);
+    function _swapLegToCreator(Leg calldata leg, uint256 amountIn, address creator, uint256 deadline)
+        private
+        returns (uint256 out, bool usedFables)
+    {
+        bool ok;
+        if (leg.preferFables) {
+            (ok, out) = _tryFables(leg.asset, leg.fablesHopIdx, amountIn, creator, deadline);
+            usedFables = ok;
+            if (!ok) (ok, out) = _tryRamses(leg.asset, leg.ramsesHopIdx, amountIn, creator, deadline);
+        } else {
+            (ok, out) = _tryRamses(leg.asset, leg.ramsesHopIdx, amountIn, creator, deadline);
+            if (!ok) {
+                (ok, out) = _tryFables(leg.asset, leg.fablesHopIdx, amountIn, creator, deadline);
+                usedFables = ok;
+            }
+        }
+        if (!ok) revert AllVenuesFailedForLeg(leg.asset);
     }
+
+    function _tryFables(address asset, uint256[] calldata hopIdx, uint256 amountIn, address creator, uint256 deadline)
+        private
+        returns (bool ok, uint256 out)
+    {
+        if (hopIdx.length == 0) return (false, 0);
+        try this.attemptFablesLeg{value: amountIn}(asset, hopIdx, creator, deadline) returns (uint256 o) {
+            return (true, o);
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    function _tryRamses(address asset, uint256[] calldata hopIdx, uint256 amountIn, address creator, uint256 deadline)
+        private
+        returns (bool ok, uint256 out)
+    {
+        if (hopIdx.length == 0) return (false, 0);
+        try this.attemptRamsesLeg{value: amountIn}(asset, hopIdx, creator, deadline) returns (uint256 o) {
+            return (true, o);
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    /// @notice Self-call only. Native ETH -> (Fables multi-hop) -> `asset`, in
+    ///         ONE PoolManager.unlock(). Output lands directly on `creator` via
+    ///         an explicit TAKE recipient (never the MSG_SENDER sentinel, so
+    ///         `msgSender()` above is never actually consulted).
+    function attemptFablesLeg(address asset, uint256[] calldata hopIdx, address creator, uint256 deadline)
+        external
+        payable
+        onlySelf
+        returns (uint256 out)
+    {
+        if (block.timestamp > deadline) revert SwapDeadlineExpired();
+        PathKey[] memory path = _buildFablesPath(hopIdx, Currency.wrap(address(0)), Currency.wrap(asset));
+
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN), uint8(Actions.SETTLE), uint8(Actions.TAKE));
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(
+            IV4Router.ExactInputParams({
+                currencyIn: Currency.wrap(address(0)),
+                path: path,
+                minHopPriceX36: new uint256[](0),
+                amountIn: uint128(msg.value),
+                amountOutMinimum: 0 // minOut is enforced once in swapBasket against the real output
+            })
+        );
+        // SETTLE: native currency ignores the payer flag (always pays from this
+        // contract's own balance, which already holds msg.value); OPEN_DELTA
+        // settles the exact net debt.
+        params[1] = abi.encode(Currency.wrap(address(0)), ActionConstants.OPEN_DELTA, false);
+        // TAKE: explicit recipient = the launch creator, not a sentinel — the
+        // output never passes through this contract's own balance.
+        params[2] = abi.encode(Currency.wrap(asset), creator, ActionConstants.OPEN_DELTA);
+
+        uint256 before = IERC20(asset).balanceOf(creator);
+        poolManager.unlock(abi.encode(actions, params));
+        out = IERC20(asset).balanceOf(creator) - before;
+    }
+
+    /// @notice Self-call only. Native ETH -> WETH -> (1-2 Ramses hops) ->
+    ///         `asset`, synchronously. Output is sent to `creator` directly
+    ///         after the chain completes (Ramses swaps always land on this
+    ///         contract first — see `_runRamsesChain` — there is no "explicit
+    ///         recipient" option on a raw Uniswap-v3-style pool swap).
+    function attemptRamsesLeg(address asset, uint256[] calldata hopIdx, address creator, uint256 deadline)
+        external
+        payable
+        onlySelf
+        returns (uint256 out)
+    {
+        if (block.timestamp > deadline) revert SwapDeadlineExpired();
+        if (hopIdx.length == 0) revert NoRamsesRoute();
+        IWETH9Basket(weth).deposit{value: msg.value}();
+        out = _runRamsesChain(hopIdx, weth, asset, msg.value);
+        IERC20(asset).safeTransfer(creator, out);
+    }
+
+    // ===================================================================== //
+    //  ERC20 payment hook required by V4Router's DeltaResolver              //
+    // ===================================================================== //
+
+    /// @dev Never actually reached: every Fables leg's SETTLE targets native
+    ///      currency (address(0)), which DeltaResolver settles via
+    ///      `poolManager.settle{value: amount}()` directly, bypassing `_pay`
+    ///      entirely. Implemented anyway — V4Router declares this abstract —
+    ///      with the same shape BallastRouterV2 uses, in case a future hop
+    ///      table ever introduces an ERC20-denominated entry currency.
+    function _pay(Currency token, address payer, uint256 amount) internal override {
+        address asset = Currency.unwrap(token);
+        if (payer == address(this)) {
+            IERC20(asset).safeTransfer(address(poolManager), amount);
+        } else {
+            IERC20(asset).safeTransferFrom(payer, address(poolManager), amount);
+        }
+    }
+
+    // ===================================================================== //
+    //  Shared helpers — mirror BallastRouterV2's private helpers exactly    //
+    // ===================================================================== //
+
+    /// @dev Builds a PathKey[] by walking `fablesHops[idx]` in order, tracking
+    ///      the running "current currency" and requiring each hop to actually
+    ///      connect to it. Reverts (BadHopChain) if the first hop doesn't start
+    ///      at `entryCurrency` or the chain doesn't end at `exitCurrency` —
+    ///      this is what makes "caller selects fixed indices" as safe as
+    ///      "caller selects a fixed target": a wrong index either doesn't chain
+    ///      (revert here) or chains to the wrong final currency (revert here).
+    function _buildFablesPath(uint256[] memory idx, Currency entryCurrency, Currency exitCurrency)
+        private
+        view
+        returns (PathKey[] memory path)
+    {
+        if (idx.length == 0) revert BadHopChain();
+        path = new PathKey[](idx.length);
+        Currency cur = entryCurrency;
+        for (uint256 i = 0; i < idx.length; i++) {
+            FablesHop memory h = fablesHops[idx[i]];
+            Currency c0 = Currency.wrap(h.currency0);
+            Currency c1 = Currency.wrap(h.currency1);
+            Currency next;
+            if (Currency.unwrap(cur) == Currency.unwrap(c0)) {
+                next = c1;
+            } else if (Currency.unwrap(cur) == Currency.unwrap(c1)) {
+                next = c0;
+            } else {
+                revert BadHopChain();
+            }
+            path[i] = PathKey({
+                intermediateCurrency: next,
+                fee: h.fee,
+                tickSpacing: h.tickSpacing,
+                hooks: IHooks(h.hooks),
+                hookData: bytes("")
+            });
+            cur = next;
+        }
+        if (Currency.unwrap(cur) != Currency.unwrap(exitCurrency)) revert BadHopChain();
+    }
+
+    /// @dev Runs 1 or 2 fixed Ramses-style v3 callback swaps in sequence,
+    ///      tokenIn -> [intermediate] -> tokenOut, using `routeIdx` as ordered
+    ///      indices into `ramsesRoutes`. Each hop's swap pays the pool from
+    ///      `address(this)`'s own balance (this contract always holds the
+    ///      leg's input by the time this runs — either from `weth.deposit` or
+    ///      from the previous hop's output).
+    function _runRamsesChain(uint256[] memory routeIdx, address tokenIn, address tokenOut, uint256 amountIn)
+        private
+        returns (uint256 amountOut)
+    {
+        address cur = tokenIn;
+        uint256 amt = amountIn;
+        for (uint256 i = 0; i < routeIdx.length; i++) {
+            RamsesRoute memory r = ramsesRoutes[routeIdx[i]];
+            address next;
+            if (r.tokenA == cur) {
+                next = r.tokenB;
+            } else if (r.tokenB == cur) {
+                next = r.tokenA;
+            } else {
+                revert BadHopChain();
+            }
+            amt = _swapRamsesDirect(r.pool, cur, next, amt);
+            cur = next;
+        }
+        if (cur != tokenOut) revert BadHopChain();
+        amountOut = amt;
+    }
+
+    uint160 internal constant MIN_SQRT_RATIO_PLUS_ONE = 4295128740;
+    uint160 internal constant MAX_SQRT_RATIO_MINUS_ONE = 1461446703485210103287273052203988822378723970341;
+
+    function _swapRamsesDirect(address pool, address tokenIn, address tokenOut, uint256 amountIn)
+        private
+        returns (uint256 received)
+    {
+        bool zeroForOne = tokenIn < tokenOut;
+        uint160 sqrtPriceLimitX96 = zeroForOne ? MIN_SQRT_RATIO_PLUS_ONE : MAX_SQRT_RATIO_MINUS_ONE;
+
+        uint256 before = IERC20(tokenOut).balanceOf(address(this));
+        IUniswapV3PoolSwap(pool).swap(address(this), zeroForOne, int256(amountIn), sqrtPriceLimitX96, abi.encode(tokenIn));
+        received = IERC20(tokenOut).balanceOf(address(this)) - before;
+    }
+
+    /// @dev Uniswap-v3-style callback. msg.sender must be one of the fixed
+    ///      `ramsesRoutes` pools — never any other caller.
+    function uniswapV3SwapCallback(int256 amount0Delta, int256 amount1Delta, bytes calldata data) external {
+        bool knownPool;
+        for (uint256 i = 0; i < ramsesRoutes.length; i++) {
+            if (ramsesRoutes[i].pool == msg.sender) {
+                knownPool = true;
+                break;
+            }
+        }
+        if (!knownPool) revert BadHopChain();
+
+        address tokenIn = abi.decode(data, (address));
+        uint256 owed = amount0Delta > 0 ? uint256(amount0Delta) : uint256(amount1Delta);
+        IERC20(tokenIn).safeTransfer(msg.sender, owed);
+    }
+}
+
+interface IUniswapV3PoolSwap {
+    function swap(address recipient, bool zeroForOne, int256 amountSpecified, uint160 sqrtPriceLimitX96, bytes calldata data)
+        external
+        returns (int256 amount0, int256 amount1);
 }
