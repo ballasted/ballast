@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity >=0.8.26 <=0.8.28; // widened: also imported by BasketZap.t.sol (0.8.26)
 
 import {AggregatorV3Interface} from "../../src/interfaces/AggregatorV3Interface.sol";
 

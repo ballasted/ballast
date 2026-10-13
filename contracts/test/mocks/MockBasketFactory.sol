@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity >=0.8.26 <=0.8.28; // widened: also imported by BasketZap.t.sol (0.8.26)
 
 /// @notice Stands in for BallastFactory's (launchIdOf, launches) pair — the only
 ///         two things BasketZap reads to resolve a launch's creator. The real

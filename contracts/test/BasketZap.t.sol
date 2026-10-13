@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+// 0.8.26 — shares BasketZap's import graph (v4-periphery's V4Router), same
+// reason BallastRouterV2.t.sol carries the identical pin. AssetRegistry.sol
+// and the mock files this test imports were widened to a floating pragma
+// range to accommodate this (see their own headers) — none have any
+// version-specific syntax.
+pragma solidity 0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {BasketZap} from "../src/BasketZap.sol";
 import {AssetRegistry, MarketHours} from "../src/AssetRegistry.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -10,21 +15,40 @@ import {MockWETH} from "./mocks/MockWETH.sol";
 import {MockStockToken} from "./mocks/MockStockToken.sol";
 import {MockAggregator} from "./mocks/MockAggregator.sol";
 import {MockBasketFactory} from "./mocks/MockBasketFactory.sol";
-import {MockBasketPermit2} from "./mocks/MockBasketPermit2.sol";
-import {MockBasketRouter} from "./mocks/MockBasketRouter.sol";
 
-/// @notice Adversarial-first unit tests for BasketZap. The mock router/permit2
-///         pair (test/mocks/MockBasketRouter.sol, MockBasketPermit2.sol) lets
-///         every revert path and invariant be driven directly, without real
-///         liquidity. The real swap-execution encoding against live pools is
-///         proven separately in BasketZapFork.t.sol.
+/// @notice Guard-rail unit tests for BasketZap — every check that fires
+///         BEFORE any swap is attempted (weights, self-backing, duplicate
+///         asset, too-many/no legs, deadline, zero ETH, unknown launch,
+///         non-creator, unlisted asset, stale/invalid/deviated price). These
+///         never reach `poolManager.unlock()`, so a non-functional dummy
+///         PoolManager address and empty fablesHops/ramsesRoutes tables are
+///         fine — the swap path itself is never exercised here.
+///
+/// @dev REWRITE (docs/BASKET_DISCOVERY.md, this session): the prior version
+///      of this file mocked the external UniversalRouter/Permit2 to drive
+///      swap-execution assertions without real liquidity. BasketZap no longer
+///      goes through an external router — it inherits v4-periphery's
+///      V4Router directly and talks to Fables/Ramses pools itself, the exact
+///      same shape `BallastRouterV2` already uses. That contract's own test
+///      suite (`BallastRouterV2.t.sol`) doesn't attempt a PoolManager mock
+///      either — mocking v4's flash-accounting unlock/settle/take cycle
+///      faithfully is not worth it when a real fork is available — it is
+///      ENTIRELY a fork test (`BallastRouterV2ForkTest`, skips without
+///      RH_RPC_URL_PAID). BasketZap now follows the same convention: every
+///      assertion that requires an actual successful (or actually-failing)
+///      swap lives in `BasketZapFork.t.sol`, now against REAL Fables/Ramses
+///      routes (no more TestPoolSeeder — real routes exist, see
+///      docs/BASKET_DISCOVERY.md §2).
 contract BasketZapTest is Test {
     AssetRegistry registry;
     MockBasketFactory factory;
-    MockBasketPermit2 permit2;
-    MockBasketRouter router;
     MockWETH weth;
     BasketZap zap;
+
+    // Not a working PoolManager — BasketZap's constructor only checks it's
+    // non-zero; every test below reverts before `poolManager.unlock()` is
+    // ever reached.
+    address constant DUMMY_POOL_MANAGER = address(0xBEEF);
 
     MockERC20 launchToken;
     address owner = makeAddr("owner");
@@ -35,31 +59,20 @@ contract BasketZapTest is Test {
     MockAggregator feedA;
     MockStockToken assetB;
     MockAggregator feedB;
-    MockStockToken assetC;
-    MockAggregator feedC;
 
     uint256 constant PRICE_A = 100_00000000; // $100, 8dp
     uint256 constant PRICE_B = 50_00000000; // $50, 8dp
-    uint256 constant PRICE_C = 10_00000000; // $10, 8dp
-
-    event BasketSwapped(
-        address indexed launchToken,
-        address indexed creator,
-        uint256 ethIn,
-        uint256 ethRefunded,
-        address[] assets,
-        uint16[] weightsBps,
-        uint256[] amountsOut
-    );
 
     function setUp() public {
         registry = new AssetRegistry(owner);
         factory = new MockBasketFactory();
-        permit2 = new MockBasketPermit2();
-        router = new MockBasketRouter(address(permit2));
         weth = new MockWETH();
 
-        zap = new BasketZap(address(factory), address(registry), address(weth), address(router), address(permit2));
+        BasketZap.FablesHop[] memory noFables = new BasketZap.FablesHop[](0);
+        BasketZap.RamsesRoute[] memory noRamses = new BasketZap.RamsesRoute[](0);
+        zap = new BasketZap(
+            address(factory), address(registry), IPoolManager(DUMMY_POOL_MANAGER), address(weth), noFables, noRamses
+        );
 
         launchToken = new MockERC20("Project", "PRJ", 18);
         factory.addLaunch(address(launchToken), treasury, creator);
@@ -74,21 +87,19 @@ contract BasketZapTest is Test {
         vm.prank(owner);
         registry.setAsset(address(assetB), address(feedB), 1 days, 1e15, MarketHours.UsEquities24_5);
 
-        assetC = new MockStockToken("Asset C", "AC", 18);
-        feedC = new MockAggregator(8, int256(PRICE_C), block.timestamp);
-        vm.prank(owner);
-        registry.setAsset(address(assetC), address(feedC), 1 days, 1e15, MarketHours.UsEquities24_5);
-
-        // The mock router needs a supply of each asset on hand to pay out.
-        assetA.mint(address(router), 1_000_000 ether);
-        assetB.mint(address(router), 1_000_000 ether);
-        assetC.mint(address(router), 1_000_000 ether);
-
         vm.deal(creator, 1_000 ether);
     }
 
     function _leg(address asset, uint16 weightBps, uint256 minOut) internal pure returns (BasketZap.Leg memory) {
-        return BasketZap.Leg({asset: asset, weightBps: weightBps, fee: 3000, tickSpacing: 60, hooks: address(0), minOut: minOut});
+        uint256[] memory empty = new uint256[](0);
+        return BasketZap.Leg({
+            asset: asset,
+            weightBps: weightBps,
+            preferFables: false,
+            fablesHopIdx: empty,
+            ramsesHopIdx: empty,
+            minOut: minOut
+        });
     }
 
     function _deadline() internal view returns (uint256) {
@@ -96,100 +107,7 @@ contract BasketZapTest is Test {
     }
 
     // --------------------------------------------------------------------- //
-    //  Happy path                                                           //
-    // --------------------------------------------------------------------- //
-
-    function test_happyPath_singleLeg() public {
-        router.setOutAmount(address(assetA), 1 ether);
-
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
-        legs[0] = _leg(address(assetA), 10_000, 1);
-
-        vm.prank(creator);
-        uint256[] memory out = zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        assertEq(out[0], 1 ether);
-        assertEq(assetA.balanceOf(creator), 1 ether);
-        assertEq(assetA.balanceOf(address(zap)), 0);
-        assertEq(weth.balanceOf(address(zap)), 0);
-        assertEq(address(zap).balance, 0);
-    }
-
-    function test_happyPath_threeLegs_noFundsLeftInContract() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        router.setOutAmount(address(assetB), 2 ether);
-        router.setOutAmount(address(assetC), 3 ether);
-
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](3);
-        legs[0] = _leg(address(assetA), 5_000, 1);
-        legs[1] = _leg(address(assetB), 3_000, 1);
-        legs[2] = _leg(address(assetC), 2_000, 1);
-
-        vm.prank(creator);
-        zap.swapBasket{value: 10 ether}(address(launchToken), legs, _deadline());
-
-        assertEq(assetA.balanceOf(creator), 1 ether);
-        assertEq(assetB.balanceOf(creator), 2 ether);
-        assertEq(assetC.balanceOf(creator), 3 ether);
-
-        // no-funds-left invariant
-        assertEq(address(zap).balance, 0);
-        assertEq(weth.balanceOf(address(zap)), 0);
-        assertEq(assetA.balanceOf(address(zap)), 0);
-        assertEq(assetB.balanceOf(address(zap)), 0);
-        assertEq(assetC.balanceOf(address(zap)), 0);
-    }
-
-    function test_emitsBasketSwapped() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
-        legs[0] = _leg(address(assetA), 10_000, 1);
-
-        address[] memory assets_ = new address[](1);
-        assets_[0] = address(assetA);
-        uint16[] memory weights_ = new uint16[](1);
-        weights_[0] = 10_000;
-        uint256[] memory amounts_ = new uint256[](1);
-        amounts_[0] = 1 ether;
-
-        vm.expectEmit(true, true, false, true, address(zap));
-        emit BasketSwapped(address(launchToken), creator, 1 ether, 0, assets_, weights_, amounts_);
-
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-    }
-
-    // --------------------------------------------------------------------- //
-    //  Dust refund                                                          //
-    // --------------------------------------------------------------------- //
-
-    function test_dustRefund_unevenWeights() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        router.setOutAmount(address(assetB), 1 ether);
-        router.setOutAmount(address(assetC), 1 ether);
-
-        // 3334 + 3333 + 3333 = 10000, but against an odd msg.value this still
-        // leaves floor-division dust on at least one leg.
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](3);
-        legs[0] = _leg(address(assetA), 3334, 1);
-        legs[1] = _leg(address(assetB), 3333, 1);
-        legs[2] = _leg(address(assetC), 3333, 1);
-
-        uint256 ethIn = 1 ether + 7; // deliberately not a multiple of 10000
-        uint256 expectedSpent = (ethIn * 3334) / 10_000 + (ethIn * 3333) / 10_000 + (ethIn * 3333) / 10_000;
-        uint256 expectedDust = ethIn - expectedSpent;
-        assertGt(expectedDust, 0);
-
-        vm.prank(creator);
-        zap.swapBasket{value: ethIn}(address(launchToken), legs, _deadline());
-
-        assertEq(weth.balanceOf(creator), expectedDust);
-        assertEq(weth.balanceOf(address(zap)), 0);
-        assertEq(address(zap).balance, 0);
-    }
-
-    // --------------------------------------------------------------------- //
-    //  Revert paths                                                         //
+    //  Revert paths — all fire before any swap attempt                      //
     // --------------------------------------------------------------------- //
 
     function test_revert_weightsNotSum10000() public {
@@ -205,8 +123,6 @@ contract BasketZapTest is Test {
     function test_revert_tooManyLegs() public {
         BasketZap.Leg[] memory legs = new BasketZap.Leg[](7);
         for (uint256 i = 0; i < 7; i++) {
-            // distinct dummy addresses; weights don't need to sum correctly —
-            // the length check fires first.
             legs[i] = _leg(address(uint160(0x1000 + i)), 1_000, 1);
         }
 
@@ -302,17 +218,6 @@ contract BasketZapTest is Test {
         zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
     }
 
-    function test_revert_minOutNotMet() public {
-        router.setOutAmount(address(assetA), 0.5 ether);
-
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
-        legs[0] = _leg(address(assetA), 10_000, 1 ether);
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(BasketZap.InsufficientOutput.selector, address(assetA), 0.5 ether, 1 ether));
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-    }
-
     function test_revert_staleFeed() public {
         feedA.setAnswer(int256(PRICE_A), block.timestamp);
         vm.warp(block.timestamp + 2 days); // staleAfter is 1 days
@@ -336,111 +241,22 @@ contract BasketZapTest is Test {
         zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
     }
 
-    function test_revert_priceDeviationTooLarge() public {
-        // First call establishes lastPrice[assetA] = PRICE_A.
-        router.setOutAmount(address(assetA), 1 ether);
+    // No-route case: a listed, fresh-priced asset with empty fablesHopIdx AND
+    // ramsesHopIdx reaches the swap attempt and fails BOTH venues (there's
+    // nothing to try), so it must surface AllVenuesFailedForLeg, not silently
+    // return a zero amount.
+    function test_revert_allVenuesFailed_noRouteConfigured() public {
         BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
         legs[0] = _leg(address(assetA), 10_000, 1);
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        // Price jumps >20% in the same block (no widening periods elapsed).
-        uint256 movedPrice = (PRICE_A * 125) / 100; // +25%
-        feedA.setAnswer(int256(movedPrice), block.timestamp);
 
         vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(BasketZap.PriceDeviationTooLarge.selector, address(assetA), PRICE_A, movedPrice));
+        vm.expectRevert(abi.encodeWithSelector(BasketZap.AllVenuesFailedForLeg.selector, address(assetA)));
         zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-    }
-
-    function test_priceDeviation_withinBandSucceeds() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
-        legs[0] = _leg(address(assetA), 10_000, 1);
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        uint256 movedPrice = (PRICE_A * 110) / 100; // +10%, inside the 20% band
-        feedA.setAnswer(int256(movedPrice), block.timestamp);
-
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-        assertEq(assetA.balanceOf(creator), 2 ether);
-    }
-
-    function test_priceDeviation_widensAfterSevenDays() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](1);
-        legs[0] = _leg(address(assetA), 10_000, 1);
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        // +35% would revert against the base 20% band...
-        uint256 movedPrice = (PRICE_A * 135) / 100;
-        feedA.setAnswer(int256(movedPrice), block.timestamp);
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(BasketZap.PriceDeviationTooLarge.selector, address(assetA), PRICE_A, movedPrice));
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        // ...but after 7 days the band widens to 40% (2x), so the same move now clears.
-        vm.warp(block.timestamp + 7 days);
-        feedA.setAnswer(int256(movedPrice), block.timestamp);
-        vm.prank(creator);
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-        assertEq(assetA.balanceOf(creator), 2 ether);
-    }
-
-    function test_revert_failingLeg_wholeTxReverts() public {
-        router.setOutAmount(address(assetA), 1 ether);
-        router.setShouldRevert(address(assetB), true);
-
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](2);
-        legs[0] = _leg(address(assetA), 5_000, 1);
-        legs[1] = _leg(address(assetB), 5_000, 1);
-
-        uint256 creatorEthBefore = creator.balance;
-
-        vm.prank(creator);
-        vm.expectRevert(abi.encodeWithSelector(MockBasketRouter.MockLegReverted.selector, address(assetB)));
-        zap.swapBasket{value: 1 ether}(address(launchToken), legs, _deadline());
-
-        // All-or-nothing: the first leg's would-be success never persisted.
-        assertEq(assetA.balanceOf(creator), 0);
-        assertEq(creator.balance, creatorEthBefore);
-        assertEq(address(zap).balance, 0);
-        assertEq(weth.balanceOf(address(zap)), 0);
     }
 
     // --------------------------------------------------------------------- //
-    //  Fuzz                                                                 //
+    //  Fuzz — guard logic only, no swap execution                           //
     // --------------------------------------------------------------------- //
-
-    function testFuzz_twoLegWeights_alwaysConserveValue(uint16 weightA, uint96 ethInRaw) public {
-        weightA = uint16(bound(weightA, 1, 9_999));
-        uint16 weightB = 10_000 - weightA;
-        uint256 ethIn = bound(ethInRaw, 2, 1_000 ether);
-
-        router.setOutAmount(address(assetA), 1 ether);
-        router.setOutAmount(address(assetB), 1 ether);
-
-        BasketZap.Leg[] memory legs = new BasketZap.Leg[](2);
-        legs[0] = _leg(address(assetA), weightA, 1);
-        legs[1] = _leg(address(assetB), weightB, 1);
-
-        vm.deal(creator, ethIn);
-        vm.prank(creator);
-        zap.swapBasket{value: ethIn}(address(launchToken), legs, _deadline());
-
-        uint256 expectedA = (ethIn * weightA) / 10_000;
-        uint256 expectedB = (ethIn * weightB) / 10_000;
-        uint256 refund = weth.balanceOf(creator);
-
-        // Conservation: every wei of ethIn is accounted for as either a swap
-        // input or a refund — nothing is created or lost.
-        assertEq(expectedA + expectedB + refund, ethIn);
-        assertEq(address(zap).balance, 0);
-        assertEq(weth.balanceOf(address(zap)), 0);
-    }
 
     function testFuzz_revertsWheneverWeightsDontSum(uint16 weightA, uint16 weightB) public {
         vm.assume(uint256(weightA) + uint256(weightB) != 10_000);
@@ -458,23 +274,25 @@ contract BasketZapTest is Test {
     // --------------------------------------------------------------------- //
 
     function test_constructor_zeroAddressGuards() public {
+        BasketZap.FablesHop[] memory noFables = new BasketZap.FablesHop[](0);
+        BasketZap.RamsesRoute[] memory noRamses = new BasketZap.RamsesRoute[](0);
+
         vm.expectRevert(BasketZap.ZeroAddress.selector);
-        new BasketZap(address(0), address(registry), address(weth), address(router), address(permit2));
+        new BasketZap(address(0), address(registry), IPoolManager(DUMMY_POOL_MANAGER), address(weth), noFables, noRamses);
         vm.expectRevert(BasketZap.ZeroAddress.selector);
-        new BasketZap(address(factory), address(0), address(weth), address(router), address(permit2));
+        new BasketZap(address(factory), address(0), IPoolManager(DUMMY_POOL_MANAGER), address(weth), noFables, noRamses);
         vm.expectRevert(BasketZap.ZeroAddress.selector);
-        new BasketZap(address(factory), address(registry), address(0), address(router), address(permit2));
+        new BasketZap(address(factory), address(registry), IPoolManager(address(0)), address(weth), noFables, noRamses);
         vm.expectRevert(BasketZap.ZeroAddress.selector);
-        new BasketZap(address(factory), address(registry), address(weth), address(0), address(permit2));
-        vm.expectRevert(BasketZap.ZeroAddress.selector);
-        new BasketZap(address(factory), address(registry), address(weth), address(router), address(0));
+        new BasketZap(address(factory), address(registry), IPoolManager(DUMMY_POOL_MANAGER), address(0), noFables, noRamses);
     }
 
     function test_noAdminSurface() public view {
         // BasketZap must have no owner/admin/pause/upgrade/rescue function of
-        // any kind. There's no base contract to inherit one from (just
-        // ReentrancyGuard), so this is really just documenting the invariant
-        // the constructor/ABI already enforce: immutable config, no setters.
+        // any kind. There's no base contract to inherit one from beyond
+        // V4Router/ReentrancyGuard (neither of which adds one), so this is
+        // really just documenting the invariant the constructor/ABI already
+        // enforce: immutable config, no setters.
         assertEq(zap.MAX_LEGS(), 6);
     }
 }
