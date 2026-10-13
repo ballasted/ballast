@@ -17,7 +17,7 @@ import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
-import { FACTORY_ADDRESS } from "@/lib/contracts";
+import { FACTORY_ADDRESS, isRetiredToken, RETIRED_NOTICES } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 
 type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
@@ -60,6 +60,9 @@ export default function BackingDetailPage() {
   const shownMeta = metaDenied ? undefined : meta;
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
+  // Retired tokens stay reachable by direct URL but show a read-only notice —
+  // never a 404, never creator controls (CLAUDE.md: no redemption/claim implied).
+  if (isRetiredToken(token)) return <RetiredNotice token={token!} />;
   if (!isConfigured) {
     return <Notice title="Not configured" body="BackingLens isn't set. Deploy the core contracts and set NEXT_PUBLIC_LENS_ADDRESS." />;
   }
@@ -129,6 +132,25 @@ export default function BackingDetailPage() {
         </div>
       ) : (
         <div className="card p-5 text-sm text-text-muted">No treasury</div>
+      )}
+    </div>
+  );
+}
+
+function RetiredNotice({ token }: { token: Address }) {
+  const notice = RETIRED_NOTICES[token.toLowerCase()];
+  const message = notice?.message ?? "This token is retired.";
+  return (
+    <div className="card p-8 text-center" role="note">
+      <span className="chip chip-neutral">Retired</span>
+      <p className="mx-auto mt-3 max-w-md text-sm text-text-secondary">{message}</p>
+      {notice?.migratedTo && (
+        <Link
+          href={`/app/token/${notice.migratedTo}`}
+          className="mt-4 inline-block text-sm text-green underline underline-offset-2"
+        >
+          View $BALLAST v2 ↗
+        </Link>
       )}
     </div>
   );

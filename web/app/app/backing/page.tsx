@@ -14,7 +14,7 @@ import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
-import { isBasketEnabled, isHiddenToken, WETH_ADDRESS } from "@/lib/contracts";
+import { isBasketConfigured, isHiddenToken, isRetiredToken, WETH_ADDRESS } from "@/lib/contracts";
 import { projectTreasuryAbi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
@@ -60,9 +60,19 @@ export default function BackingIndexPage() {
   // the registry's chronological order (useProjects emits ascending), kept stable
   // here so the pending-withdrawal multicall below doesn't refetch on sort/filter.
   const withTreasury = useMemo(
-    () => projects.filter((p) => p.hasTreasury && !isHiddenToken(p.token)),
+    () => projects.filter((p) => p.hasTreasury && !isHiddenToken(p.token) && !isRetiredToken(p.token)),
     [projects],
   );
+
+  // Aggregate summary row (moved here from /app/treasury, which is now the Open
+  // Treasury page). Retired tokens are already excluded above, so they never
+  // reach the counts or totals.
+  const summary = useMemo(() => {
+    const backed = withTreasury.filter((p) => p.ballasted);
+    const verified = withTreasury.reduce((a, p) => a + (p.backing?.totalValueUsd ?? 0n), 0n);
+    const locked = withTreasury.reduce((a, p) => a + (p.backing?.lockedValueUsd ?? 0n), 0n);
+    return { verified, locked, treasuries: withTreasury.length, backed: backed.length };
+  }, [withTreasury]);
 
   // Pending-withdrawal flag per treasury, batched once over the stable list.
   const pendingRes = useReadContracts({
@@ -107,7 +117,21 @@ export default function BackingIndexPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Backing</h1>
+      <div>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Backing</h1>
+        <p className="mt-1 max-w-xl text-sm text-text-muted">
+          Every Ballast launch has an on-chain treasury. Creators can fill it with listed stock tokens, valued live.
+        </p>
+      </div>
+
+      {isConfigured && !error && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SummaryStat label="Verified backing" value={formatUsd(summary.verified, { compact: true })} loading={isLoading} />
+          <SummaryStat label="Locked forever" value={formatUsd(summary.locked, { compact: true })} accent loading={isLoading} />
+          <SummaryStat label="Treasuries" value={String(summary.treasuries)} loading={isLoading} />
+          <SummaryStat label="With backing" value={String(summary.backed)} loading={isLoading} />
+        </div>
+      )}
 
       <input
         className="input max-w-sm"
@@ -169,6 +193,23 @@ export default function BackingIndexPage() {
             </MotionSection>
           ))}
         </div>
+      )}
+
+      <p className="rounded-input bg-card px-3 py-2 text-xs text-text-muted">
+        Holding a token gives no claim, redemption right, or entitlement to treasury assets.
+      </p>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value, accent, loading }: { label: string; value: string; accent?: boolean; loading?: boolean }) {
+  return (
+    <div className="card p-4">
+      <div className="eyebrow">{label}</div>
+      {loading ? (
+        <div className="mt-2 h-6 w-20 animate-pulse rounded bg-surface-raised" />
+      ) : (
+        <div className={cn("figure-primary mt-1 text-xl tabular-nums", accent && "text-green")}>{value}</div>
       )}
     </div>
   );
@@ -238,7 +279,7 @@ function BackingIndexCard({
         {heldAssets.slice(0, 3).map((s) => (
           <span key={s} className="chip chip-neutral">{s}</span>
         ))}
-        {isBasketEnabled && basket.hasHistory && <span className="chip chip-accent">Basket</span>}
+        {isBasketConfigured && basket.hasHistory && <span className="chip chip-accent">Basket</span>}
         {ramses.position && <span className="chip chip-accent">Ramses locked</span>}
       </div>
     </Link>

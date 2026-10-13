@@ -2,128 +2,107 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { useProjects, type Project } from "@/hooks/useProjects";
+import { useReadContracts } from "wagmi";
+import type { Address } from "viem";
+import { useProjects } from "@/hooks/useProjects";
+import { openTreasuryVaultFactoryAbi } from "@/lib/abis";
+import {
+  OPEN_TREASURY_FACTORY_ADDRESS,
+  isOpenTreasuryEnabled,
+  isHiddenToken,
+  isRetiredToken,
+} from "@/lib/contracts";
+import { activeChain } from "@/lib/chain";
+import { liveQuery } from "@/lib/refresh";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
-import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
-import { isHiddenToken } from "@/lib/contracts";
-import { cn } from "@/lib/cn";
+import { shortAddress } from "@/lib/format";
 
-// Public treasuries overview — the aggregate dashboard that complements the
-// /app/backing directory (which is the full, searchable list). Reads only
-// on-chain state (factory launches + BackingLens), never the wallet, so a
-// visitor with no wallet sees everything. The no-claim disclaimer is kept
-// verbatim per the project copy rules.
+const CHAIN_ID = activeChain.id;
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+// Open Treasury directory — the public face of the permissionless
+// community-deposit vaults. Anyone can deposit a listed stock token into a
+// launch's vault; the deposit/withdraw/claim controls themselves live on each
+// launch's backing page (OpenTreasurySection), so this page is a read-only
+// index that explains the feature and links into each vault. Reads on-chain
+// only — no wallet required.
 export default function TreasuryPage() {
-  const { projects, isLoading, isConfigured, error } = useProjects();
+  const { projects, isLoading } = useProjects();
 
-  const treasuries = useMemo(
-    () => projects.filter((p) => p.hasTreasury && !isHiddenToken(p.token)),
+  const tokens = useMemo(
+    () => projects.filter((p) => !isHiddenToken(p.token) && !isRetiredToken(p.token)),
     [projects],
   );
-  const ballasted = useMemo(() => treasuries.filter((p) => p.ballasted), [treasuries]);
 
-  const totalVerified = useMemo(
-    () => treasuries.reduce((acc, p) => acc + (p.backing?.totalValueUsd ?? 0n), 0n),
-    [treasuries],
-  );
-  const totalLocked = useMemo(
-    () => treasuries.reduce((acc, p) => acc + (p.backing?.lockedValueUsd ?? 0n), 0n),
-    [treasuries],
-  );
+  // Which launches have actually created an Open Treasury vault. vaultOf is a
+  // pure read (getOrCreateVault only runs from an explicit deposit), so a token
+  // with no vault simply reads address(0).
+  const vaultRes = useReadContracts({
+    allowFailure: true,
+    contracts: tokens.map(
+      (p) =>
+        ({ address: OPEN_TREASURY_FACTORY_ADDRESS, abi: openTreasuryVaultFactoryAbi, functionName: "vaultOf", args: [p.token], chainId: CHAIN_ID }) as const,
+    ),
+    query: liveQuery(isOpenTreasuryEnabled && Boolean(OPEN_TREASURY_FACTORY_ADDRESS) && tokens.length > 0),
+  });
 
-  const topLocked = useMemo(
-    () =>
-      [...ballasted]
-        .sort((a, b) => {
-          const d = (b.backing?.lockedValueUsd ?? 0n) - (a.backing?.lockedValueUsd ?? 0n);
-          return d > 0n ? 1 : d < 0n ? -1 : 0;
-        })
-        .slice(0, 6),
-    [ballasted],
-  );
+  const withVault = useMemo(() => {
+    return tokens.filter((_p, i) => {
+      const r = vaultRes.data?.[i];
+      return r?.status === "success" && (r.result as Address)?.toLowerCase() !== ZERO;
+    });
+  }, [tokens, vaultRes.data]);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Treasuries</h1>
-          <p className="mt-1 max-w-xl text-sm text-text-muted">
-            Every launch holds an on-chain treasury of tokenized real-world assets, valued live.{" "}
-            <Link href="/docs" className="underline underline-offset-2 hover:text-text-secondary">
-              Docs
-            </Link>
-          </p>
-        </div>
-        <Link href="/app/backing" className="btn-secondary shrink-0">
-          Browse all
-        </Link>
+      <div>
+        <h1 className="font-serif text-2xl font-semibold tracking-tight text-bone">Treasury</h1>
+        <p className="mt-1 max-w-xl text-sm text-text-muted">
+          Anyone can deposit a listed stock token into a launch&apos;s Open Treasury vault, withdrawable after 24 hours.
+          Rewards — the creator&apos;s share of trading fees — stream to depositors over 7 days and can be zero.{" "}
+          <Link href="/docs" className="underline underline-offset-2 hover:text-text-secondary">
+            Docs
+          </Link>
+        </p>
       </div>
 
-      {!isConfigured ? (
-        <div className="card p-6 text-center text-sm text-text-muted">Backing lens isn&apos;t configured on this deployment.</div>
-      ) : error ? (
-        <div className="card p-6 text-center">
-          <p className="text-sm text-text-muted">Couldn&apos;t load treasuries.</p>
-          <button className="btn-secondary mt-4" onClick={() => window.location.reload()}>
-            Retry
-          </button>
-        </div>
+      {!isOpenTreasuryEnabled ? (
+        <div className="card p-6 text-center text-sm text-text-muted">Open Treasury isn&apos;t live on this deployment yet.</div>
+      ) : isLoading ? (
+        <SkeletonGrid />
+      ) : withVault.length === 0 ? (
+        <div className="card p-6 text-center text-sm text-text-muted">No launch has an open treasury vault yet.</div>
       ) : (
-        <>
-          <MotionSection>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Stat label="Verified backing" value={formatUsd(totalVerified, { compact: true })} loading={isLoading} />
-              <Stat label="Locked forever" value={formatUsd(totalLocked, { compact: true })} accent loading={isLoading} />
-              <Stat label="Treasuries" value={String(treasuries.length)} loading={isLoading} />
-              <Stat label="With backing" value={String(ballasted.length)} loading={isLoading} />
-            </div>
-          </MotionSection>
-
-          {!isLoading && topLocked.length > 0 && (
-            <MotionSection>
-              <section className="card p-4">
-                <h2 className="section-label">Most locked forever</h2>
-                <div className="mt-3 divide-y divide-border">
-                  {topLocked.map((p) => (
-                    <TreasuryRow key={p.token} project={p} />
-                  ))}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {withVault.map((p) => (
+            <MotionSection key={p.token}>
+              <Link href={`/app/backing/${p.token}`} className="card card-hover flex items-center gap-3 p-4">
+                <AssetDisc symbol={p.symbol} size={40} />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-text-primary">{p.symbol ?? shortAddress(p.token)}</div>
+                  <div className="truncate text-sm text-text-muted">{p.name ?? shortAddress(p.token)}</div>
                 </div>
-              </section>
+              </Link>
             </MotionSection>
-          )}
-
-          {/* Required disclaimer — kept verbatim (project copy rules). */}
-          <p className="rounded-input bg-card px-3 py-2 text-xs text-text-muted">
-            Holding a token gives no claim, redemption right, or entitlement to treasury assets.
-          </p>
-        </>
+          ))}
+        </div>
       )}
+
+      {/* Required disclaimer — kept verbatim (project copy rules). */}
+      <p className="rounded-input bg-card px-3 py-2 text-xs text-text-muted">
+        Holding a token gives no claim, redemption right, or entitlement to treasury assets.
+      </p>
     </div>
   );
 }
 
-function Stat({ label, value, accent, loading }: { label: string; value: string; accent?: boolean; loading?: boolean }) {
+function SkeletonGrid() {
   return (
-    <div className="card p-4">
-      <div className="eyebrow">{label}</div>
-      {loading ? (
-        <div className="mt-2 h-6 w-20 animate-pulse rounded bg-surface-raised" />
-      ) : (
-        <div className={cn("figure-primary mt-1 text-xl tabular-nums", accent && "text-green")}>{value}</div>
-      )}
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" aria-hidden>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="card h-20 animate-pulse p-4" />
+      ))}
     </div>
-  );
-}
-
-function TreasuryRow({ project }: { project: Project }) {
-  const { symbol, token, backing } = project;
-  return (
-    <Link href={`/app/backing/${token}`} className="flex items-center justify-between py-2.5 text-sm transition-colors hover:text-text-primary">
-      <span className="truncate font-medium text-text-secondary">{symbol ?? shortAddress(token)}</span>
-      <span className="flex items-center gap-4 tabular-nums">
-        <span className="text-text-faint">{formatBackingPerToken(backing?.backingPerToken ?? 0n)}</span>
-        <span className="text-green">{formatUsd(backing?.lockedValueUsd ?? 0n, { compact: true })}</span>
-      </span>
-    </Link>
   );
 }

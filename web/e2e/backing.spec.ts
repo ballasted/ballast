@@ -105,6 +105,25 @@ test("creator sees Add basket on the gen-4 backing detail", async ({ page }) => 
   await expect(page.getByRole("button", { name: "Add basket" })).toBeVisible({ timeout: 15_000 });
 });
 
+// Retired $BALLAST v1 (0x069a…) is delisted from the directory but still
+// reachable by direct URL with a read-only notice — never a 404.
+const V1 = "0x069a260370C61d91bd3e9842d81D378F9750F7F3";
+
+test("directory does NOT list retired v1 $BALLAST (no wallet)", async ({ page }) => {
+  await page.goto("/app/backing");
+  await page.locator('a[href^="/app/backing/0x"]').first().waitFor({ state: "visible", timeout: 20_000 });
+  const hrefs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('a[href^="/app/backing/0x"]')).map((a) => a.getAttribute("href")!.toLowerCase()),
+  );
+  expect(hrefs.some((h) => h.includes(V1.toLowerCase()))).toBe(false);
+});
+
+test("retired v1 $BALLAST shows a notice (not a 404) by direct URL", async ({ page }) => {
+  await page.goto(`/app/backing/${V1}`);
+  await expect(page.getByText(/\$BALLAST v1 is retired\. The migration closed on Oct 12, 2026\./)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("link", { name: /View \$BALLAST v2/ })).toBeVisible();
+});
+
 // Mobile nav: the three fixed tabs used to be the ONLY nav, leaving Backing,
 // Treasury, Baskets, Buyback and Profile unreachable. The "More" sheet now
 // carries them — check a couple route through it at a real phone width.

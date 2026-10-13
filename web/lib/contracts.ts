@@ -1,4 +1,5 @@
 import type { Address } from "viem";
+import { activeChain } from "./chain";
 
 // Contract addresses come from env, filled after deployment. Never hardcode
 // per-launch addresses — those resolve from the BallastFactory registry
@@ -91,7 +92,19 @@ export const isOpenTreasuryEnabled =
 // route exists for any AssetRegistry asset (see docs/BASKET_DISCOVERY.md §2,
 // web/lib/basketRoutes.ts) — the picker renders an honest "not routable yet"
 // state even when this flag is on.
-export const BASKET_ZAP_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BASKET_ZAP_ADDRESS);
+// BasketZap defaults to the deployed mainnet (4663) address when the env is
+// unset, so READ surfaces (the /app/baskets directory, basket history) work on
+// any deployment — a Preview with no basket env still lists baskets read-only.
+// The env stays an override for other chains / a redeploy.
+const BASKET_ZAP_DEFAULT_4663 = "0x87c046aB0fB8B7B86BA1a62A956242d499051aBA" as Address;
+export const BASKET_ZAP_ADDRESS =
+  asAddress(process.env.NEXT_PUBLIC_BASKET_ZAP_ADDRESS) ??
+  (activeChain.id === 4663 ? BASKET_ZAP_DEFAULT_4663 : undefined);
+// Read gate: is there a BasketZap to read at all (always true on 4663 now).
+export const isBasketConfigured = Boolean(BASKET_ZAP_ADDRESS);
+// Write/feature gate: the creator "Add basket" flow + create-flow basket step
+// still require the explicit opt-in flag, so a deployment doesn't silently turn
+// the write path on just because the address resolves.
 export const isBasketEnabled =
   process.env.NEXT_PUBLIC_BASKET_ENABLED === "true" && Boolean(BASKET_ZAP_ADDRESS);
 
@@ -128,6 +141,33 @@ export const V1_TOKEN_ADDRESS = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as 
 // claimToken path always swaps into, independent of PROTOCOL_TOKEN_ADDRESS
 // (which can point elsewhere if the pinned token is ever retired/replaced).
 export const BALLAST_V2_TOKEN_ADDRESS = "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C" as Address;
+
+// ── Retired tokens ───────────────────────────────────────────────────────────
+// Tokens delisted from the BACKING surfaces (directory, sort, filters, counts,
+// baskets, treasury aggregates) but STILL reachable by direct URL, where
+// /app/backing/[address] shows a short read-only "retired" notice instead of a
+// 404. Lowercased for a case-insensitive compare. This does NOT touch the
+// migration/claim pages, buyback history, Discover, search, or Portfolio — only
+// the backing surfaces (see RETIRED_NOTICES for the per-token copy).
+//
+// $BALLAST v1 migrated to v2 (BALLAST_V2_TOKEN_ADDRESS); the claim window closed
+// 2026-10-12, so v1 no longer belongs on the live backing list.
+export const RETIRED_TOKENS: Address[] = [
+  "0x069a260370c61d91bd3e9842d81d378f9750f7f3",
+];
+
+export function isRetiredToken(token: Address | undefined): boolean {
+  return Boolean(token) && RETIRED_TOKENS.some((a) => a === token!.toLowerCase());
+}
+
+/** Per-retired-token notice copy + where it migrated, keyed by lowercased
+ *  address. Used by the backing detail page's retired notice. */
+export const RETIRED_NOTICES: Record<string, { message: string; migratedTo?: Address }> = {
+  "0x069a260370c61d91bd3e9842d81d378f9750f7f3": {
+    message: "$BALLAST v1 is retired. The migration closed on Oct 12, 2026.",
+    migratedTo: BALLAST_V2_TOKEN_ADDRESS,
+  },
+};
 
 // BallastManatee — the standalone 1,000-piece on-chain NFT mint (/app/mint). A
 // separate product: no protocol contract is touched. Unset = the mint page shows

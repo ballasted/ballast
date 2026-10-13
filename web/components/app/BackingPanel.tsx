@@ -3,6 +3,7 @@
 import type { ProjectBacking } from "@/hooks/useProjects";
 import { formatUsd, formatBackingPerToken } from "@/lib/format";
 import { classifyFreshness, formatEt, type FreshnessTier } from "@/lib/marketHours";
+import { sequencerNote } from "@/lib/backing";
 import { cn } from "@/lib/cn";
 
 type AssetView = {
@@ -56,6 +57,9 @@ export function BackingPanel({
       : undefined;
 
   const seq = SEQ[backing.sequencerStatus] ?? "Unknown";
+  // Sequencer status drives only the NOTE, never whether assets are priced —
+  // a priced asset stays valued when the status is Unknown (lib/backing.ts).
+  const seqNote = sequencerNote(backing.sequencerStatus);
 
   return (
     <section className="card border-accent p-5">
@@ -110,12 +114,12 @@ export function BackingPanel({
             Unpriced assets excluded
           </span>
         )}
-        {seq === "Unknown" && (
-          <span className="chip chip-neutral" title="No L2 sequencer uptime feed exists for this chain — we did not check it">
+        {seqNote === "unverifiable" && (
+          <span className="chip chip-neutral" title="No L2 sequencer uptime feed exists for this chain — we did not check it. Prices come from each asset's own feed.">
             Sequencer unverifiable
           </span>
         )}
-        {(seq === "Down" || seq === "GracePeriod") && (
+        {seqNote === "untrusted" && (
           <span className="chip chip-warning" title="Prices not currently trusted">
             Sequencer {seq === "Down" ? "down" : "recovering"}
           </span>

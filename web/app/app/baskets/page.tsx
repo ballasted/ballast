@@ -9,7 +9,7 @@ import { useAssets } from "@/hooks/useAssets";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { shortAddress } from "@/lib/format";
-import { isBasketEnabled, WETH_ADDRESS } from "@/lib/contracts";
+import { isBasketConfigured, isRetiredToken, WETH_ADDRESS } from "@/lib/contracts";
 import type { BasketSwap } from "@/hooks/useBasketHistory";
 
 // Public baskets directory — explains what a stock basket is in one line and
@@ -32,6 +32,7 @@ export default function BasketsPage() {
     const out: { token: Address; symbol?: string; name?: string; latest: BasketSwap }[] = [];
     for (const [token, swaps] of byToken) {
       if (swaps.length === 0) continue;
+      if (isRetiredToken(token as Address)) continue;
       const latest = [...swaps].sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : -1))[0]!;
       const p = projects.find((x) => x.token.toLowerCase() === token);
       out.push({ token: (p?.token ?? (token as Address)) as Address, symbol: p?.symbol, name: p?.name, latest });
@@ -52,8 +53,8 @@ export default function BasketsPage() {
         </p>
       </div>
 
-      {!isBasketEnabled ? (
-        <div className="card p-6 text-center text-sm text-text-muted">Baskets aren&apos;t enabled on this deployment.</div>
+      {!isBasketConfigured ? (
+        <div className="card p-6 text-center text-sm text-text-muted">Baskets aren&apos;t available on this deployment.</div>
       ) : status === "loading" || status === "idle" ? (
         <SkeletonGrid />
       ) : status === "failed" ? (
@@ -79,6 +80,10 @@ export default function BasketsPage() {
           </div>
         </>
       )}
+
+      <p className="rounded-input bg-card px-3 py-2 text-xs text-text-muted">
+        Holding a token gives no claim, redemption right, or entitlement to treasury assets.
+      </p>
     </div>
   );
 }
