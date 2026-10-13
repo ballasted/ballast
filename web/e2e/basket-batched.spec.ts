@@ -32,7 +32,7 @@ test("creator adds a basket in one confirmation when the wallet supports atomic 
   await basketSection.getByRole("button", { name: "NVDA logo NVDA" }).click();
   await expect(basketSection.getByRole("button", { name: "NVDA logo NVDA" })).toHaveClass(/chip-active/);
 
-  await basketSection.getByPlaceholder("0.0").fill("0.5");
+  await basketSection.getByPlaceholder("0.0").fill("0.2");
 
   // Live Ramses quote for the NVDA leg.
   await expect(basketSection.getByText(/→.*NVDA/)).toBeVisible({ timeout: 15_000 });

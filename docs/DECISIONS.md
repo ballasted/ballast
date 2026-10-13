@@ -269,3 +269,41 @@ call-building order/values, allowance-skip count math — 10 tests),
 batch step → deposit lands; the mock executes the batch as sequential real txs
 on the fork — it asserts the app's batched-flow contract, while contract-level
 all-or-nothing is proven in the forge fork suite).
+
+## 9. Execution-liquidity gate: slippage alone cannot protect against a floored pool
+
+**Found by the 5x e2e loop, and it's a real mainnet footgun, not test flakiness.**
+In one run, the NVDA/WETH Ramses pool — at that run's fork block, after the
+batched spec's swap had consumed the pool's then-available depth — quoted
+~0.0058 NVDA for 0.2–0.5 ETH (a ~99.9% loss vs Chainlink). The UI displayed that
+quote honestly, minOut tracked it honestly (quote × 0.99), the swap executed
+"successfully" at the quoted dead price, and the treasury deposit then reverted
+`BelowMinimum` (0xbd49034f) because the output was below the asset's registry
+minDeposit. Nothing in the flow was *dishonest* — slippage protects
+quote-vs-execution, but nothing sanity-checked the quote itself. On real mainnet
+this is exactly how a creator would burn ETH into a drained pool.
+
+**Fix (frontend gate, `useBasket` + `BasketPicker` — no contract change):**
+- Per leg, the live quote is compared to the Chainlink-implied fair output
+  (`ethIn × ethUsd / assetUsd`, both feeds read live). A leg more than
+  **10% (1,000 bps)** below fair is flagged `illiquid` and blocks confirm with
+  honest copy ("quoting far below the Chainlink price right now"). 10% is
+  deliberately looser than the 3% routability bar — it's a safety net against a
+  pool that died since verification, not a price guarantee; when either feed is
+  unavailable the gate degrades to "no impact check" rather than blocking
+  (quote-readiness and minDeposit checks still apply). Never applied to the
+  feed price itself — no uiMultiplier anywhere (hard rule 7).
+- `minOut` (quote × (1 − slippage)) below the asset's registry `minDeposit`
+  blocks confirm too — the deposit would revert `BelowMinimum`, in both the
+  batched flow (which deposits minOut) and the step flow.
+- **minOut can no longer silently degrade to 1 wei.** The old
+  `minOut > 0 ? minOut : 1n` fallback (a missing quote ⇒ an UNPROTECTED swap)
+  is removed; confirm requires every active leg to have a live quote
+  (`allQuotesReady`), and `onConfirm` re-checks and throws rather than sending
+  a floor-1 minOut.
+
+**Test-harness corollary:** the e2e forks recent REAL mainnet, so pool depth
+varies run to run — specs now swap 0.2 ETH (was 0.5) to stay far inside any
+plausible depth, and the terms-dialog helper now gates on the accept button
+actually ENABLING (with a toggle-recovery for the pre-hydration DOM/React
+checkbox desync that stranded one run) instead of trusting `isChecked()`.

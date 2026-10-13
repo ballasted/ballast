@@ -90,7 +90,10 @@ export function BasketPicker({
   }
 
   async function onConfirm() {
-    if (!basket.weightsValid || basket.ethWei === 0n) return;
+    // The button gates on allQuotesReady/!anyIlliquid/!anyBelowDepositMin;
+    // re-checked here so a stale render can never send a leg whose minOut
+    // would degrade to a meaningless floor (docs/DECISIONS.md §9).
+    if (!basket.weightsValid || basket.ethWei === 0n || !basket.allQuotesReady || basket.anyIlliquid || basket.anyBelowDepositMin) return;
     const legs: BasketLeg[] = basket.legs
       .filter((l) => l.weightBps > 0)
       .map((l) => {
@@ -102,6 +105,7 @@ export function BasketPicker({
         // in-tx if Ramses reverts.
         const routes = routerV2RoutesFor(l.address)!;
         const minOut = computeMinOut(l.quoteOut, basket.slippageBps);
+        if (minOut === 0n) throw new Error("quote missing for a leg — refusing to swap without slippage protection");
         return {
           asset: l.address,
           symbol: l.symbol,
@@ -109,7 +113,7 @@ export function BasketPicker({
           preferFables: false,
           fablesHopIdx: routes.fablesHopIdx.map((i) => BigInt(i)),
           ramsesHopIdx: routes.ramsesHopIdx.map((i) => BigInt(i)),
-          minOut: minOut > 0n ? minOut : 1n,
+          minOut,
         };
       });
     const params = {
@@ -238,12 +242,26 @@ export function BasketPicker({
         )}
       </p>
 
+      {(basket.anyIlliquid || basket.anyBelowDepositMin) && (
+        <p className="text-xs text-negative">
+          {basket.anyIlliquid && <>A route is quoting far below the Chainlink price right now — remove that asset or try later. </>}
+          {basket.anyBelowDepositMin && <>An amount is below that asset&apos;s treasury minimum — raise the ETH amount or its weight.</>}
+        </p>
+      )}
+
       {!account ? (
         <p className="text-center text-sm text-text-muted">Connect a wallet to add a basket.</p>
       ) : (
         <button
           className="btn-primary w-full"
-          disabled={!basket.weightsValid || basket.ethWei === 0n || basket.anyMarketClosed}
+          disabled={
+            !basket.weightsValid ||
+            basket.ethWei === 0n ||
+            basket.anyMarketClosed ||
+            !basket.allQuotesReady ||
+            basket.anyIlliquid ||
+            basket.anyBelowDepositMin
+          }
           onClick={() => void onConfirm()}
         >
           Swap &amp; review
@@ -286,6 +304,10 @@ function LegRow({
             {leg.quoteOut !== undefined && leg.decimals !== undefined && (
               <> → {Number(formatUnits(leg.quoteOut, leg.decimals)).toLocaleString("en", { maximumFractionDigits: 4 })} {leg.symbol}</>
             )}
+            {leg.illiquid && leg.impactBps !== undefined && (
+              <span className="ml-2 text-negative">{(leg.impactBps / 100).toFixed(1)}% below Chainlink</span>
+            )}
+            {!leg.illiquid && leg.belowDepositMin && <span className="ml-2 text-negative">below treasury minimum</span>}
           </div>
         )}
       </div>

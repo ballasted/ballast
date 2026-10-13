@@ -25,22 +25,34 @@ export async function acceptTermsIfShown(page: Page): Promise<void> {
   const acceptButton = page.getByRole("button", { name: "Accept and continue" });
   if (!(await acceptButton.isVisible().catch(() => false))) return;
 
-  const checkboxes = page.getByRole("checkbox");
-  const count = await checkboxes.count();
-  for (let i = 0; i < count; i++) {
-    const box = checkboxes.nth(i);
-    for (let attempt = 0; attempt < 8 && !(await box.isChecked()); attempt++) {
-      // .check()'s own post-click verification throws on the exact flake
-      // this is working around, which would abort the loop before it gets a
-      // second attempt — .click() has no such verification, so pair it with
-      // the isChecked() loop condition above to confirm the real result.
+  // Gate on the REAL success condition — the button enabling — not on the
+  // checkboxes' DOM state. A click that lands before React hydrates flips the
+  // DOM `checked` without updating React's controlled state, so isChecked()
+  // reports true while the button stays disabled forever (observed under
+  // sequential-suite load; docs/DECISIONS.md §5). Recovery for that desync is
+  // a double-click (off, then on) once hydration has caught up, which is what
+  // the per-round logic below converges to.
+  for (let round = 0; round < 20 && !(await acceptButton.isEnabled().catch(() => false)); round++) {
+    const checkboxes = page.getByRole("checkbox");
+    const count = await checkboxes.count();
+    for (let i = 0; i < count; i++) {
+      const box = checkboxes.nth(i);
       try {
-        await box.click({ force: true });
+        if (!(await box.isChecked())) {
+          // Normal path: check an unchecked box.
+          await box.click({ force: true });
+        } else if (round > 0) {
+          // Box reads checked but the button still isn't enabled — the
+          // DOM/React desync above. Toggle off and on to resync.
+          await box.click({ force: true });
+          await page.waitForTimeout(100);
+          await box.click({ force: true });
+        }
       } catch {
-        /* retry */
+        /* retry next round */
       }
-      await page.waitForTimeout(250);
     }
+    await page.waitForTimeout(400);
   }
   await acceptButton.click();
 }

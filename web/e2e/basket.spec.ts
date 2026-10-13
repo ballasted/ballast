@@ -35,7 +35,7 @@ test("creator adds a one-asset basket end-to-end and sees it on the backing page
   await basketSection.getByRole("button", { name: "NVDA logo NVDA" }).click();
   await expect(basketSection.getByRole("button", { name: "NVDA logo NVDA" })).toHaveClass(/chip-active/);
 
-  await basketSection.getByPlaceholder("0.0").fill("0.5");
+  await basketSection.getByPlaceholder("0.0").fill("0.2");
 
   // Live Ramses quote preview for the NVDA leg.
   await expect(basketSection.getByText(/→.*NVDA/)).toBeVisible({ timeout: 15_000 });
