@@ -27,12 +27,15 @@ test("creator adds a one-asset basket end-to-end and sees it on the backing page
   const basketSection = page.locator("section", { hasText: "Basket" }).first();
   await basketSection.getByRole("button", { name: "Add basket" }).click();
 
-  // Only NVDA has a seeded route in this fixture, so the "AI chips" preset
-  // (NVDA/AMD/PLTR) resolves to NVDA alone.
-  await basketSection.getByRole("button", { name: "AI chips" }).click();
+  // Pick NVDA directly as a single-asset (100%) custom basket. NVDA is in the
+  // production routable set (web/lib/basketRoutes.ts) and the fork has the real
+  // WETH/NVDA Ramses pool, so this quotes and swaps for real — no seeded route.
+  // (A preset like "AI chips" now resolves to multiple routable assets, which
+  // would make the single-asset deposit assertions below ambiguous.)
+  await basketSection.getByRole("button", { name: "NVDA logo NVDA" }).click();
   await expect(basketSection.getByRole("button", { name: "NVDA logo NVDA" })).toHaveClass(/chip-active/);
 
-  await basketSection.getByPlaceholder("0.0").fill("2");
+  await basketSection.getByPlaceholder("0.0").fill("0.5");
 
   // Live V4Quoter preview for the NVDA leg.
   await expect(basketSection.getByText(/→.*NVDA/)).toBeVisible({ timeout: 15_000 });

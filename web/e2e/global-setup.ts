@@ -1,24 +1,14 @@
 import { spawn, execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ANVIL_PORT, ANVIL_RPC_URL, BRIDGE_PORT, APP_PORT, APP_URL, FIXTURE_PATH, type BasketE2EFixture } from "./fixture";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 const CONTRACTS_DIR = path.join(REPO_ROOT, "contracts");
 const WEB_DIR = path.join(__dirname, "..");
-const ROUTES_FILE = path.join(WEB_DIR, "lib", "basketRoutes.ts");
-const ROUTES_BACKUP = path.join(__dirname, ".basketRoutes.ts.bak");
 const PIDS_FILE = path.join(__dirname, ".pids.json");
 
 const ANVIL_EOA = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-const WETH = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
-const NVDA = "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC";
-// Discovered once via forge-std's stdStorage.find() against this exact EOA —
-// see docs/BASKET_DISCOVERY.md / commit history for the derivation. These
-// proxy stock tokens use namespaced (non-sequential) storage, so this exact
-// slot is specific to ANVIL_EOA, not re-derivable by a naive base-slot guess.
-const WETH_SLOT = "0xf6d04bbe1a75429862aa97cc198c639a5559580c07ae94016a2b25986f2e3abd";
-const NVDA_SLOT = "0x03b401b7b39ad5148aeb9ef28bef316a982c01bdaadee32abc45fed3bc7f4746";
 
 function readRootEnvVar(name: string): string {
   const envPath = path.join(REPO_ROOT, ".env");
@@ -54,26 +44,39 @@ function castRpc(method: string, params: string[]) {
 export default async function globalSetup() {
   const rpcUrlPaid = readRootEnvVar("RH_RPC_URL_PAID");
 
-  // 1. Start Anvil, forking real mainnet.
-  const anvil = spawn("anvil", ["--fork-url", rpcUrlPaid, "--port", String(ANVIL_PORT), "--silent"], {
+  // 1. Start Anvil, forking real mainnet. Pin the fork a few blocks behind
+  // head: this chain mints ~100ms blocks and the upstream RPC is not a full
+  // archive, so forking at bare `latest` races state-pruning — anvil's lazy
+  // per-slot fetch (and the EIP-1559 fee lookup at tx-send time) can hit
+  // "historical state ... is not available" before setup finishes. A settled,
+  // slightly-behind block is still inside the node's recent-state window, and
+  // anvil caches every slot it touches from it. `--no-rate-limit` keeps the
+  // burst of setup reads from being throttled.
+  let forkBlock: number | undefined;
+  try {
+    const latest = Number(execFileSync("cast", ["block-number", "--rpc-url", rpcUrlPaid], { encoding: "utf8" }).trim());
+    if (Number.isFinite(latest) && latest > 32) forkBlock = latest - 16;
+  } catch {
+    /* fall back to latest */
+  }
+  const anvilArgs = ["--fork-url", rpcUrlPaid, "--port", String(ANVIL_PORT), "--silent", "--no-rate-limit"];
+  if (forkBlock !== undefined) anvilArgs.push("--fork-block-number", String(forkBlock));
+  const anvil = spawn("anvil", anvilArgs, {
     stdio: "ignore",
     detached: true,
   });
   await waitForPort(ANVIL_RPC_URL, 30_000);
 
-  // 2. Fund Anvil's well-known dev EOA with real WETH/NVDA for real, directly
-  // on the live node — vm.deal in a forge SCRIPT only mutates forge's own
-  // local simulation and never reaches a separately-running node once the
-  // script replays its broadcast transactions (confirmed empirically this
-  // session), so funding must happen via Anvil's own RPC extension first.
-  castRpc("anvil_setStorageAt", [WETH, WETH_SLOT, "0x0000000000000000000000000000000000000000000000000000000000000000"]);
-  castRpc("anvil_setStorageAt", [WETH, WETH_SLOT, "0x" + (50n * 10n ** 18n).toString(16).padStart(64, "0")]);
-  castRpc("anvil_setStorageAt", [NVDA, NVDA_SLOT, "0x" + (1_000_000n * 10n ** 18n).toString(16).padStart(64, "0")]);
+  // 2. Fund Anvil's well-known dev EOA with native ETH only. The V4Router
+  // rewrite means the creator no longer needs to pre-hold WETH/NVDA — BasketZap
+  // wraps native ETH via msg.value and swaps it through the REAL on-fork Ramses
+  // NVDA pool. (The old flow needed WETH/NVDA because it seeded a throwaway
+  // pool; that's gone.)
   castRpc("anvil_setBalance", [ANVIL_EOA, "0x" + (10n * 10n ** 18n).toString(16)]);
 
-  // 3. Deploy BasketZap, seed a real local pool, create one fresh launch —
-  // all genuine broadcast transactions now that the EOA really holds the
-  // tokens on this live fork (see contracts/script/e2e/DeploySetupBasketE2E.s.sol).
+  // 3. Deploy BasketZap (new V4Router constructor) + create one fresh launch —
+  // no TestPoolSeeder any more, the NVDA/WETH Ramses pool is real on the fork
+  // (see contracts/script/e2e/DeploySetupBasketE2E.s.sol).
   const out = execFileSync(
     "forge",
     [
@@ -82,6 +85,10 @@ export default async function globalSetup() {
       "--rpc-url",
       ANVIL_RPC_URL,
       "--broadcast",
+      // Legacy gas pricing: forge then uses eth_gasPrice (answered from anvil's
+      // cached fork state) instead of eth_feeHistory/EIP-1559 estimation, which
+      // reads historical state the pruning upstream may no longer serve.
+      "--legacy",
     ],
     { cwd: CONTRACTS_DIR, encoding: "utf8" },
   );
@@ -90,28 +97,9 @@ export default async function globalSetup() {
   const fixture: BasketE2EFixture = JSON.parse(match[1]!.trim());
   writeFileSync(FIXTURE_PATH, JSON.stringify(fixture, null, 2));
 
-  // 4. Temporarily point the picker at the locally-seeded NVDA route. Backed
-  // up and restored in global-teardown — production basketRoutes.ts ships
-  // empty (docs/BASKET_DISCOVERY.md §2) and must not change.
-  copyFileSync(ROUTES_FILE, ROUTES_BACKUP);
-  const testRoutes = `import type { Address } from "viem";
-export type BasketRoute = { fee: number; tickSpacing: number; hooks: Address };
-// E2E TEST FIXTURE — overwritten by web/e2e/global-setup.ts, restored by
-// web/e2e/global-teardown.ts. Never commit this version.
-export const BASKET_ROUTES: Record<string, BasketRoute> = {
-  "${fixture.nvda.toLowerCase()}": { fee: ${fixture.fee}, tickSpacing: ${fixture.tickSpacing}, hooks: "0x0000000000000000000000000000000000000000" },
-};
-export function routeFor(asset: Address): BasketRoute | undefined { return BASKET_ROUTES[asset.toLowerCase()]; }
-export function isRoutable(asset: Address): boolean { return routeFor(asset) !== undefined; }
-export type BasketPresetId = "index" | "aiChips" | "cashLike" | "custom";
-export const BASKET_PRESETS: { id: BasketPresetId; label: string; tickers: string[] }[] = [
-  { id: "index", label: "Index", tickers: ["SPY", "QQQ"] },
-  { id: "aiChips", label: "AI chips", tickers: ["NVDA", "AMD", "PLTR"] },
-  { id: "cashLike", label: "Cash-like", tickers: ["SGOV"] },
-  { id: "custom", label: "Custom", tickers: [] },
-];
-`;
-  writeFileSync(ROUTES_FILE, testRoutes);
+  // 4. No basketRoutes.ts override: NVDA is in the PRODUCTION routable set now
+  // (web/lib/basketRoutes.ts), so the picker uses the real config unchanged and
+  // quotes the real on-fork Ramses route. Nothing to back up or restore.
 
   // 5. Start the wallet bridge (signs with Anvil's well-known dev key,
   // forwards everything else to the fork).

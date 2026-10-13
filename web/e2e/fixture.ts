@@ -7,8 +7,11 @@ export type BasketE2EFixture = {
   treasury: `0x${string}`;
   creator: `0x${string}`;
   nvda: `0x${string}`;
-  fee: number;
-  tickSpacing: number;
+  // V4Router rewrite: the basket swaps NVDA through the REAL on-fork Ramses
+  // route (index 0, WETH/NVDA direct) — no seeded pool, no route override. NVDA
+  // is in the production routable set (web/lib/basketRoutes.ts) so the picker
+  // uses the real config unchanged.
+  ramsesHopIdx: number[];
 };
 
 export const FIXTURE_PATH = path.join(__dirname, ".fixture.json");
