@@ -17,3 +17,19 @@ node_modules/
 
 # Rollback snapshots of Vercel env (may contain secrets) — never commit
 .rollback/
+
+# Probe / scratch logs — never commit. Forge/cast probe output (quote_output.log,
+# testref*.log, etc.) can embed the paid RPC URL and on-chain tx hashes.
+*.log
+contracts/*.log
+
+# Claim-eligibility / "not in snapshot" scratch exports under docs/ — never
+# commit. Scoped to the docs/ exports ONLY; the real v1 claim snapshot CSVs in
+# data/snapshot/ are intentionally tracked and must stay committed.
+docs/v1-claim-*.csv
+*eligibility*.csv
+
+# Scratch local wallet bridge: decrypts a real `cast wallet new` keystore
+# in-memory to drive the production UI via Playwright. Never commit (the tracked
+# e2e version web/e2e/wallet-bridge.mjs uses only Anvil's public dev key).
+web/scripts/_wallet-bridge.mjs
