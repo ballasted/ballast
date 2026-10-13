@@ -6,7 +6,8 @@ import { formatUnits } from "viem";
 import { useAccount } from "wagmi";
 import { useBasket } from "@/hooks/useBasket";
 import { useBasketRunner, type BasketLeg } from "@/hooks/useBasketRunner";
-import { routeFor, BASKET_PRESETS } from "@/lib/basketRoutes";
+import { BASKET_PRESETS } from "@/lib/basketRoutes";
+import { routerV2RoutesFor } from "@/lib/routerV2";
 import { computeMinOut, swapDeadline } from "@/lib/swap";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { formatUsd } from "@/lib/format";
@@ -55,15 +56,21 @@ export function BasketPicker({
     const legs: BasketLeg[] = basket.legs
       .filter((l) => l.weightBps > 0)
       .map((l) => {
-        const route = routeFor(l.address)!;
+        // Route indices come from the fixed BasketZap/routerV2 tables; the
+        // contract validates every index against its own construction-time
+        // arrays, so a wrong index can only fail to chain, never reach an
+        // unintended pool. preferFables=false: Ramses is the venue we verified
+        // (docs/BASKET_DISCOVERY.md §2) and the contract falls back to Fables
+        // in-tx if Ramses reverts.
+        const routes = routerV2RoutesFor(l.address)!;
         const minOut = computeMinOut(l.quoteOut, basket.slippageBps);
         return {
           asset: l.address,
           symbol: l.symbol,
           weightBps: l.weightBps,
-          fee: route.fee,
-          tickSpacing: route.tickSpacing,
-          hooks: route.hooks,
+          preferFables: false,
+          fablesHopIdx: routes.fablesHopIdx.map((i) => BigInt(i)),
+          ramsesHopIdx: routes.ramsesHopIdx.map((i) => BigInt(i)),
           minOut: minOut > 0n ? minOut : 1n,
         };
       });

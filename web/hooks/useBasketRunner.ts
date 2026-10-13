@@ -17,9 +17,12 @@ export type BasketLeg = {
   asset: Address;
   symbol?: string;
   weightBps: number;
-  fee: number;
-  tickSpacing: number;
-  hooks: Address;
+  // V4Router rewrite (docs/DECISIONS.md §6): routes are selected by index into
+  // BasketZap's fixed Fables/Ramses tables (web/lib/routerV2.ts), with
+  // `preferFables` chosen off-chain from a live dual-venue quote.
+  preferFables: boolean;
+  fablesHopIdx: bigint[];
+  ramsesHopIdx: bigint[];
   minOut: bigint;
 };
 
@@ -122,9 +125,9 @@ export function useBasketRunner() {
               params.legs.map((l) => ({
                 asset: l.asset,
                 weightBps: l.weightBps,
-                fee: l.fee,
-                tickSpacing: l.tickSpacing,
-                hooks: l.hooks,
+                preferFables: l.preferFables,
+                fablesHopIdx: l.fablesHopIdx,
+                ramsesHopIdx: l.ramsesHopIdx,
                 minOut: l.minOut,
               })),
               params.deadline,

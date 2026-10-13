@@ -1,6 +1,11 @@
 // BasketZap — contracts/src/BasketZap.sol. Feature-local ABI (same convention
 // as ballastV1ClaimAbi in hooks/useV1Claim.ts), shared by useBasket.ts and
 // useBasketRunner.ts.
+// REWRITE (docs/DECISIONS.md §6): BasketZap now routes each leg over Fables or
+// Ramses via index into its own fixed hop tables (not a caller-supplied
+// fee/tickSpacing/hooks PoolKey). The Leg struct carries `preferFables` + the
+// `fablesHopIdx`/`ramsesHopIdx` the frontend builds from web/lib/routerV2.ts,
+// and swapBasket returns `usedFables` per leg alongside `amountsOut`.
 export const basketZapAbi = [
   {
     type: "function",
@@ -14,15 +19,18 @@ export const basketZapAbi = [
         components: [
           { name: "asset", type: "address" },
           { name: "weightBps", type: "uint16" },
-          { name: "fee", type: "uint24" },
-          { name: "tickSpacing", type: "int24" },
-          { name: "hooks", type: "address" },
+          { name: "preferFables", type: "bool" },
+          { name: "fablesHopIdx", type: "uint256[]" },
+          { name: "ramsesHopIdx", type: "uint256[]" },
           { name: "minOut", type: "uint256" },
         ],
       },
       { name: "swapDeadline", type: "uint256" },
     ],
-    outputs: [{ name: "amountsOut", type: "uint256[]" }],
+    outputs: [
+      { name: "amountsOut", type: "uint256[]" },
+      { name: "usedFables", type: "bool[]" },
+    ],
   },
   { type: "function", name: "MAX_LEGS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
   {
@@ -36,6 +44,7 @@ export const basketZapAbi = [
       { name: "assets", type: "address[]", indexed: false },
       { name: "weightsBps", type: "uint16[]", indexed: false },
       { name: "amountsOut", type: "uint256[]", indexed: false },
+      { name: "usedFables", type: "bool[]", indexed: false },
     ],
   },
   { type: "error", name: "ZeroAddress", inputs: [] },
@@ -62,4 +71,9 @@ export const basketZapAbi = [
     name: "InsufficientOutput",
     inputs: [{ type: "address" }, { type: "uint256" }, { type: "uint256" }],
   },
+  // New in the V4Router rewrite (docs/DECISIONS.md §6).
+  { type: "error", name: "AllVenuesFailedForLeg", inputs: [{ type: "address" }] },
+  { type: "error", name: "NoRamsesRoute", inputs: [] },
+  { type: "error", name: "BadHopChain", inputs: [] },
+  { type: "error", name: "NotSelf", inputs: [] },
 ] as const;

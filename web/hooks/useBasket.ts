@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useReadContracts } from "wagmi";
+import { useMemo, useState, useEffect } from "react";
+import { useReadContracts, usePublicClient } from "wagmi";
 import type { Address } from "viem";
-import { quoterAbi, aggregatorV3Abi } from "@/lib/abis";
+import { ramsesQuoterAbi, aggregatorV3Abi } from "@/lib/abis";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
-import { QUOTER_ADDRESS, ETH_USD_FEED_ADDRESS, WETH_ADDRESS } from "@/lib/contracts";
-import { BASKET_PRESETS, routeFor, isRoutable, type BasketPresetId } from "@/lib/basketRoutes";
+import { RAMSES_QUOTER_ADDRESS, ETH_USD_FEED_ADDRESS } from "@/lib/contracts";
+import { BASKET_PRESETS, isRoutable, type BasketPresetId } from "@/lib/basketRoutes";
+import { routerV2RoutesFor, ramsesRoutesForIdx, WETH_TOKEN } from "@/lib/routerV2";
 import { evenSplit, snapWeight, BASKET_BPS } from "@/lib/basketWeights";
 import { classifyFreshness, type Freshness } from "@/lib/marketHours";
 import { useNow } from "@/hooks/useNow";
@@ -93,49 +94,56 @@ export function useBasket(launchTokenSymbol?: string) {
     }
   }, [ethAmount]);
 
-  // Live per-leg quote via V4Quoter, at this leg's current ETH share.
-  const quoteContracts = useMemo(
-    () =>
-      legs
-        .filter((l) => ethWei > 0n && l.weightBps > 0)
-        .map((l) => {
-          const route = routeFor(l.address);
-          if (!route || !WETH_ADDRESS) return null;
-          const amountIn = (ethWei * BigInt(l.weightBps)) / BigInt(BPS);
-          const wethIsCurrency0 = WETH_ADDRESS.toLowerCase() < l.address.toLowerCase();
-          const poolKey = {
-            currency0: wethIsCurrency0 ? WETH_ADDRESS : l.address,
-            currency1: wethIsCurrency0 ? l.address : WETH_ADDRESS,
-            fee: route.fee,
-            tickSpacing: route.tickSpacing,
-            hooks: route.hooks,
-          };
-          return {
-            address: QUOTER_ADDRESS!,
-            abi: quoterAbi,
-            functionName: "quoteExactInputSingle",
-            args: [{ poolKey, zeroForOne: wethIsCurrency0, exactAmount: amountIn, hookData: "0x" as const }],
-            chainId: CHAIN_ID,
-          } as const;
-        })
-        .filter((c): c is NonNullable<typeof c> => c !== null),
-    [legs, ethWei],
-  );
-  const quoteRes = useReadContracts({
-    allowFailure: true,
-    contracts: quoteContracts,
-    query: { enabled: Boolean(QUOTER_ADDRESS) && quoteContracts.length > 0 },
-  });
-  let qi = 0;
-  const legsWithQuote = legs.map((l) => {
-    if (ethWei === 0n || l.weightBps === 0 || !routeFor(l.address)) return l;
-    const r = quoteRes.data?.[qi];
-    qi++;
-    if (r?.status === "success") {
-      const [amountOut] = r.result as unknown as [bigint, bigint];
-      return { ...l, quoteOut: amountOut };
+  // Live per-leg quote through the asset's REAL Ramses route (1-hop direct or
+  // 2-hop via USDG) — there is NO WETH/<asset> single-hop pool (the old model's
+  // mistake). Imperative + sequential because 2-hop quotes chain (hop2 amountIn
+  // = hop1 amountOut), which useReadContracts (parallel/independent) can't
+  // express. Mirrors useRouterV2Swap.quoteRamsesLeg1 (buy direction). Fables is
+  // BasketZap's preferred venue but is NOT quoted here (its off-chain quote is
+  // unreliable on this chain — docs/BASKET_DISCOVERY.md §2.1); Ramses is the
+  // venue we verified, and BasketZap tries Ramses-first for these legs anyway
+  // (the leg builder sets preferFables=false).
+  const publicClient = usePublicClient({ chainId: CHAIN_ID });
+  const [quoteOutByAddr, setQuoteOutByAddr] = useState<Record<string, bigint>>({});
+
+  const quoteKey =
+    selected
+      .map((a) => `${a.toLowerCase()}:${weights[a] ?? 0}`)
+      .sort()
+      .join("|") + `@${ethWei.toString()}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!publicClient || !RAMSES_QUOTER_ADDRESS || ethWei === 0n) {
+      setQuoteOutByAddr({});
+      return;
     }
-    return l;
+    (async () => {
+      const out: Record<string, bigint> = {};
+      for (const addr of selected) {
+        const w = weights[addr] ?? 0;
+        if (w === 0) continue;
+        const routes = routerV2RoutesFor(addr);
+        if (!routes || routes.ramsesHopIdx.length === 0) continue;
+        const amountIn = (ethWei * BigInt(w)) / BigInt(BPS);
+        if (amountIn === 0n) continue;
+        try {
+          out[addr.toLowerCase()] = await quoteRamsesBuy(publicClient, routes.ramsesHopIdx, amountIn);
+        } catch {
+          /* leave unquoted — minOut falls back to 1n at swap time */
+        }
+      }
+      if (!cancelled) setQuoteOutByAddr(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicClient, quoteKey]);
+
+  const legsWithQuote = legs.map((l) => {
+    const q = quoteOutByAddr[l.address.toLowerCase()];
+    return q !== undefined ? { ...l, quoteOut: q } : l;
   });
 
   const ethUsdRes = useReadContracts({
@@ -176,4 +184,30 @@ export function useBasket(launchTokenSymbol?: string) {
     setSlippageBps,
     launchTokenSymbol,
   };
+}
+
+/** Quote the buy-direction Ramses chain (WETH -> [USDG ->] asset) for
+ *  `amountIn` wei, returning the asset-out amount. Sequential: each hop's
+ *  output feeds the next hop's input. Mirrors
+ *  useRouterV2Swap.quoteRamsesLeg1. */
+async function quoteRamsesBuy(
+  publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
+  routeIdx: number[],
+  amountIn: bigint,
+): Promise<bigint> {
+  const routeHops = ramsesRoutesForIdx(routeIdx);
+  let cur: Address = WETH_TOKEN;
+  let amt = amountIn;
+  for (const r of routeHops) {
+    const outAddr = cur.toLowerCase() === r.tokenA.toLowerCase() ? r.tokenB : r.tokenA;
+    const res = await publicClient.simulateContract({
+      address: RAMSES_QUOTER_ADDRESS!,
+      abi: ramsesQuoterAbi,
+      functionName: "quoteExactInputSingle",
+      args: [{ tokenIn: cur, tokenOut: outAddr, amountIn: amt, tickSpacing: r.tickSpacing, sqrtPriceLimitX96: 0n }],
+    });
+    amt = (res.result as readonly [bigint, bigint, number, bigint])[0];
+    cur = outAddr;
+  }
+  return amt;
 }
