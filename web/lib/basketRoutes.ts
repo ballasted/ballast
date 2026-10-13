@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { routerV2RoutesFor } from "@/lib/routerV2";
+import { routerV2RoutesFor } from "./routerV2";
 
 // Stock Basket routable set — REWRITE (docs/DECISIONS.md §6, docs/BASKET_DISCOVERY.md §2).
 //
@@ -45,9 +45,13 @@ export function isRoutable(asset: Address): boolean {
 // to track which registry address is "active" per preset by hand.
 export type BasketPresetId = "index" | "aiChips" | "cashLike" | "custom";
 
+// Presets draw ONLY from the 7 routable assets. The picker filters each against
+// isRoutable() live, so a preset silently shrinks if the routable set changes.
+// (QQQ/AMD are deliberately absent — QQQ is small-ticket-only and AMD's pool is
+// dead; see docs/BASKET_DISCOVERY.md §2.2.)
 export const BASKET_PRESETS: { id: BasketPresetId; label: string; tickers: string[] }[] = [
-  { id: "index", label: "Index", tickers: ["SPY"] }, // QQQ not routable at size (small-ticket only)
-  { id: "aiChips", label: "AI chips", tickers: ["NVDA", "PLTR"] }, // AMD route dead
+  { id: "index", label: "Index", tickers: ["SPY"] },
+  { id: "aiChips", label: "AI chips", tickers: ["NVDA", "PLTR", "GOOGL"] },
   { id: "cashLike", label: "Cash-like", tickers: ["SGOV"] },
   { id: "custom", label: "Custom", tickers: [] },
 ];
