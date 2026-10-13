@@ -37,8 +37,13 @@ test("creator adds a one-asset basket end-to-end and sees it on the backing page
 
   await basketSection.getByPlaceholder("0.0").fill("0.5");
 
-  // Live V4Quoter preview for the NVDA leg.
+  // Live Ramses quote preview for the NVDA leg.
   await expect(basketSection.getByText(/→.*NVDA/)).toBeVisible({ timeout: 15_000 });
+
+  // The injected test wallet has no EIP-5792 support (the capability probe
+  // throws), so this is the STEP flow, and the upfront count must show the
+  // real total: 1 swap + 1 approve (fresh account, no allowance) + 1 deposit.
+  await expect(basketSection.getByText(/needs 3 confirmations/)).toBeVisible({ timeout: 15_000 });
 
   const swapButton = basketSection.getByRole("button", { name: "Swap & review" });
   await expect(swapButton).toBeEnabled({ timeout: 10_000 });
@@ -60,7 +65,9 @@ test("creator adds a one-asset basket end-to-end and sees it on the backing page
   // uses.
   await page.reload();
   const basketSectionAfter = page.locator("section", { hasText: "Basket" }).first();
-  await expect(basketSectionAfter.getByText("100%")).toBeVisible({ timeout: 15_000 });
+  // .first(): when the batched spec ran earlier in the same session, history
+  // already shows its swap too — several 100% legs is expected, not an error.
+  await expect(basketSectionAfter.getByText("100%").first()).toBeVisible({ timeout: 15_000 });
   await expect(
     basketSectionAfter.getByText("Holding $E2EB gives no claim, redemption right, or entitlement to these assets."),
   ).toBeVisible();

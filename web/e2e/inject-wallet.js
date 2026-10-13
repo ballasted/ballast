@@ -16,6 +16,65 @@
   // regardless of "connection" state, so that call can't be forwarded as-is
   // here or wagmi sees a phantom already-connected wallet on every page load.
   let connected = false;
+
+  async function bridgeRequest(method, params) {
+    const res = await fetch(BRIDGE_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: params || [] }),
+    });
+    const j = await res.json();
+    if (j.error) throw new Error(j.error.message || "bridge error");
+    return j.result;
+  }
+
+  // --- Mocked EIP-5792 (batched-flow e2e only) ---
+  // Active only when the spec opts in via window.__E2E_ATOMIC__ (its own
+  // addInitScript, added before this one). The "atomic batch" is executed as
+  // SEQUENTIAL eth_sendTransaction calls through the same bridge — not
+  // genuinely atomic, which is fine: the mocked test asserts the app's
+  // batched-flow contract (capability detection -> single confirmation step ->
+  // wallet_sendCalls dispatched -> success once every call lands), not
+  // wallet-side atomicity (the contract-level all-or-nothing is proven in the
+  // forge fork suite instead). With the flag off, both methods throw, so the
+  // app's capability probe fails cleanly and the step flow runs — keeping the
+  // main basket spec on the step path.
+  const sentBatches = {}; // id -> array of tx hashes
+  let batchSeq = 0;
+  async function handle5792(method, params) {
+    if (method === "wallet_getCapabilities") {
+      if (!window.__E2E_ATOMIC__) throw new Error("wallet_getCapabilities not supported");
+      return { [CHAIN_ID_HEX]: { atomic: { status: "supported" } } };
+    }
+    if (method === "wallet_sendCalls") {
+      if (!window.__E2E_ATOMIC__) throw new Error("wallet_sendCalls not supported");
+      const req = params[0];
+      const hashes = [];
+      for (const call of req.calls) {
+        hashes.push(
+          await bridgeRequest("eth_sendTransaction", [
+            { from: req.from, to: call.to, data: call.data, value: call.value },
+          ]),
+        );
+      }
+      const id = "0xe2eb" + String(++batchSeq).padStart(4, "0");
+      sentBatches[id] = hashes;
+      return { id };
+    }
+    if (method === "wallet_getCallsStatus") {
+      const id = params[0];
+      const hashes = sentBatches[id] || [];
+      const receipts = [];
+      for (const h of hashes) receipts.push(await bridgeRequest("eth_getTransactionReceipt", [h]));
+      if (hashes.length === 0 || receipts.some((r) => !r)) {
+        return { version: "2.0.0", id, chainId: CHAIN_ID_HEX, atomic: true, status: 100, receipts: [] };
+      }
+      const ok = receipts.every((r) => r.status === "0x1");
+      return { version: "2.0.0", id, chainId: CHAIN_ID_HEX, atomic: true, status: ok ? 200 : 500, receipts };
+    }
+    return undefined;
+  }
+
   const provider = {
     isMetaMask: true,
     isE2EBridge: true,
@@ -28,14 +87,10 @@
       if (method === "wallet_getPermissions") return connected ? [{ parentCapability: "eth_accounts" }] : [];
       if (method === "eth_accounts" && !connected) return [];
       if (method === "eth_requestAccounts") connected = true;
-      const res = await fetch(BRIDGE_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: params || [] }),
-      });
-      const j = await res.json();
-      if (j.error) throw new Error(j.error.message || "bridge error");
-      return j.result;
+      if (method === "wallet_getCapabilities" || method === "wallet_sendCalls" || method === "wallet_getCallsStatus") {
+        return handle5792(method, params || []);
+      }
+      return bridgeRequest(method, params);
     },
     on: function (event, cb) {
       (listeners[event] = listeners[event] || []).push(cb);
