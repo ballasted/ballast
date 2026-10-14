@@ -10,6 +10,7 @@ import { FeePanel } from "@/components/app/FeePanel";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useAssets } from "@/hooks/useAssets";
+import { isRetiredToken } from "@/lib/contracts";
 import { CopyAddress } from "@/components/app/CopyAddress";
 import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
@@ -182,6 +183,7 @@ function HoldingRow({ h }: { h: Holding }) {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+            {isRetiredToken(p.token) && <span className="chip chip-neutral">Retired</span>}
             <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
             <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
           </div>
@@ -212,6 +214,7 @@ function LaunchRow({ p }: { p: Project }) {
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+            {isRetiredToken(p.token) && <span className="chip chip-neutral">Retired</span>}
             <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
             <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
           </div>

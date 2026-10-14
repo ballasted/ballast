@@ -32,7 +32,7 @@ import {
 import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
 import { PriceChart } from "@/components/app/token/PriceChart";
-import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled } from "@/lib/contracts";
+import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled, isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS } from "@/lib/contracts";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
@@ -58,6 +58,7 @@ export default function TokenDetailPage() {
   const raw = typeof params.address === "string" ? params.address : "";
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(raw);
   const token = isAddr ? (raw as Address) : undefined;
+  const retired = isRetiredToken(token);
 
   // Old deep link into the since-removed Backing tab -> its own page now.
   useEffect(() => {
@@ -126,6 +127,18 @@ export default function TokenDetailPage() {
   const livePriceUsd = marketPriceUsd !== undefined ? Number(marketPriceUsd) / 1e18 : market?.priceUsd;
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
+  // Retired token (e.g. $BALLAST v1): reachable, but short-circuit to a minimal
+  // read-only page — the migrated banner + a link to v2, no buy/sell. Done BEFORE
+  // the loading/found gates so it renders regardless of whether the backing reads
+  // resolve (a retired token's treasury reads can be slow or absent).
+  if (retired) {
+    return (
+      <div className="space-y-4">
+        <RetiredBanner token={token!} />
+        <RetiredSwapNote token={token!} />
+      </div>
+    );
+  }
   if (!isConfigured) {
     return <Notice title="Not configured" body="BackingLens isn't set. Deploy the core contracts and set NEXT_PUBLIC_LENS_ADDRESS." />;
   }
@@ -364,6 +377,40 @@ function TabBar<T extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+// Prominent top banner for a retired token (e.g. $BALLAST v1) — always shown,
+// regardless of env/pinning, with a link to v2. Trading is disabled below.
+function RetiredBanner({ token }: { token: Address }) {
+  const notice = RETIRED_NOTICES[token.toLowerCase()];
+  const migratedTo = notice?.migratedTo ?? BALLAST_V2_TOKEN_ADDRESS;
+  return (
+    <section className="card border-accent p-5" role="note">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="chip chip-neutral">v1 · migrated to v2</span>
+        <Link href={`/app/token/${migratedTo}`} className="text-sm text-green underline underline-offset-2">
+          View $BALLAST v2 ↗
+        </Link>
+      </div>
+      <p className="mt-3 text-sm text-text-secondary">
+        {notice?.message ?? "This token is retired."} It has been migrated to $BALLAST v2 — trading here is closed.
+      </p>
+    </section>
+  );
+}
+
+// Replaces the SwapPanel for a retired token — no buy/sell, just a pointer to v2.
+function RetiredSwapNote({ token }: { token: Address }) {
+  const migratedTo = RETIRED_NOTICES[token.toLowerCase()]?.migratedTo ?? BALLAST_V2_TOKEN_ADDRESS;
+  return (
+    <section className="card p-5 text-center">
+      <h2 className="section-label">Trading closed</h2>
+      <p className="mt-2 text-sm text-text-muted">$BALLAST v1 is retired. Trade $BALLAST v2 instead.</p>
+      <Link href={`/app/token/${migratedTo}`} className="btn-primary mt-4 inline-block px-5">
+        Go to $BALLAST v2
+      </Link>
+    </section>
   );
 }
 

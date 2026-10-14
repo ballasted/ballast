@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useProjects, type Project } from "@/hooks/useProjects";
 import { useProjectsMeta } from "@/hooks/useProjectMeta";
 import { isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
-import { isHiddenToken } from "@/lib/contracts";
+import { isHiddenToken, isRetiredToken } from "@/lib/contracts";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { useAssets } from "@/hooks/useAssets";
@@ -36,7 +36,7 @@ export function CommandSearch() {
   // result. Direct address paste still opens the token page regardless — that
   // path resolves on-chain state directly, not through this list.
   const projects = useMemo(
-    () => allProjects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token)),
+    () => allProjects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token) && !isRetiredToken(p.token)),
     [allProjects],
   );
   const metaByToken = useProjectsMeta(projects);

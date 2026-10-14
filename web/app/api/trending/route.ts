@@ -1,6 +1,8 @@
 import type { TrendingData, TrendingItem } from "@/lib/market";
 import { listLaunches } from "@/lib/serverChain";
 import { fetchTopPool, fetchPoolTrades } from "@/lib/geckoServer";
+import { isRetiredToken, isHiddenToken } from "@/lib/contracts";
+import type { Address } from "viem";
 
 // Trending, built HONESTLY from 24h trade data — ranked by unique buyers first,
 // then 24h volume, so two wallets wash-trading with each other can't buy the top
@@ -20,7 +22,11 @@ const SCORE_CAP = 60;
 export async function GET() {
   const nowS = Math.floor(Date.now() / 1000);
   try {
-    const launches = await listLaunches();
+    // Drop retired (v1) and hidden (test) tokens from the scored/returned set —
+    // the JSON must not carry a v1 entry even though Discover already hides it.
+    const launches = (await listLaunches()).filter(
+      (l) => !isRetiredToken(l.token as Address) && !isHiddenToken(l.token as Address),
+    );
     if (launches.length === 0) {
       return Response.json(
         { available: true, source: "GeckoTerminal", fetchedAt: nowS, thin: true, items: [] } satisfies TrendingData,

@@ -9,10 +9,9 @@ import { activeChain } from "@/lib/chain";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { erc20Abi } from "@/lib/abis";
-import { PROTOCOL_TOKEN_ADDRESS } from "@/components/app/token/ProtocolTokenNotice";
 import { liveQuery } from "@/lib/refresh";
 import { useBuybackV2, type TriggerPhase } from "@/hooks/useBuybackV2";
-import { BUYBACK_V2_ADDRESS } from "@/lib/contracts";
+import { BUYBACK_V2_ADDRESS, BALLAST_V2_TOKEN_ADDRESS } from "@/lib/contracts";
 
 // The burn address is a compile-time constant of BuybackBurner. Shown here so anyone
 // can look up its balance and confirm the burn total independently of this interface.
@@ -28,20 +27,22 @@ function amt(v?: bigint, dp = 4): string {
 }
 
 export default function BuybackPage() {
-  // $BALLAST v2's own burned total — read directly from the dead-address
-  // balance of the current pinned token.
+  // $BALLAST v2's own burned total — read from v2's dead-address balance
+  // DIRECTLY (BALLAST_V2_TOKEN_ADDRESS), never via the pinned-token pointer, so
+  // the "v2 burned" figure is always v2 even if the pinned token is ever
+  // repointed. v2 is fixed forever (lib/contracts.ts).
   const v2Burned = useReadContract({
-    address: PROTOCOL_TOKEN_ADDRESS,
+    address: BALLAST_V2_TOKEN_ADDRESS,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: [DEAD],
-    query: liveQuery(Boolean(PROTOCOL_TOKEN_ADDRESS)),
+    query: liveQuery(Boolean(BALLAST_V2_TOKEN_ADDRESS)),
   });
   const v2Supply = useReadContract({
-    address: PROTOCOL_TOKEN_ADDRESS,
+    address: BALLAST_V2_TOKEN_ADDRESS,
     abi: erc20Abi,
     functionName: "totalSupply",
-    query: liveQuery(Boolean(PROTOCOL_TOKEN_ADDRESS)),
+    query: liveQuery(Boolean(BALLAST_V2_TOKEN_ADDRESS)),
   });
   const v2BurnedVal = v2Burned.data as bigint | undefined;
   const v2SupplyVal = v2Supply.data as bigint | undefined;

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLiveRail } from "@/hooks/useLiveRail";
 import { useProjects } from "@/hooks/useProjects";
+import { isHiddenToken, isRetiredToken } from "@/lib/contracts";
 import type { RailEvent } from "@/lib/liveRail";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -72,6 +73,8 @@ export function EventToasts() {
     for (const e of events) {
       if (seen.has(e.key)) continue;
       seen.add(e.key);
+      // Never toast activity for a retired (v1) or hidden (test) token.
+      if (e.token && (isRetiredToken(e.token) || isHiddenToken(e.token))) continue;
       const t = toastFor(e);
       if (t) fresh.push(t);
     }

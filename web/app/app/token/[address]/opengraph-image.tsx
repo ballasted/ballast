@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Address } from "viem";
 import { getOgTokenData } from "@/lib/ogTokenData";
 import { formatBackingPerToken } from "@/lib/format";
+import { isRetiredToken } from "@/lib/contracts";
 
 // Per-token link-preview card. Most people meet a token as a shared link before
 // they ever see the page, so this is the real first impression. It shows only what
@@ -55,12 +56,15 @@ async function renderCard(params: Promise<{ address: string }>) {
     ? await getOgTokenData(address as Address)
     : { found: false, denied: false, ballasted: false };
 
+  const retired = isAddr && isRetiredToken(address as Address);
   const ticker = data.symbol ? (data.symbol.startsWith("$") ? data.symbol : `$${data.symbol}`) : "BALLAST";
-  const name = data.found
-    ? data.denied
-      ? "Metadata withheld"
-      : (data.name ?? "Unnamed project")
-    : "Token not found on Robinhood Chain";
+  const name = retired
+    ? "Retired — migrated to $BALLAST v2"
+    : data.found
+      ? data.denied
+        ? "Metadata withheld"
+        : (data.name ?? "Unnamed project")
+      : "Token not found on Robinhood Chain";
   const price = data.priceUsd1e18 !== undefined ? formatBackingPerToken(data.priceUsd1e18) : "—";
   // Backing slot: the figure when ballasted, "Not ballasted" when it's a real token
   // with no treasury, and a neutral "—" when the address isn't a BALLAST token at all
@@ -105,7 +109,22 @@ async function renderCard(params: Promise<{ address: string }>) {
               that this token has an on-chain treasury behind it. An unbacked or
               unknown token carries no pill; its backing slot below already says so,
               so the two states read differently without repeating a label. */}
-          {data.ballasted && (
+          {retired ? (
+            <div
+              style={{
+                display: "flex",
+                fontSize: 24,
+                fontWeight: 600,
+                letterSpacing: 2,
+                padding: "12px 24px",
+                borderRadius: 999,
+                backgroundColor: C.card,
+                color: C.boneMuted,
+              }}
+            >
+              RETIRED
+            </div>
+          ) : data.ballasted ? (
             <div
               style={{
                 display: "flex",
@@ -120,7 +139,7 @@ async function renderCard(params: Promise<{ address: string }>) {
             >
               BALLASTED
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Identity — ticker large, name beneath. */}
@@ -159,7 +178,9 @@ async function renderCard(params: Promise<{ address: string }>) {
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 72 }}>
               <Stat label="PRICE" value={price} muted={price === "—"} />
-              {data.ballasted ? (
+              {retired ? (
+                <Stat label="STATUS" value="Retired" muted />
+              ) : data.ballasted ? (
                 <Stat label="BACKING / TOKEN" value={backing} accent />
               ) : (
                 <Stat label="BACKING" value={backing} muted />

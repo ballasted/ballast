@@ -220,9 +220,15 @@ export const PERMIT2_ADDRESS =
 // URL/address (nothing here touches useProjects or the token page itself),
 // just never surfaced anywhere a real visitor browses. Env-driven so a new
 // disposable test token needs no code change.
-export const HIDDEN_TOKEN_ADDRESSES: Address[] = parseAddressList(
-  process.env.NEXT_PUBLIC_HIDDEN_TOKEN_ADDRESSES,
-);
+// Throwaway test launches hidden in CODE (env extends, never replaces). The
+// gen-4 "TEST" token (0x3Fec2b…) was a disposable end-to-end factory probe and
+// should never surface on a browsable list. Correct default lives here; the env
+// var stays an override/extension only.
+const CODE_HIDDEN_TOKENS: Address[] = ["0x3fec2b548755d53fd8db97cac0c14dfa99f0e335"];
+export const HIDDEN_TOKEN_ADDRESSES: Address[] = [
+  ...CODE_HIDDEN_TOKENS,
+  ...parseAddressList(process.env.NEXT_PUBLIC_HIDDEN_TOKEN_ADDRESSES),
+];
 export function isHiddenToken(token: Address | undefined): boolean {
   return Boolean(token) && HIDDEN_TOKEN_ADDRESSES.some((a) => a.toLowerCase() === token!.toLowerCase());
 }

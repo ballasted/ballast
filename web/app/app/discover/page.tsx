@@ -13,7 +13,7 @@ import { SortRail, type SortId, type FilterId } from "@/components/app/SortRail"
 import { PromoBanners } from "@/components/app/PromoBanners";
 import { PinnedProtocolCard } from "@/components/app/PinnedProtocolCard";
 import { isProtocolToken, isPriorPinnedToken } from "@/components/app/token/ProtocolTokenNotice";
-import { isHiddenToken } from "@/lib/contracts";
+import { isHiddenToken, isRetiredToken } from "@/lib/contracts";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
 import { MeanderWatermark } from "@/components/MeanderWatermark";
 import { PairingScroller, type PairingItem } from "@/components/PairingScroller";
@@ -70,7 +70,7 @@ export default function DiscoverPage() {
   // pinned, not delisted). Portfolio/useProjects itself stay unfiltered —
   // v1 balances must still resolve for the migration pill.
   const listedProjects = useMemo(
-    () => projects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token)),
+    () => projects.filter((p) => !isPriorPinnedToken(p.token) && !isHiddenToken(p.token) && !isRetiredToken(p.token)),
     [projects],
   );
   const count = listedProjects.length;

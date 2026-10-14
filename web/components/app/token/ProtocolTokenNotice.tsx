@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Address } from "viem";
+import { isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS } from "@/lib/contracts";
 
 function asAddress(v: string | undefined): Address | undefined {
   if (!v) return undefined;
@@ -15,11 +16,11 @@ function parseAddressList(v: string | undefined): Address[] {
     .filter((a): a is Address => Boolean(a));
 }
 
-// $BALLAST v1 — the original protocol token. Kept as the default so an unset
-// env var doesn't un-pin anything. Once v2 launches, set
-// NEXT_PUBLIC_PINNED_TOKEN_ADDRESS to the new token and add this address to
-// NEXT_PUBLIC_PRIOR_PINNED_TOKEN_ADDRESSES — see docs/VERCEL-ENV-CHECKLIST.md.
-const DEFAULT_PROTOCOL_TOKEN = "0x069a260370c61d91bd3e9842d81d378f9750f7f3" as const;
+// $BALLAST v2 — the current protocol token, the correct default so an unset env
+// var pins v2, never the retired v1. (v1 migrated to v2; the claim window closed
+// 2026-10-12.) NEXT_PUBLIC_PINNED_TOKEN_ADDRESS still overrides this if the
+// pinned token is ever retired/replaced again — see docs/VERCEL-ENV-CHECKLIST.md.
+const DEFAULT_PROTOCOL_TOKEN = "0xdc605041f02e41cbd8fdc347023e93c4c3fa243c" as const;
 
 /// @notice The CURRENT pinned protocol token (Discover's pin + this page's
 ///         "Protocol token" notice). Env-driven with the v1 address as
@@ -47,6 +48,25 @@ export function isPriorPinnedToken(token: Address | undefined): boolean {
 }
 
 export function ProtocolTokenNotice({ token }: { token: Address | undefined }) {
+  // Retired token (e.g. $BALLAST v1) — always show the migrated banner + link to
+  // v2, regardless of env/pinning. Takes precedence over the pinned-token logic.
+  if (isRetiredToken(token)) {
+    const migratedTo = (token && RETIRED_NOTICES[token.toLowerCase()]?.migratedTo) ?? BALLAST_V2_TOKEN_ADDRESS;
+    return (
+      <section className="card border-accent p-5" role="note">
+        <div className="flex items-center justify-between gap-3">
+          <span className="chip chip-neutral">v1 · migrated to v2</span>
+          <Link href={`/app/token/${migratedTo}`} className="text-xs text-green underline underline-offset-2">
+            $BALLAST v2 ↗
+          </Link>
+        </div>
+        <p className="mt-3 text-sm text-text-secondary">
+          This is $BALLAST v1. It has been migrated to $BALLAST v2. The migration claim window closed on Oct 12, 2026.
+        </p>
+      </section>
+    );
+  }
+
   if (isPriorPinnedToken(token)) {
     return (
       <section className="card border-accent p-5" role="note">
