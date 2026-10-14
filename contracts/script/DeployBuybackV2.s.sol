@@ -10,9 +10,10 @@ import {BuybackBurnerV2} from "../src/BuybackBurnerV2.sol";
 
 /// @title DeployBuybackV2 — deploys the immutable, ownerless $BALLAST v2 buyback burner
 ///
-/// @notice No private key read here — sign with `--account <new-keystore>
-///         --password-file <path>`. Use a NEW keystore, never the old deployer
-///         (same pattern as DeployV1Claim.s.sol).
+/// @notice No private key read here — sign with `--account <new-keystore>` and
+///         type its password at the interactive prompt (never a password file on
+///         disk). Use a NEW keystore, never the old deployer (same pattern as
+///         DeployV1Claim.s.sol).
 ///
 /// Env (all have sane defaults baked in below; override only if something changed):
 ///   MAX_WETH_PER_CALL     wei, default 0.02 ether (~$54 at $2,713.73/ETH,

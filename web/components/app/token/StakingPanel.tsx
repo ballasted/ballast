@@ -184,7 +184,8 @@ export function StakingPanel({ token, symbol }: { token?: Address; symbol?: stri
       {err && <p className="text-xs text-negative">{err}</p>}
 
       <p className="text-xs text-text-faint">
-        Rewards come only from trading fees the creator routes here. They can change or stop.
+        Stake ${symbol ?? "TOKEN"} for a pro-rata share of the rewards bucket, paid in WETH; unstake anytime, no lockup.
+        Rewards depend on trading fees and can be zero.
       </p>
     </section>
   );

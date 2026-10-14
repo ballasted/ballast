@@ -6,17 +6,22 @@ import {FeeRouterFactory} from "../src/FeeRouterFactory.sol";
 
 /// @title DeployFeeRouterFactory — deploys the stateless FeeRouterFactory
 ///
-/// @notice No private key read by this script — sign with `--account
-///         feerouter-deployer --password-file
-///         ~/.foundry/keystores/feerouter-deployer.pass`. This is a BRAND NEW
-///         keystore created specifically for this deploy, never the old
-///         (compromised) deployer. FeeRouterFactory has no constructor args and no
-///         owner — it only ever deploys per-token FeeRouter instances on demand.
+/// @notice No private key read by this script — sign with the `feerouter-deployer`
+///         keystore and type its password at the interactive prompt (never a
+///         password file on disk). This is a BRAND NEW keystore created
+///         specifically for this deploy, never the old (compromised) deployer.
+///         FeeRouterFactory has no constructor args and no owner — it only ever
+///         deploys per-token FeeRouter instances on demand.
 ///
-/// Run:
+/// Dry-run (simulate, no broadcast — prints the gas estimate):
+///   forge script script/DeployFeeRouterFactory.s.sol:DeployFeeRouterFactory \
+///     --rpc-url robinhood_mainnet \
+///     --sender 0xD316888628c75A87e15A15DE36821Fe7371f0cBf
+///
+/// Broadcast (after funding the sender; password typed at the prompt):
 ///   forge script script/DeployFeeRouterFactory.s.sol:DeployFeeRouterFactory \
 ///     --rpc-url robinhood_mainnet --account feerouter-deployer \
-///     --password-file ~/.foundry/keystores/feerouter-deployer.pass --broadcast
+///     --sender 0xD316888628c75A87e15A15DE36821Fe7371f0cBf --broadcast
 contract DeployFeeRouterFactory is Script {
     function run() external returns (FeeRouterFactory factory) {
         vm.startBroadcast();

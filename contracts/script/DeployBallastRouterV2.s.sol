@@ -11,9 +11,9 @@ import {BallastRouterV2} from "../src/BallastRouterV2.sol";
 /// @title DeployBallastRouterV2 — ETH -> stock -> Ballast pool, Fables OR Ramses v3
 ///
 /// @notice No private key read by this script — sign with `--account
-///         fablesrouter-deployer --password-file
-///         ~/.foundry/keystores/fablesrouter-deployer.pass`. Brand new keystore,
-///         never the compromised 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1.
+///         fablesrouter-deployer` and type its password at the interactive prompt
+///         (never a password file on disk). Brand new keystore, never the
+///         compromised 0xA2774e53dCb666799dbA7d00dC11d10d7Ff837D1.
 ///
 /// @dev Every address below was read directly from chain during the Fables-vs-Ramses
 ///      research pass (2026-10-02/03) — Fables' own `activePools()` registry for the
@@ -22,10 +22,9 @@ import {BallastRouterV2} from "../src/BallastRouterV2.sol";
 ///      `liquidity()`/quoted depth, not assumed). Indices are listed next to each
 ///      entry because callers address hops by index, never by address.
 ///
-/// Run:
+/// Run (password typed at the interactive prompt):
 ///   forge script script/DeployBallastRouterV2.s.sol:DeployBallastRouterV2 \
-///     --rpc-url robinhood_mainnet --account fablesrouter-deployer \
-///     --password-file ~/.foundry/keystores/fablesrouter-deployer.pass --broadcast
+///     --rpc-url robinhood_mainnet --account fablesrouter-deployer --broadcast
 contract DeployBallastRouterV2 is Script {
     address public constant POOL_MANAGER = 0x8366a39CC670B4001A1121B8F6A443A643e40951;
     address public constant WETH = 0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73;

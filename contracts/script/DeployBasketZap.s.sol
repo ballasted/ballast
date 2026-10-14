@@ -11,9 +11,10 @@ import {BasketZap} from "../src/BasketZap.sol";
 
 /// @title DeployBasketZap — deploys the immutable, ownerless Stock Basket swap helper
 ///
-/// @notice No private key read here — sign with `--account <new-keystore>
-///         --password-file <path>`. Use a NEW keystore, never the old deployer
-///         (same pattern as DeployV1Claim.s.sol / DeployBuybackV2.s.sol).
+/// @notice No private key read here — sign with `--account <new-keystore>` and
+///         type its password at the interactive prompt (never a password file on
+///         disk). Use a NEW keystore, never the old deployer (same pattern as
+///         DeployV1Claim.s.sol / DeployBuybackV2.s.sol).
 ///
 ///         REWRITE (docs/BASKET_DISCOVERY.md, this session): BasketZap no
 ///         longer routes through the external UniversalRouter — discovery

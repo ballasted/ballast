@@ -83,9 +83,9 @@ export SWEEP_TO=0xEFC97e16a24d2434C7138a2634E554a0631aC079
 # DeployBuybackV2.s.sol) -- nothing else to set.
 # dry run first (no key needed):
 forge script script/DeployV1Claim.s.sol:DeployV1Claim --rpc-url $RH_RPC_URL_PAID --sender 0x27EC8D16E5E2f5fcf7A41e87a25652773782C391
-# then broadcast:
+# then broadcast (type the keystore password at the interactive prompt):
 forge script script/DeployV1Claim.s.sol:DeployV1Claim --rpc-url $RH_RPC_URL_PAID \
-  --account v1claim-deployer --password-file ~/.foundry/v1claim-deployer.pass --broadcast
+  --account v1claim-deployer --broadcast
 ```
 
 Confirm the deployed address really is `0xb8a42D1DC608dad8CbE6E7b0029067D2A932DFFE`

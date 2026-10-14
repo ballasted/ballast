@@ -7,9 +7,9 @@ import {BallastV1Claim} from "../src/BallastV1Claim.sol";
 /// @title DeployV1Claim — deploys the immutable v1->v2 migration claim contract
 ///
 /// @notice No private key read by this script — sign with `--account
-///         v1claim-deployer --password-file ~/.foundry/v1claim-deployer.pass`.
-///         This is a BRAND NEW keystore created specifically for this one
-///         deploy, never the old (compromised) deployer.
+///         v1claim-deployer` and type its password at the interactive prompt
+///         (never a password file on disk). This is a BRAND NEW keystore created
+///         specifically for this one deploy, never the old (compromised) deployer.
 ///
 /// Env:
 ///   V1_TOKEN            $BALLAST v1, 0x069a260370C61d91bd3e9842d81D378F9750F7F3

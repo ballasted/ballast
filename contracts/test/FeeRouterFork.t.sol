@@ -280,6 +280,76 @@ contract FeeRouterForkTest is Test {
         assertEq(router.pendingBuybackWeth(), 0);
         assertGt(MockRouterCheck(token).balanceOf(DEAD), 0);
     }
+
+    // --------------------------------------------------------------------- //
+    //  Smoke (review request): scheduled split is inert before the 7-day     //
+    //  delay and live after it, and realCreator can deposit into the         //
+    //  treasury THROUGH the router (creatorDeposit passthrough).             //
+    // --------------------------------------------------------------------- //
+
+    function test_fork_smoke_splitDelayEnforced_and_creatorDeposit() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        (FeeRouter router, address token, address treasury) = _launchViaRouter(1000);
+        factory.graduate(token);
+        router.wireBuybackPool();
+        PoolKey memory tokenKey =
+            PoolKey({currency0: Currency.wrap(token), currency1: Currency.wrap(WETH), fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))});
+
+        // Default split = 100% creator. First route pays the creator, burns nothing.
+        _buyTokenWithWeth(tokenKey, 4 ether);
+        uint256 creatorBefore = IERC20(WETH).balanceOf(realCreator);
+        uint256 burnedBefore = MockRouterCheck(token).balanceOf(DEAD);
+        router.route(0, 0, 0);
+        assertGt(IERC20(WETH).balanceOf(realCreator) - creatorBefore, 0, "default split pays creator");
+        assertEq(MockRouterCheck(token).balanceOf(DEAD) - burnedBefore, 0, "default split burns nothing");
+
+        // Schedule a 100%-buyback split. The active split must NOT change yet.
+        vm.prank(realCreator);
+        router.scheduleSplit(0, 0, 10_000, 0);
+        assertTrue(router.hasPendingSplit(), "pending split recorded");
+        assertEq(router.creatorBps(), 10_000, "active split unchanged at schedule time");
+        uint64 effectiveAt = router.pendingEffectiveAt();
+
+        // Cooldown elapsed (1h) but still BEFORE the 7-day split delay: route uses
+        // the OLD split — creator paid again, still nothing burned, pending intact.
+        vm.warp(block.timestamp + 2 hours);
+        assertLt(block.timestamp, effectiveAt, "still inside the 7-day delay");
+        _buyTokenWithWeth(tokenKey, 4 ether);
+        uint256 creatorMid = IERC20(WETH).balanceOf(realCreator);
+        router.route(0, 0, 0);
+        assertGt(IERC20(WETH).balanceOf(realCreator) - creatorMid, 0, "old split still pays creator before delay");
+        assertEq(MockRouterCheck(token).balanceOf(DEAD), burnedBefore, "new split is inert before 7 days");
+        assertEq(router.creatorBps(), 10_000, "active split still the old one before delay");
+        assertTrue(router.hasPendingSplit(), "pending split still pending before delay");
+
+        // Past the 7-day mark: route applies the new split — now it burns.
+        vm.warp(uint256(effectiveAt) + 1);
+        _buyTokenWithWeth(tokenKey, 4 ether);
+        router.route(0, 0, 0);
+        assertEq(router.creatorBps(), 0, "new split active after delay");
+        assertEq(router.buybackBps(), 10_000, "new split active after delay");
+        assertFalse(router.hasPendingSplit(), "pending cleared after apply");
+        assertGt(MockRouterCheck(token).balanceOf(DEAD), burnedBefore, "new split burns after delay");
+
+        // realCreator deposits into the treasury THROUGH the router: a creator
+        // deposit is creator-WITHDRAWABLE (unlike the route() treasury bucket, which
+        // is locked forever) — proving the onlyCreator path still works via the router.
+        uint256 depositAmt = 1_000e18;
+        treasuryAsset.transfer(realCreator, depositAmt);
+        uint256 wdBefore = ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset));
+        vm.startPrank(realCreator);
+        treasuryAsset.approve(address(router), depositAmt);
+        router.creatorDeposit(address(treasuryAsset), depositAmt);
+        vm.stopPrank();
+        assertEq(
+            ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset)) - wdBefore,
+            depositAmt,
+            "creatorDeposit via router credits creator-withdrawable balance"
+        );
+    }
 }
 
 /// @dev Minimal fixed-price Chainlink feed for the ETH/USD leg BallastFactory
