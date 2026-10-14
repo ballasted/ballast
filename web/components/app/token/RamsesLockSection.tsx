@@ -26,6 +26,7 @@ import { decodeTxError } from "@/lib/txError";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useRamsesPosition } from "@/hooks/useRamsesPosition";
+import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -78,7 +79,13 @@ function fmt(v: bigint | undefined, decimals: number, maxFractionDigits = 6): st
 export function RamsesLockSection({ token, creator, symbol }: { token?: Address; creator?: Address; symbol?: string }) {
   const { address: account } = useAccount();
   const pos = useRamsesPosition(token);
-  const isCreator = Boolean(account && creator && account.toLowerCase() === creator.toLowerCase());
+  // For a router-managed launch the on-chain creator is the FeeRouter; name the
+  // HUMAN (effectiveCreator) as the Ramses creatorRecipient so locked-pool fees
+  // reach them, not the router (which has no Ramses handling). Falls back to the
+  // raw creator for EOA launches / when no router is configured.
+  const { effectiveCreator } = useRouterCreator(token, creator);
+  const recipient = effectiveCreator ?? creator;
+  const isCreator = Boolean(account && recipient && account.toLowerCase() === recipient.toLowerCase());
 
   if (!pos.enabled || !token) return null;
 
@@ -96,11 +103,11 @@ export function RamsesLockSection({ token, creator, symbol }: { token?: Address;
       {pos.status === "failed" && <p className="text-xs text-text-faint">Unknown (event scan unavailable)</p>}
 
       {pos.position ? (
-        <ExistingPosition token={token} creator={creator} symbol={symbol} pos={pos} />
+        <ExistingPosition token={token} creator={recipient} symbol={symbol} pos={pos} />
       ) : (
         pos.status === "ok" &&
         (isCreator ? (
-          <SetupPanel token={token} creator={creator!} symbol={symbol} onDone={pos.refetch} />
+          <SetupPanel token={token} creator={recipient!} symbol={symbol} onDone={pos.refetch} />
         ) : (
           <p className="text-xs text-text-muted">No Ramses-locked position for this token yet.</p>
         ))

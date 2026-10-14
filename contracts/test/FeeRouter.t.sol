@@ -7,12 +7,13 @@ import {Currency} from "v4-core/src/types/Currency.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {ProjectTreasury} from "../src/ProjectTreasury.sol";
 import {AssetRegistry} from "../src/AssetRegistry.sol";
-import {FeeRouter} from "../src/FeeRouter.sol";
+import {FeeRouter, BasketLeg} from "../src/FeeRouter.sol";
 import {HolderStakingVault} from "../src/HolderStakingVault.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockFeeHook} from "./mocks/MockFeeHook.sol";
 import {MockRouterFactory} from "./mocks/MockRouterFactory.sol";
 import {MockRouterToken} from "./mocks/MockRouterToken.sol";
+import {MockBasketZap} from "./mocks/MockBasketZap.sol";
 
 /// @dev SCOPE — same split as BuybackBurnerV2.t.sol/BuybackBurnerV2Fork.t.sol. This
 ///      file proves FeeRouter's OWN logic (wiring, access control, split math,
@@ -31,6 +32,7 @@ contract FeeRouterTest is Test {
     MockERC20 treasuryAsset;
     MockFeeHook hook;
     MockRouterFactory factory;
+    MockBasketZap mockZap;
 
     address poolManager = makeAddr("poolManager"); // never called in these tests
     address realCreator = makeAddr("realCreator");
@@ -46,6 +48,7 @@ contract FeeRouterTest is Test {
 
         hook = new MockFeeHook(weth);
         factory = new MockRouterFactory(address(registry));
+        mockZap = new MockBasketZap(10e18); // mints 10 of each leg asset to the router
     }
 
     function _zeroTreasuryKey() internal pure returns (PoolKey memory) {
@@ -65,7 +68,8 @@ contract FeeRouterTest is Test {
             1000, // 10% slippage
             100 ether, // maxRoutePerCall
             1 hours, // routeCooldown
-            DISCLOSURE
+            DISCLOSURE,
+            address(mockZap)
         );
     }
 
@@ -81,18 +85,18 @@ contract FeeRouterTest is Test {
 
     function test_constructor_zeroAddress_reverts() public {
         vm.expectRevert(FeeRouter.ZeroAddress.selector);
-        new FeeRouter(address(0), address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE);
+        new FeeRouter(address(0), address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE, address(mockZap));
     }
 
     function test_constructor_slippageAboveCeiling_reverts() public {
         vm.expectRevert(FeeRouter.BadSplit.selector);
-        new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 2001, 1 ether, 1 hours, DISCLOSURE);
+        new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 2001, 1 ether, 1 hours, DISCLOSURE, address(mockZap));
     }
 
     function test_constructor_treasuryAssetNotAllowlisted_reverts() public {
         MockERC20 notAllowed = new MockERC20("X", "X", 18);
         vm.expectRevert(FeeRouter.TreasuryBucketDisabled.selector);
-        new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(notAllowed), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE);
+        new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(notAllowed), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE, address(mockZap));
     }
 
     function test_constructor_defaultSplitIs100PercentCreator() public {
@@ -247,7 +251,7 @@ contract FeeRouterTest is Test {
     function test_route_capsAtMaxRoutePerCall() public {
         FeeRouter router = _deployRouter(address(0));
         // Re-deploy with a tiny cap to exercise the clamp.
-        router = new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE);
+        router = new FeeRouter(realCreator, address(factory), address(hook), address(weth), poolManager, address(0), _zeroTreasuryKey(), address(registry), 1000, 1 ether, 1 hours, DISCLOSURE, address(mockZap));
         vm.prank(realCreator);
         router.launchNew("T", "T", NOTICE, "", new address[](1));
         hook.credit(address(router), 5 ether);
@@ -433,5 +437,111 @@ contract FeeRouterTest is Test {
         vm.prank(realCreator);
         router.setMetadataURI("ipfs://new");
         assertEq(MockRouterToken(token).metadataURI(), "ipfs://new");
+    }
+
+    // --------------------------------------------------------------------- //
+    //  runBasket — one-tx basket + adversarial bucket-safety                 //
+    // --------------------------------------------------------------------- //
+
+    function _oneLeg(address asset) internal pure returns (BasketLeg[] memory legs) {
+        legs = new BasketLeg[](1);
+        legs[0] = BasketLeg({
+            asset: asset,
+            weightBps: 10000,
+            preferFables: false,
+            fablesHopIdx: new uint256[](0),
+            ramsesHopIdx: new uint256[](0),
+            minOut: 1
+        });
+    }
+
+    function test_runBasket_onlyRealCreator() public {
+        (FeeRouter router,,) = _wiredRouter();
+        vm.deal(stranger, 1 ether);
+        vm.prank(stranger);
+        vm.expectRevert(FeeRouter.NotRealCreator.selector);
+        router.runBasket{value: 1 ether}(_oneLeg(address(treasuryAsset)), block.timestamp + 1 hours);
+    }
+
+    function test_runBasket_zapNotSet_reverts() public {
+        FeeRouter router = new FeeRouter(
+            realCreator, address(factory), address(hook), address(weth), poolManager, address(0),
+            _zeroTreasuryKey(), address(registry), 1000, 100 ether, 1 hours, DISCLOSURE, address(0)
+        );
+        vm.prank(realCreator);
+        router.launchNew("T", "T", NOTICE, "", new address[](1));
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        vm.expectRevert(FeeRouter.BasketZapNotSet.selector);
+        router.runBasket{value: 1 ether}(_oneLeg(address(treasuryAsset)), block.timestamp + 1 hours);
+    }
+
+    function test_runBasket_rejectsWethLeg() public {
+        (FeeRouter router,,) = _wiredRouter();
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        vm.expectRevert(abi.encodeWithSelector(FeeRouter.BadBasketAsset.selector, address(weth)));
+        router.runBasket{value: 1 ether}(_oneLeg(address(weth)), block.timestamp + 1 hours);
+    }
+
+    function test_runBasket_rejectsLaunchTokenLeg() public {
+        (FeeRouter router, address token,) = _wiredRouter();
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        vm.expectRevert(abi.encodeWithSelector(FeeRouter.BadBasketAsset.selector, token));
+        router.runBasket{value: 1 ether}(_oneLeg(token), block.timestamp + 1 hours);
+    }
+
+    function test_runBasket_depositsOnlyDelta_bucketWethUntouched() public {
+        (FeeRouter router,, address treasury) = _wiredRouter();
+        // Give the router WETH it is holding for the buyback bucket (deferred).
+        vm.prank(realCreator);
+        router.scheduleSplit(0, 0, 10000, 0);
+        vm.warp(block.timestamp + 7 days);
+        hook.credit(address(router), 1 ether);
+        router.route(0, 0, 0);
+        assertEq(router.pendingBuybackWeth(), 1 ether);
+        assertEq(weth.balanceOf(address(router)), 1 ether);
+
+        uint256 wdBefore = ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset));
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        router.runBasket{value: 1 ether}(_oneLeg(address(treasuryAsset)), block.timestamp + 1 hours);
+
+        // Only the swap's delta (10e18, minted by the mock) was deposited, and it's
+        // creator-withdrawable (plain deposit), NOT the locked route() bucket.
+        assertEq(ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset)) - wdBefore, 10e18);
+        // The WETH the router held for the buyback bucket is completely untouched.
+        assertEq(weth.balanceOf(address(router)), 1 ether);
+        assertEq(router.pendingBuybackWeth(), 1 ether);
+    }
+
+    function test_runBasket_leavesStakingRewardsUntouched() public {
+        (FeeRouter router,,) = _wiredRouter();
+        vm.prank(realCreator);
+        router.scheduleSplit(0, 0, 0, 10000);
+        vm.warp(block.timestamp + 7 days);
+        hook.credit(address(router), 1 ether);
+        router.route(0, 0, 0);
+        address vault = router.stakingVault();
+        assertEq(weth.balanceOf(vault), 1 ether);
+
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        router.runBasket{value: 1 ether}(_oneLeg(address(treasuryAsset)), block.timestamp + 1 hours);
+
+        assertEq(weth.balanceOf(vault), 1 ether); // rewards already streamed out — untouched
+    }
+
+    function test_runBasket_refundsLeftoverEthToRealCreator() public {
+        (FeeRouter router,,) = _wiredRouter();
+        mockZap.setRefund(0.3 ether); // mock refunds 0.3 of the 1 ether it receives
+        vm.deal(realCreator, 1 ether);
+        uint256 before = realCreator.balance;
+        vm.prank(realCreator);
+        router.runBasket{value: 1 ether}(_oneLeg(address(treasuryAsset)), block.timestamp + 1 hours);
+        // Net: paid 1 ETH in, 0.3 refunded straight back to realCreator (not stranded).
+        assertEq(realCreator.balance, before - 1 ether + 0.3 ether);
+        assertEq(address(router).balance, 0);
     }
 }

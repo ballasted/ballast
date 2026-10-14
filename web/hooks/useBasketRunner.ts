@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useWriteContract, usePublicClient, useAccount, useSendCalls, useWalletClient } from "wagmi";
 import { waitForCallsStatus } from "viem/actions";
 import type { Address } from "viem";
-import { erc20Abi, projectTreasuryWriteAbi } from "@/lib/abis";
+import { erc20Abi, projectTreasuryWriteAbi, feeRouterAbi } from "@/lib/abis";
 import { basketZapAbi } from "@/lib/basketZapAbi";
 import { BASKET_ZAP_ADDRESS } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
@@ -311,10 +311,58 @@ export function useBasketRunner() {
     [publicClient, account, walletClient, sendCallsAsync, patch],
   );
 
+  // Router-managed launch: the token's on-chain creator is a FeeRouter, so the
+  // whole basket is ONE call — FeeRouter.runBasket swaps ETH across the legs AND
+  // deposits each output into the treasury atomically in-contract (no separate
+  // approve/deposit steps, no EIP-5792 needed). Called by BasketPicker only when
+  // the launch is router-managed; `router` is that token's FeeRouter address.
+  const runRouter = useCallback(
+    async (params: BasketRunParams, router: Address) => {
+      if (!publicClient || !account) return;
+      setSteps([
+        {
+          key: "runBasket",
+          label: `Basket — 1 signature (${params.legs.length} asset${params.legs.length === 1 ? "" : "s"})`,
+          status: "idle",
+        },
+      ]);
+      setDone(false);
+      setIsRunning(true);
+      try {
+        await sendStep("runBasket", () =>
+          writeContractAsync({
+            address: router,
+            abi: feeRouterAbi,
+            functionName: "runBasket",
+            args: [
+              params.legs.map((l) => ({
+                asset: l.asset,
+                weightBps: l.weightBps,
+                preferFables: l.preferFables,
+                fablesHopIdx: l.fablesHopIdx,
+                ramsesHopIdx: l.ramsesHopIdx,
+                minOut: l.minOut,
+              })),
+              params.deadline,
+            ],
+            value: params.ethIn,
+            chainId: CHAIN_ID,
+          }),
+        );
+        setDone(true);
+      } catch (err: unknown) {
+        handleRunError(err);
+      } finally {
+        setIsRunning(false);
+      }
+    },
+    [publicClient, account, sendStep, writeContractAsync, handleRunError],
+  );
+
   const reset = useCallback(() => {
     setSteps([]);
     setDone(false);
   }, []);
 
-  return { steps, run, runBatched, runDeposits, reset, isRunning, done };
+  return { steps, run, runBatched, runRouter, runDeposits, reset, isRunning, done };
 }

@@ -100,6 +100,7 @@ export default function BackingDetailPage() {
           {gen4 && (
             <>
               <CreatorWithdrawalPanel
+                token={token}
                 treasury={treasury}
                 creator={creator}
                 assets={(backing.assets as unknown as BackingAssetView[]) ?? []}

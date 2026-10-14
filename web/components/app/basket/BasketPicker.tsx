@@ -6,6 +6,7 @@ import { formatUnits, erc20Abi } from "viem";
 import { useAccount, useCapabilities, useReadContracts } from "wagmi";
 import { useBasket } from "@/hooks/useBasket";
 import { useBasketRunner, type BasketLeg } from "@/hooks/useBasketRunner";
+import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { BASKET_PRESETS } from "@/lib/basketRoutes";
 import { routerV2RoutesFor } from "@/lib/routerV2";
 import { supportsAtomicBatch, stepSignatureCount } from "@/lib/eip5792";
@@ -35,6 +36,11 @@ export function BasketPicker({
   const { address: account } = useAccount();
   const basket = useBasket();
   const runner = useBasketRunner();
+  // When the launch's on-chain creator is a FeeRouter, the whole basket is a
+  // single FeeRouter.runBasket call (swap + deposit atomic in-contract) instead
+  // of the BasketZap-then-deposit step/batch flow. Inert (router undefined) until
+  // the fee-router factory env is set, so EOA launches are unaffected.
+  const { isRouterManaged, router } = useRouterCreator(launchToken);
 
   // EIP-5792: does the connected wallet support a single atomic batch on this
   // chain? If so the whole basket (swap + approves + deposits) is ONE
@@ -123,9 +129,11 @@ export function BasketPicker({
       legs,
       deadline: swapDeadline(Math.floor(Date.now() / 1000)),
     };
-    // One atomic confirmation when the wallet supports EIP-5792 atomic batching
-    // (all-or-nothing across swap + approves + deposits); step flow otherwise.
-    if (canBatch) await runner.runBatched(params);
+    // Router-managed launch: a single FeeRouter.runBasket (swap + deposit atomic
+    // in-contract). Otherwise: one atomic EIP-5792 confirmation when the wallet
+    // supports it, else the BasketZap step flow.
+    if (isRouterManaged && router) await runner.runRouter(params, router);
+    else if (canBatch) await runner.runBatched(params);
     else await runner.run(params);
   }
 
@@ -232,7 +240,9 @@ export function BasketPicker({
       </div>
 
       <p className="text-xs text-text-faint">
-        {canBatch ? (
+        {isRouterManaged ? (
+          <>This basket needs 1 confirmation — the fee router swaps and deposits into the treasury atomically.</>
+        ) : canBatch ? (
           <>This basket needs 1 confirmation — your wallet batches the swap and every treasury deposit atomically.</>
         ) : (
           <>

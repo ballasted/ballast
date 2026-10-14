@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { useBasketHistory } from "@/hooks/useBasketHistory";
+import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { BasketPicker } from "@/components/app/basket/BasketPicker";
 import { ResumeDepositBanner } from "@/components/app/basket/ResumeDepositBanner";
 import { AssetDisc } from "@/components/app/AssetDisc";
@@ -40,7 +41,11 @@ export function BasketSection({
   const { address: account } = useAccount();
   const history = useBasketHistory(token);
   const [adding, setAdding] = useState(false);
-  const isCreator = Boolean(account && creator && account.toLowerCase() === creator.toLowerCase());
+  // For a router-managed launch the on-chain creator is the FeeRouter, so gate on
+  // the HUMAN behind it (effectiveCreator); BasketPicker then routes the add
+  // through FeeRouter.runBasket. Falls back to the raw creator for EOA launches.
+  const { effectiveCreator } = useRouterCreator(token, creator);
+  const isCreator = Boolean(account && effectiveCreator && account.toLowerCase() === effectiveCreator.toLowerCase());
 
   if (!isBasketEnabled || !token || !treasury) return null;
 

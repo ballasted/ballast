@@ -15,6 +15,15 @@ import {FeeRouter} from "./FeeRouter.sol";
 contract FeeRouterFactory {
     event FeeRouterCreated(address indexed router, address indexed realCreator);
 
+    /// @notice The one BasketZap every FeeRouter this factory deploys is wired to
+    ///         (for FeeRouter.runBasket). Fixed at factory construction — no owner,
+    ///         no setter. address(0) means runBasket is disabled on every router.
+    address public immutable basketZap;
+
+    constructor(address basketZap_) {
+        basketZap = basketZap_;
+    }
+
     /// @notice Deploy a FeeRouter and immediately launch a new token through it, so
     ///         the router becomes that token's on-chain creator (full four-bucket
     ///         support, including the treasury bucket). `msg.sender` becomes
@@ -50,7 +59,8 @@ contract FeeRouterFactory {
             maxSlippageBps,
             maxRoutePerCall,
             routeCooldown,
-            disclosureVersion
+            disclosureVersion,
+            basketZap
         );
         emit FeeRouterCreated(address(router), msg.sender);
         (token, treasury) = router.launchNew(name_, symbol_, noticePeriod, metadataURI, quoteAssets_);
@@ -85,7 +95,8 @@ contract FeeRouterFactory {
             maxSlippageBps,
             maxRoutePerCall,
             routeCooldown,
-            disclosureVersion
+            disclosureVersion,
+            basketZap
         );
         emit FeeRouterCreated(address(router), realCreator);
     }

@@ -56,6 +56,28 @@ interface IAssetRegistryAllowed {
     function isAllowed(address asset) external view returns (bool);
 }
 
+/// @dev Field-for-field identical to BasketZap.Leg (same order/types → same ABI
+///      encoding). File-level so both runBasket and IBasketZapLike reference it.
+struct BasketLeg {
+    address asset;
+    uint16 weightBps;
+    bool preferFables;
+    uint256[] fablesHopIdx;
+    uint256[] ramsesHopIdx;
+    uint256 minOut;
+}
+
+/// @dev The one BasketZap entrypoint runBasket calls. The address is fixed at
+///      construction (no arbitrary target), and swapBasket's own
+///      `msg.sender == creator` check means only a router that IS the token's
+///      on-chain creator can drive it (which is exactly the launchNew path).
+interface IBasketZapLike {
+    function swapBasket(address launchToken, BasketLeg[] calldata legs, uint256 swapDeadline)
+        external
+        payable
+        returns (uint256[] memory amountsOut, bool[] memory usedFables);
+}
+
 /// @title FeeRouter — lets a token's creator decide where their gen-4 trading fees go
 ///
 /// @notice One dedicated instance per token (see docs/FEE_ROUTER_DESIGN.md §1.1 for
@@ -102,6 +124,11 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
     address public immutable hook;
     address public immutable weth;
     IPoolManager public immutable poolManager;
+
+    /// @notice The one, fixed BasketZap this router may drive via runBasket. Set at
+    ///         construction (by FeeRouterFactory), never a caller-supplied target.
+    ///         address(0) permanently disables runBasket for this router.
+    address public immutable basketZap;
 
     /// @notice Asset the treasury bucket swaps into and locks forever. address(0)
     ///         permanently disables that bucket (enforced: treasuryBps must stay 0).
@@ -172,6 +199,7 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
     event BuybackDeferred(uint256 wethIn);
     event RoutedToRewards(uint256 amount);
     event RoutedInToCreator(address indexed currency, uint256 amount);
+    event BasketRun(address indexed caller, uint256 ethIn, uint256[] deposited);
 
     // --------------------------------------------------------------------- //
     //  Errors                                                               //
@@ -193,6 +221,9 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
     error NotPoolManager();
     error MinAmountOutNotMet(uint256 got, uint256 wanted);
     error UseRouteForWeth();
+    error BasketZapNotSet();
+    error BadBasketAsset(address asset);
+    error EthRefundFailed();
 
     modifier onlyRealCreator() {
         if (msg.sender != realCreator) revert NotRealCreator();
@@ -211,7 +242,8 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
         uint16 maxSlippageBps_,
         uint256 maxRoutePerCall_,
         uint256 routeCooldown_,
-        bytes32 disclosureVersion_
+        bytes32 disclosureVersion_,
+        address basketZap_
     ) {
         if (
             realCreator_ == address(0) || factory_ == address(0) || hook_ == address(0) || weth_ == address(0)
@@ -236,7 +268,13 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
         maxRoutePerCall = maxRoutePerCall_;
         routeCooldown = routeCooldown_;
         disclosureVersion = disclosureVersion_;
+        basketZap = basketZap_; // address(0) allowed — runBasket then reverts BasketZapNotSet
     }
+
+    /// @notice Accept native ETH — only ever the leftover BasketZap refunds during
+    ///         runBasket (forwarded straight to realCreator there). The router keeps
+    ///         no native-ETH accounting; all fee buckets are WETH (ERC-20).
+    receive() external payable {}
 
     // --------------------------------------------------------------------- //
     //  Wiring — token doesn't exist until one of these runs, exactly once   //
@@ -387,6 +425,61 @@ contract FeeRouter is IUnlockCallback, ReentrancyGuard {
         if (amount == 0) revert NothingToRoute();
         IERC20(currency).safeTransfer(realCreator, amount);
         emit RoutedInToCreator(currency, amount);
+    }
+
+    /// @notice One-tx stock basket for a router-launched token: swap ETH across up
+    ///         to 6 listed stock tokens through the fixed BasketZap and deposit what
+    ///         the swap produced into THIS token's treasury, all in one call.
+    ///
+    /// @dev Only usable when this router IS the token's on-chain creator (the
+    ///      launchNew path) — BasketZap's own `msg.sender == creator` check enforces
+    ///      that, and it sends every output + any ETH refund back here. Safety: a leg
+    ///      asset may never be WETH or the launch token (bucket/burn funds), and only
+    ///      the DELTA each leg's balance gained from this swap is deposited — a
+    ///      pre-existing balance (e.g. pendingBuybackWeth, or any WETH route() still
+    ///      owes a bucket) can never be swept in. The deposit is a plain
+    ///      treasury.deposit (creator-withdrawable), same semantics as creatorDeposit.
+    function runBasket(BasketLeg[] calldata legs, uint256 swapDeadline)
+        external
+        payable
+        onlyRealCreator
+        nonReentrant
+        returns (uint256[] memory deposited)
+    {
+        if (!wired) revert NotWired();
+        if (basketZap == address(0)) revert BasketZapNotSet();
+        uint256 n = legs.length;
+        deposited = new uint256[](n);
+
+        uint256[] memory beforeBal = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            address a = legs[i].asset;
+            if (a == weth || a == token) revert BadBasketAsset(a);
+            beforeBal[i] = IERC20(a).balanceOf(address(this));
+        }
+
+        // Router is the on-chain creator, so outputs + ETH refund come back here.
+        IBasketZapLike(basketZap).swapBasket{value: msg.value}(token, legs, swapDeadline);
+
+        for (uint256 i = 0; i < n; i++) {
+            address a = legs[i].asset;
+            uint256 delta = IERC20(a).balanceOf(address(this)) - beforeBal[i];
+            if (delta > 0) {
+                IERC20(a).forceApprove(treasury, delta);
+                IProjectTreasuryLike(treasury).deposit(a, delta);
+                deposited[i] = delta;
+            }
+        }
+
+        // Leftover ETH BasketZap refunded to this router → realCreator (the router
+        // never holds native ETH of its own; every bucket is WETH).
+        uint256 leftover = address(this).balance;
+        if (leftover > 0) {
+            (bool sent,) = realCreator.call{value: leftover}("");
+            if (!sent) revert EthRefundFailed();
+        }
+
+        emit BasketRun(msg.sender, msg.value, deposited);
     }
 
     /// @notice Sweep WETH that was deferred while the buyback pool wasn't wired yet

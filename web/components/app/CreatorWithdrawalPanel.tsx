@@ -8,6 +8,7 @@ import { activeChain } from "@/lib/chain";
 import { pollReceipt } from "@/lib/waitForReceipt";
 import { decodeTxError } from "@/lib/txError";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
+import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { formatDuration } from "@/lib/format";
 import { formatEt } from "@/lib/marketHours";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -28,6 +29,7 @@ const CHAIN_ID = activeChain.id;
  * this component is only the actions, not the disclosure.
  */
 export function CreatorWithdrawalPanel({
+  token,
   treasury,
   creator,
   assets,
@@ -36,6 +38,7 @@ export function CreatorWithdrawalPanel({
   symbol,
   now,
 }: {
+  token?: Address;
   treasury?: Address;
   creator?: Address;
   assets: AssetView[];
@@ -45,18 +48,26 @@ export function CreatorWithdrawalPanel({
   now: number;
 }) {
   const { address: account, isConnected } = useAccount();
-  const isCreator = Boolean(account && creator && account.toLowerCase() === creator.toLowerCase());
+  // Router-managed launch: the on-chain creator is the FeeRouter, so gate on the
+  // HUMAN (effectiveCreator) and send writes TO the router — its announce/execute/
+  // cancelWithdrawal pass-throughs have signatures identical to ProjectTreasury's,
+  // so the same abi encodes correctly against either address. Inert (router
+  // undefined → treasury target) until the fee-router factory env is set.
+  const { isRouterManaged, router, effectiveCreator } = useRouterCreator(token, creator);
+  const isCreator = Boolean(account && effectiveCreator && account.toLowerCase() === effectiveCreator.toLowerCase());
 
   if (!treasury || !creator || !isCreator) return null;
 
+  const writeTarget = isRouterManaged && router ? router : treasury;
+
   return pending ? (
-    <ActiveWithdrawal treasury={treasury} pending={pending} now={now} />
+    <ActiveWithdrawal writeTarget={writeTarget} pending={pending} now={now} />
   ) : (
-    <AnnounceForm treasury={treasury} assets={assets} noticePeriod={noticePeriod} symbol={symbol} isConnected={isConnected} />
+    <AnnounceForm writeTarget={writeTarget} assets={assets} noticePeriod={noticePeriod} symbol={symbol} isConnected={isConnected} />
   );
 }
 
-function ActiveWithdrawal({ treasury, pending, now }: { treasury: Address; pending: PendingWithdrawal; now: number }) {
+function ActiveWithdrawal({ writeTarget, pending, now }: { writeTarget: Address; pending: PendingWithdrawal; now: number }) {
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
   const { writeContractAsync } = useWriteContract();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -83,7 +94,7 @@ function ActiveWithdrawal({ treasury, pending, now }: { treasury: Address; pendi
     let h: `0x${string}`;
     try {
       h = await writeContractAsync({
-        address: treasury,
+        address: writeTarget,
         abi: projectTreasuryAbi,
         functionName: fn,
         args: [pending.id],
@@ -165,13 +176,13 @@ function ActiveWithdrawal({ treasury, pending, now }: { treasury: Address; pendi
 }
 
 function AnnounceForm({
-  treasury,
+  writeTarget,
   assets,
   noticePeriod,
   symbol,
   isConnected,
 }: {
-  treasury: Address;
+  writeTarget: Address;
   assets: AssetView[];
   noticePeriod?: bigint;
   symbol?: string;
@@ -216,7 +227,7 @@ function AnnounceForm({
     let h: `0x${string}`;
     try {
       h = await writeContractAsync({
-        address: treasury,
+        address: writeTarget,
         abi: projectTreasuryAbi,
         functionName: "announceWithdrawal",
         args: [active.asset, amount],

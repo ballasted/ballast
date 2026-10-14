@@ -1026,12 +1026,50 @@ export const feeRouterAbi = [
     ],
     outputs: [],
   },
+  // Creator/treasury pass-throughs — identical signatures to ProjectTreasury, so a
+  // router-managed launch drives its treasury through these (the router is the
+  // on-chain creator; see useRouterCreator).
+  {
+    type: "function",
+    name: "announceWithdrawal",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "id", type: "uint256" }],
+  },
+  { type: "function", name: "executeWithdrawal", stateMutability: "nonpayable", inputs: [{ name: "id", type: "uint256" }], outputs: [] },
+  { type: "function", name: "cancelWithdrawal", stateMutability: "nonpayable", inputs: [{ name: "id", type: "uint256" }], outputs: [] },
+  { type: "function", name: "acceptDeposit", stateMutability: "nonpayable", inputs: [{ name: "id", type: "uint256" }], outputs: [] },
+  { type: "function", name: "declineDeposit", stateMutability: "nonpayable", inputs: [{ name: "id", type: "uint256" }], outputs: [] },
   {
     type: "function",
     name: "flushDeferredBuyback",
     stateMutability: "nonpayable",
     inputs: [{ name: "minOut", type: "uint256" }],
     outputs: [{ name: "bought", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "runBasket",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "legs",
+        type: "tuple[]",
+        components: [
+          { name: "asset", type: "address" },
+          { name: "weightBps", type: "uint16" },
+          { name: "preferFables", type: "bool" },
+          { name: "fablesHopIdx", type: "uint256[]" },
+          { name: "ramsesHopIdx", type: "uint256[]" },
+          { name: "minOut", type: "uint256" },
+        ],
+      },
+      { name: "swapDeadline", type: "uint256" },
+    ],
+    outputs: [{ name: "deposited", type: "uint256[]" }],
   },
   {
     type: "function",

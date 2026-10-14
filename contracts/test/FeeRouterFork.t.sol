@@ -20,10 +20,11 @@ import {BallastHook, BALLAST_HOOK_FLAGS} from "../src/BallastHook.sol";
 import {FeeConfig} from "../src/FeeConfig.sol";
 import {AssetRegistry} from "../src/AssetRegistry.sol";
 import {ProjectTreasury} from "../src/ProjectTreasury.sol";
-import {FeeRouter} from "../src/FeeRouter.sol";
+import {FeeRouter, BasketLeg} from "../src/FeeRouter.sol";
 import {FeeRouterFactory} from "../src/FeeRouterFactory.sol";
 import {HolderStakingVault} from "../src/HolderStakingVault.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockBasketZap} from "./mocks/MockBasketZap.sol";
 
 interface IWETH9c {
     function deposit() external payable;
@@ -60,6 +61,8 @@ contract FeeRouterForkTest is Test {
     PoolModifyLiquidityTest lp;
     PoolSwapTest swap;
     MockERC20 treasuryAsset;
+    MockERC20 basketAsset2;
+    MockBasketZap mockZap;
     PoolKey treasuryKey;
 
     address platform = makeAddr("platform");
@@ -84,7 +87,11 @@ contract FeeRouterForkTest is Test {
         factory = new BallastFactory(
             address(registry), WETH, seeder, address(_ethFeed()), 24 hours, new address[](0)
         );
-        routerFactory = new FeeRouterFactory();
+        // Mock BasketZap (mints each leg asset to the router — the real swap routing
+        // is proven in BasketZapFork.t.sol; here we exercise runBasket's own
+        // delta-deposit + bucket-safety against the real treasury/pools).
+        mockZap = new MockBasketZap(100e18);
+        routerFactory = new FeeRouterFactory(address(mockZap));
 
         lp = new PoolModifyLiquidityTest(MANAGER);
         swap = new PoolSwapTest(MANAGER);
@@ -101,6 +108,10 @@ contract FeeRouterForkTest is Test {
         treasuryAsset.mint(address(this), 1_000_000e18);
         treasuryAsset.approve(address(lp), type(uint256).max);
         treasuryAsset.approve(address(swap), type(uint256).max);
+
+        // A second registry-listed asset so the basket test uses 2 legs.
+        basketAsset2 = new MockERC20("Mock SPY", "SPY", 18);
+        registry.setAsset(address(basketAsset2), address(0xFEED), 1 days, 1);
 
         bool wethIsC0 = WETH < address(treasuryAsset);
         treasuryKey = PoolKey({
@@ -349,6 +360,82 @@ contract FeeRouterForkTest is Test {
             depositAmt,
             "creatorDeposit via router credits creator-withdrawable balance"
         );
+    }
+
+    // --------------------------------------------------------------------- //
+    //  runBasket on a real router launch: basket deposited, buckets intact    //
+    // --------------------------------------------------------------------- //
+
+    function test_fork_runBasket_depositsBasket_bucketsIntact_routeStillWorks() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        (FeeRouter router, address token, address treasury) = _launchViaRouter(1000);
+        factory.graduate(token);
+        router.wireBuybackPool();
+        PoolKey memory tokenKey =
+            PoolKey({currency0: Currency.wrap(token), currency1: Currency.wrap(WETH), fee: 0, tickSpacing: 60, hooks: IHooks(address(hook))});
+
+        // Four-way split + a staker so every bucket has somewhere to land.
+        vm.prank(realCreator);
+        router.scheduleSplit(2500, 2500, 2500, 2500);
+        vm.warp(block.timestamp + 7 days);
+
+        address staker = makeAddr("staker");
+        deal(WETH, staker, 2 ether);
+        vm.startPrank(staker);
+        IERC20(WETH).approve(address(swap), type(uint256).max);
+        _buyTokenWithWeth(tokenKey, 1 ether);
+        MockRouterCheck(token).approve(router.stakingVault(), type(uint256).max);
+        HolderStakingVault(router.stakingVault()).stake(MockRouterCheck(token).balanceOf(staker));
+        vm.stopPrank();
+
+        // Real fee, then route only a SLICE so the router keeps leftover WETH
+        // earmarked for the buckets ("router holds pending bucket funds").
+        _buyTokenWithWeth(tokenKey, 4 ether);
+        router.route(0.0001 ether, 0, 0);
+        uint256 routerWethHeld = IERC20(WETH).balanceOf(address(router));
+        assertGt(routerWethHeld, 0, "router holds leftover bucket WETH");
+
+        uint256 c0 = router.totalRoutedToCreator();
+        uint256 t0 = router.totalRoutedToTreasury();
+        uint256 b0 = router.totalRoutedToBuyback();
+        uint256 r0 = router.totalRoutedToRewards();
+
+        // runBasket with two legs (mock mints 100e18 of each to the router).
+        BasketLeg[] memory legs = new BasketLeg[](2);
+        legs[0] = BasketLeg({asset: address(treasuryAsset), weightBps: 5000, preferFables: false, fablesHopIdx: new uint256[](0), ramsesHopIdx: new uint256[](0), minOut: 1});
+        legs[1] = BasketLeg({asset: address(basketAsset2), weightBps: 5000, preferFables: false, fablesHopIdx: new uint256[](0), ramsesHopIdx: new uint256[](0), minOut: 1});
+
+        uint256 wd1Before = ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset));
+        uint256 wd2Before = ProjectTreasury(treasury).creatorWithdrawable(address(basketAsset2));
+
+        vm.deal(realCreator, 1 ether);
+        vm.prank(realCreator);
+        router.runBasket{value: 1 ether}(legs, block.timestamp + 1 hours);
+
+        // Treasury credited EXACTLY the swapped amounts, creator-withdrawable (the
+        // route() treasury bucket is LOCKED and tracked separately, so these deltas
+        // come only from runBasket).
+        assertEq(ProjectTreasury(treasury).creatorWithdrawable(address(treasuryAsset)) - wd1Before, 100e18, "leg 1 deposited");
+        assertEq(ProjectTreasury(treasury).creatorWithdrawable(address(basketAsset2)) - wd2Before, 100e18, "leg 2 deposited");
+
+        // runBasket touched NO bucket funds or accounting.
+        assertEq(IERC20(WETH).balanceOf(address(router)), routerWethHeld, "bucket WETH untouched");
+        assertEq(router.pendingBuybackWeth(), 0, "no pending buyback (pool wired)");
+        assertEq(router.totalRoutedToCreator(), c0);
+        assertEq(router.totalRoutedToTreasury(), t0);
+        assertEq(router.totalRoutedToBuyback(), b0);
+        assertEq(router.totalRoutedToRewards(), r0);
+
+        // route() still distributes the held WETH across every bucket.
+        vm.warp(block.timestamp + 1 hours);
+        router.route(0, 0, 0);
+        assertGt(router.totalRoutedToCreator(), c0, "creator bucket still paid");
+        assertGt(router.totalRoutedToTreasury(), t0, "treasury bucket still paid");
+        assertGt(router.totalRoutedToBuyback(), b0, "buyback bucket still paid");
+        assertGt(router.totalRoutedToRewards(), r0, "rewards bucket still paid");
     }
 }
 
