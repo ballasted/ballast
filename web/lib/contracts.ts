@@ -23,6 +23,41 @@ export const HOOK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS);
 export const FEE_CONFIG_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_FEE_CONFIG_ADDRESS,
 );
+
+// ── Per-generation FeeConfig addresses ───────────────────────────────────────
+// A launch's fee split (creator/platform/referrer bps) lives in the FeeConfig of
+// the factory that launched it. Each generation has its own FeeConfig, so the
+// split DIFFERS by generation and must be resolved per owning-factory — NOT from
+// one global env var (a single NEXT_PUBLIC_FEE_CONFIG_ADDRESS pointing at a
+// prior-gen FeeConfig is exactly what made the Create page show a stale 50/35/15
+// for a gen-4 launch). These addresses are deployment facts (like HISTORICAL_HOOKS
+// / docs/BALLAST_STATE.md), authoritative in code; the BPS themselves are still
+// read LIVE from each FeeConfig (useFeeSplit), so an owner retune is reflected.
+//   gen-4 (current)  0xE09F…E5AD → 100/8000/2000/0  = 80% / 20% / 0%
+//   gen-1            0xf814…1304 → 100/5000/3500/1500 = 50% / 35% / 15%
+//   gen-2 & gen-3    0xc0b8…a594 (shared) → 50% / 35% / 15%
+const GEN4_FEE_CONFIG = "0xE09F093595045E8765F420Cb12E0AA250910E5AD" as Address;
+export const FACTORY_FEE_CONFIGS: { factory: Address; feeConfig: Address }[] = [
+  { factory: "0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67" as Address, feeConfig: GEN4_FEE_CONFIG },
+  { factory: "0x069974136c78Cf0F2162463B95321E59F56523D8" as Address, feeConfig: "0xf814CA06aFfaBD1aa5Cd31aDB5F25D23E9871304" as Address },
+  { factory: "0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1" as Address, feeConfig: "0xc0b895bc683bf4aca30c7277d42d068e0973a594" as Address },
+  { factory: "0x3eb5532e982931cad40d0416adbd7930a57965ae" as Address, feeConfig: "0xc0b895bc683bf4aca30c7277d42d068e0973a594" as Address },
+];
+
+// The CURRENT factory's FeeConfig — what the Create flow (always a new gen-4
+// launch) displays. Code-authoritative (the gen-4 FeeConfig), so a stale/misset
+// NEXT_PUBLIC_FEE_CONFIG_ADDRESS can't make a gen-4 launch render 50/35/15.
+export const CURRENT_FEE_CONFIG: Address = GEN4_FEE_CONFIG;
+
+/** The FeeConfig a launch's split should be read from, by the factory that
+ *  launched it. Unknown/undefined factory → the current (gen-4) FeeConfig. */
+export function feeConfigForFactory(factory?: Address): Address {
+  if (factory) {
+    const m = FACTORY_FEE_CONFIGS.find((e) => e.factory.toLowerCase() === factory.toLowerCase());
+    if (m) return m.feeConfig;
+  }
+  return CURRENT_FEE_CONFIG;
+}
 // MetadataDenylist — owner-managed, default-allow display takedown for impersonation
 // metadata. Unset = nothing is ever suppressed (default-allow), so a missing address
 // degrades to the permissive state, never to hiding tokens.

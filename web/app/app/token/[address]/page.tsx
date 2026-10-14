@@ -20,6 +20,7 @@ import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanne
 import { SwapPanel } from "@/components/app/SwapPanel";
 import { FeePanel } from "@/components/app/FeePanel";
 import { FeeRouterCard } from "@/components/app/token/FeeRouterCard";
+import { FeeSplitInfo } from "@/components/app/token/FeeSplitInfo";
 import { StakingPanel } from "@/components/app/token/StakingPanel";
 import { FeeRouterDashboard } from "@/components/app/token/FeeRouterDashboard";
 import {
@@ -267,6 +268,10 @@ export default function TokenDetailPage() {
             )}
 
             <ProtocolTokenNotice token={token} />
+
+            {/* The launch's swap-fee split, read from ITS generation's FeeConfig
+                (gen-4 = 80/20/0; gen-1..3 show their own 50/35/15). */}
+            <FeeSplitInfo factory={ownerFactory} />
 
             <FeeRouterCard token={token} />
             <StakingPanel token={token} symbol={symbol} />
