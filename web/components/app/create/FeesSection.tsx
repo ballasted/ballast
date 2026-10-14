@@ -119,7 +119,10 @@ export function FeesSection({ split, onChange }: { split: FeeSplitBps; onChange:
       {total !== BPS && <p className="text-xs text-negative">Split must sum to 100% (currently {(total / 100).toFixed(0)}%).</p>}
 
       {preset !== "creator" && (
-        <p className="text-xs text-text-faint">Your fees route through this page instead of straight to your wallet.</p>
+        <p className="text-xs text-text-faint">
+          Your creator fees go to a FeeRouter contract for this token, which splits them on-chain by these percentages.
+          Changes take effect 7 days after you schedule them.
+        </p>
       )}
     </section>
   );

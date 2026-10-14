@@ -1147,6 +1147,17 @@ export const feeRouterAbi = [
     ],
   },
   { type: "event", name: "RoutedToRewards", inputs: [{ name: "amount", type: "uint256", indexed: false }] },
+  // Custom errors — included so viem decodes a reverted route()/wireBuybackPool()
+  // simulation by name (the route-preflight UI maps these to friendly reasons).
+  { type: "error", name: "NothingToRoute", inputs: [] },
+  { type: "error", name: "Cooldown", inputs: [{ name: "readyAt", type: "uint256" }] },
+  { type: "error", name: "NotWired", inputs: [] },
+  { type: "error", name: "BuybackNotWired", inputs: [] },
+  { type: "error", name: "NotGraduated", inputs: [] },
+  { type: "error", name: "AlreadyWired", inputs: [] },
+  { type: "error", name: "MinAmountOutNotMet", inputs: [{ name: "got", type: "uint256" }, { name: "wanted", type: "uint256" }] },
+  { type: "error", name: "BadBasketAsset", inputs: [{ name: "asset", type: "address" }] },
+  { type: "error", name: "BasketZapNotSet", inputs: [] },
 ] as const;
 
 export const holderStakingVaultAbi = [
