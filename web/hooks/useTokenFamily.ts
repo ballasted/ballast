@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePublicClient, useReadContracts } from "wagmi";
 import { getAbiItem, type Address } from "viem";
 import { feeRouterV2Abi, feeRouterFactoryV2Abi } from "@/lib/abis";
-import { FEE_ROUTER_FACTORIES } from "@/lib/contracts";
+import { FEE_ROUTER_FACTORIES, isHiddenToken } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
 import { backfillLogs } from "@/lib/eventBackfill";
@@ -96,7 +96,8 @@ export function useTokenFamily(token?: Address): { family: TokenFamily; isLoadin
       if (!parent || parent.toLowerCase() === ZERO || parent.toLowerCase() !== want) continue;
       const childToken = res.data[i * 3 + 1]?.status === "success" ? (res.data[i * 3 + 1]!.result as Address) : undefined;
       const burned = res.data[i * 3 + 2]?.status === "success" ? (res.data[i * 3 + 2]!.result as bigint) : 0n;
-      if (childToken) children.push({ router: routers[i]!, childToken, burned });
+      // Hidden test/smoke launches never count toward a parent's children tally.
+      if (childToken && !isHiddenToken(childToken)) children.push({ router: routers[i]!, childToken, burned });
     }
     const totalBurnedByChildren = children.reduce((s, c) => s + c.burned, 0n);
     return { children, childCount: children.length, totalBurnedByChildren };

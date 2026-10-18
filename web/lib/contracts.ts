@@ -279,7 +279,10 @@ export const PERMIT2_ADDRESS =
 // gen-4 "TEST" token (0x3Fec2b…) was a disposable end-to-end factory probe and
 // should never surface on a browsable list. Correct default lives here; the env
 // var stays an override/extension only.
-const CODE_HIDDEN_TOKENS: Address[] = ["0x3fec2b548755d53fd8db97cac0c14dfa99f0e335"];
+const CODE_HIDDEN_TOKENS: Address[] = [
+  "0x3fec2b548755d53fd8db97cac0c14dfa99f0e335", // gen-4 "TEST" factory probe
+  "0x28c53790d77a23715972ae01ab7fa8430b31846f", // FeeRouter v2 smoke-test launch (reachable by direct URL only)
+];
 export const HIDDEN_TOKEN_ADDRESSES: Address[] = [
   ...CODE_HIDDEN_TOKENS,
   ...parseAddressList(process.env.NEXT_PUBLIC_HIDDEN_TOKEN_ADDRESSES),

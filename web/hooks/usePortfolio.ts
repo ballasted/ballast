@@ -3,6 +3,7 @@
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
+import { isHiddenToken } from "@/lib/contracts";
 import { useProjects, type Project } from "./useProjects";
 
 const CHAIN_ID = activeChain.id;
@@ -38,6 +39,7 @@ export function usePortfolio() {
   // after a hook redeploy, with no second round of pool reads here.
   const holdings: Holding[] = [];
   projects.forEach((p, i) => {
+    if (isHiddenToken(p.token)) return; // hidden test/smoke launches never surface in holdings
     const b = balRes.data?.[i];
     const balance = b?.status === "success" ? (b.result as bigint) : 0n;
     if (balance === 0n) return;
@@ -61,7 +63,7 @@ export function usePortfolio() {
   const unbackedValue = totalValue - backedValue;
 
   const myLaunches = account
-    ? projects.filter((p) => p.creator.toLowerCase() === account.toLowerCase())
+    ? projects.filter((p) => p.creator.toLowerCase() === account.toLowerCase() && !isHiddenToken(p.token))
     : [];
 
   return {

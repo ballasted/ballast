@@ -9,7 +9,7 @@ import { useAssets } from "@/hooks/useAssets";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { shortAddress } from "@/lib/format";
-import { isBasketConfigured, isRetiredToken, WETH_ADDRESS } from "@/lib/contracts";
+import { isBasketConfigured, isHiddenToken, isRetiredToken, WETH_ADDRESS } from "@/lib/contracts";
 import type { BasketSwap } from "@/hooks/useBasketHistory";
 
 // Public baskets directory — explains what a stock basket is in one line and
@@ -32,7 +32,7 @@ export default function BasketsPage() {
     const out: { token: Address; symbol?: string; name?: string; latest: BasketSwap }[] = [];
     for (const [token, swaps] of byToken) {
       if (swaps.length === 0) continue;
-      if (isRetiredToken(token as Address)) continue;
+      if (isRetiredToken(token as Address) || isHiddenToken(token as Address)) continue;
       const latest = [...swaps].sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : -1))[0]!;
       const p = projects.find((x) => x.token.toLowerCase() === token);
       out.push({ token: (p?.token ?? (token as Address)) as Address, symbol: p?.symbol, name: p?.name, latest });
