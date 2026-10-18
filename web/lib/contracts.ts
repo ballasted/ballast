@@ -98,7 +98,27 @@ export const V1_CLAIM_DEADLINE_UNIX = 1791745997;
 export const FEE_ROUTER_FACTORY_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_FEE_ROUTER_FACTORY_ADDRESS,
 );
-export const isFeeRouterFactoryConfigured = Boolean(FEE_ROUTER_FACTORY_ADDRESS);
+// FeeRouterFactoryV2 — adds an initial split active from block one + an asymmetric
+// scheduleSplit delay (instant when lowering the creator share). Separate env so a
+// deploy flips new launches to v2 without touching v1 or existing routers. Unset =
+// fall back to v1 everywhere.
+export const FEE_ROUTER_FACTORY_V2_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_FEE_ROUTER_FACTORY_V2_ADDRESS,
+);
+export const isFeeRouterFactoryConfigured = Boolean(FEE_ROUTER_FACTORY_ADDRESS || FEE_ROUTER_FACTORY_V2_ADDRESS);
+export const isFeeRouterV2Active = Boolean(FEE_ROUTER_FACTORY_V2_ADDRESS);
+
+// The factory NEW launches route through: v2 when configured, else v1.
+export const CURRENT_FEE_ROUTER_FACTORY = FEE_ROUTER_FACTORY_V2_ADDRESS ?? FEE_ROUTER_FACTORY_ADDRESS;
+
+// Every fee-router factory to scan for existing routers (FeeRouterCreated events),
+// newest-first, so routers from BOTH v1 and v2 are detected/displayed. Each entry
+// carries its version so the UI can apply v2's instant-vs-delayed timing only to v2
+// routers (v1 routers always delay). Tagged, deduped of unset addresses.
+export const FEE_ROUTER_FACTORIES: { address: Address; version: 1 | 2 }[] = [
+  ...(FEE_ROUTER_FACTORY_V2_ADDRESS ? [{ address: FEE_ROUTER_FACTORY_V2_ADDRESS, version: 2 as const }] : []),
+  ...(FEE_ROUTER_FACTORY_ADDRESS ? [{ address: FEE_ROUTER_FACTORY_ADDRESS, version: 1 as const }] : []),
+];
 
 // Open Treasury — permissionless community deposits earning a variable share of
 // trading fees (contracts/src/OpenTreasuryVault{,Factory}.sol, OpenTreasuryLens.sol,
