@@ -12,6 +12,11 @@ import {MockRouterToken} from "./MockRouterToken.sol";
 contract MockRouterFactory {
     uint256 public constant TICK_SPACING = 60;
     mapping(address => bool) public graduated;
+    /// @notice token => id+1 (0 means unknown), mirroring BallastFactory.launchIdOf
+    ///         so FeeRouterV2's "is this a Ballast-launched token" parent check has
+    ///         the same surface to read. Additive — v1 FeeRouter never reads it.
+    mapping(address token => uint256 idPlusOne) public launchIdOf;
+    uint256 internal _nextId;
     address public registry;
 
     constructor(address registry_) {
@@ -27,10 +32,17 @@ contract MockRouterFactory {
         t.setTreasury(address(tr));
         token = address(t);
         treasury = address(tr);
-        id = 0;
+        id = ++_nextId;
+        launchIdOf[token] = id; // register as Ballast-launched
     }
 
     function setGraduated(address token, bool value) external {
         graduated[token] = value;
+    }
+
+    /// @notice Test helper: mark an externally-deployed token as Ballast-launched
+    ///         (used to stand in for a parent token in FeeRouterV2 family tests).
+    function registerLaunch(address token) external {
+        if (launchIdOf[token] == 0) launchIdOf[token] = ++_nextId;
     }
 }

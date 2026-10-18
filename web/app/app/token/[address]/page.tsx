@@ -273,7 +273,7 @@ export default function TokenDetailPage() {
                 (gen-4 = 80/20/0; gen-1..3 show their own 50/35/15). */}
             <FeeSplitInfo factory={ownerFactory} />
 
-            <FeeRouterCard token={token} />
+            <FeeRouterCard token={token} factory={ownerFactory} />
             <StakingPanel token={token} symbol={symbol} />
             <FeeRouterDashboard token={token} />
 

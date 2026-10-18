@@ -3,10 +3,11 @@
 import { useCallback, useRef, useState } from "react";
 import { useWriteContract, usePublicClient, useAccount } from "wagmi";
 import { decodeEventLog, type Address } from "viem";
-import { ballastFactoryAbi, erc20Abi, projectTreasuryWriteAbi, feeRouterFactoryAbi, feeRouterAbi } from "@/lib/abis";
+import { ballastFactoryAbi, erc20Abi, projectTreasuryWriteAbi, feeRouterFactoryAbi, feeRouterFactoryV2Abi, feeRouterAbi } from "@/lib/abis";
 import {
   FACTORY_ADDRESS,
-  FEE_ROUTER_FACTORY_ADDRESS,
+  CURRENT_FEE_ROUTER_FACTORY,
+  isFeeRouterV2Active,
   HOOK_ADDRESS,
   WETH_ADDRESS,
   POOL_MANAGER_ADDRESS,
@@ -41,7 +42,18 @@ const MAX_SLIPPAGE_BPS = 1000; // 10% -- matches the create-flow's swap-toleranc
 const MAX_ROUTE_PER_CALL = 100_000_000_000_000_000_000n; // 100 ETH/call -- generous, never the bottleneck
 const ROUTE_COOLDOWN_SECONDS = 3600n; // 1 hour between permissionless route() calls
 
-export type FeeSplitBps = { creatorBps: number; treasuryBps: number; buybackBps: number; rewardsBps: number };
+export type FeeSplitBps = {
+  creatorBps: number;
+  treasuryBps: number;
+  buybackBps: number;
+  parentBurnBps: number;
+  rewardsBps: number;
+  // The optional family parent for the parentBurn bucket. Only meaningful on v2
+  // (v1 has no parentBurn bucket); ignored on the v1 fallback path.
+  parent?: Address;
+};
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
 function baseSteps(backed: boolean): LaunchStep[] {
   const launch: LaunchStep = { key: "launch", label: backed ? "Deploy fee router + token + treasury" : "Deploy fee router + token", status: "idle" };
@@ -89,8 +101,12 @@ export function useFeeRouterLaunchRunner() {
 
   const run = useCallback(
     async (params: LaunchParams, split: FeeSplitBps) => {
-      if (!FACTORY_ADDRESS || !FEE_ROUTER_FACTORY_ADDRESS || !HOOK_ADDRESS || !WETH_ADDRESS || !POOL_MANAGER_ADDRESS || !ASSET_REGISTRY_ADDRESS) return;
+      if (!FACTORY_ADDRESS || !CURRENT_FEE_ROUTER_FACTORY || !HOOK_ADDRESS || !WETH_ADDRESS || !POOL_MANAGER_ADDRESS || !ASSET_REGISTRY_ADDRESS) return;
       if (!publicClient) return;
+      // v2 sets the split (and family parent) in createAndLaunch itself — active
+      // from block one, no separate scheduleSplit. v1 deploys 100%-creator then
+      // schedules the chosen split (which waits out the 7-day delay).
+      const routerFactoryAbi = isFeeRouterV2Active ? feeRouterFactoryV2Abi : feeRouterFactoryAbi;
       const backed = Boolean(params.deposit);
       setSteps(baseSteps(backed));
       setResult(null);
@@ -135,35 +151,55 @@ export function useFeeRouterLaunchRunner() {
         if (token && treasury && router) {
           patch("launch", { status: "success" });
         } else {
+          // Shared leading args (identical across v1/v2 createAndLaunch).
+          const commonArgs = [
+            HOOK_ADDRESS!,
+            WETH_ADDRESS!,
+            POOL_MANAGER_ADDRESS!,
+            ZERO_ADDRESS, // treasuryAsset — bucket disabled client-side (see ZERO_POOL_KEY note)
+            ZERO_POOL_KEY,
+            ASSET_REGISTRY_ADDRESS!,
+            MAX_SLIPPAGE_BPS,
+            MAX_ROUTE_PER_CALL,
+            ROUTE_COOLDOWN_SECONDS,
+            DISCLOSURE_VERSION,
+            FACTORY_ADDRESS!,
+            params.name,
+            params.symbol,
+            params.noticePeriod,
+            params.metadataURI,
+            params.quoteAssets,
+          ] as const;
+
           const receipt = await send("launch", () =>
-            writeContractAsync({
-              address: FEE_ROUTER_FACTORY_ADDRESS!,
-              abi: feeRouterFactoryAbi,
-              functionName: "createAndLaunch",
-              args: [
-                HOOK_ADDRESS!,
-                WETH_ADDRESS!,
-                POOL_MANAGER_ADDRESS!,
-                "0x0000000000000000000000000000000000000000",
-                ZERO_POOL_KEY,
-                ASSET_REGISTRY_ADDRESS!,
-                MAX_SLIPPAGE_BPS,
-                MAX_ROUTE_PER_CALL,
-                ROUTE_COOLDOWN_SECONDS,
-                DISCLOSURE_VERSION,
-                FACTORY_ADDRESS!,
-                params.name,
-                params.symbol,
-                params.noticePeriod,
-                params.metadataURI,
-                params.quoteAssets,
-              ],
-              chainId: CHAIN_ID,
-            }),
+            isFeeRouterV2Active
+              ? writeContractAsync({
+                  address: CURRENT_FEE_ROUTER_FACTORY!,
+                  abi: feeRouterFactoryV2Abi,
+                  functionName: "createAndLaunch",
+                  // v2: family parent + 5-bucket split, ACTIVE from block one.
+                  args: [
+                    ...commonArgs,
+                    split.parent ?? ZERO_ADDRESS,
+                    split.creatorBps,
+                    split.treasuryBps,
+                    split.buybackBps,
+                    split.parentBurnBps,
+                    split.rewardsBps,
+                  ],
+                  chainId: CHAIN_ID,
+                })
+              : writeContractAsync({
+                  address: CURRENT_FEE_ROUTER_FACTORY!,
+                  abi: feeRouterFactoryAbi,
+                  functionName: "createAndLaunch",
+                  args: [...commonArgs],
+                  chainId: CHAIN_ID,
+                }),
           );
           for (const log of receipt!.logs) {
             try {
-              const parsed = decodeEventLog({ abi: feeRouterFactoryAbi, ...log });
+              const parsed = decodeEventLog({ abi: routerFactoryAbi, ...log });
               if (parsed.eventName === "FeeRouterCreated") {
                 router = parsed.args.router as Address;
               }
@@ -186,11 +222,13 @@ export function useFeeRouterLaunchRunner() {
           launchedRef.current = { token, treasury, router };
           setLaunched({ token, treasury, router });
 
-          // Schedule the creator's chosen split immediately — the default
-          // on-chain split is 100% creator until this lands and the 7-day
-          // delay elapses, which is the correct, honest behavior (never skip
-          // the delay, even for the very first split away from default).
-          if (split.creatorBps !== 10000 || split.buybackBps !== 0 || split.rewardsBps !== 0 || split.treasuryBps !== 0) {
+          // v1 ONLY: schedule the chosen split after deploy — the default on-chain
+          // split is 100% creator until this lands and the 7-day delay elapses
+          // (never skip the delay). v2 set the split inside createAndLaunch above,
+          // so it is already active from block one — nothing to schedule here.
+          const splitIsDefault =
+            split.creatorBps === 10000 && split.buybackBps === 0 && split.rewardsBps === 0 && split.treasuryBps === 0 && split.parentBurnBps === 0;
+          if (!isFeeRouterV2Active && !splitIsDefault) {
             try {
               const scheduleHash = await writeContractAsync({
                 address: router,

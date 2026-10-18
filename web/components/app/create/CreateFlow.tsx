@@ -25,12 +25,14 @@ import { erc20Abi } from "@/lib/abis";
 import {
   isFactoryConfigured,
   isFeeRouterFactoryConfigured,
+  isFeeRouterV2Active,
   isRamsesEnabled,
   isBasketEnabled,
   FACTORY_ADDRESS,
   TOTAL_SUPPLY,
   WETH_ADDRESS,
 } from "@/lib/contracts";
+import { effectiveSplitParts, type RouterSplitBps } from "@/lib/feeRouter";
 import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
@@ -181,9 +183,16 @@ export function CreateFlow() {
     creatorBps: 10000,
     treasuryBps: 0,
     buybackBps: 0,
+    parentBurnBps: 0,
     rewardsBps: 0,
   });
-  const routerIsDefault = routerSplit.creatorBps === 10000 && routerSplit.treasuryBps === 0 && routerSplit.buybackBps === 0 && routerSplit.rewardsBps === 0;
+  const routerIsDefault =
+    routerSplit.creatorBps === 10000 &&
+    routerSplit.treasuryBps === 0 &&
+    routerSplit.buybackBps === 0 &&
+    routerSplit.parentBurnBps === 0 &&
+    routerSplit.rewardsBps === 0 &&
+    !routerSplit.parent;
 
   // Submit lifecycle
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -288,7 +297,9 @@ export function CreateFlow() {
     : true;
   const quoteAssetsValid = quoteAssets.length > 0;
   const routerSplitValid =
-    routerSplit.creatorBps + routerSplit.treasuryBps + routerSplit.buybackBps + routerSplit.rewardsBps === 10000;
+    routerSplit.creatorBps + routerSplit.treasuryBps + routerSplit.buybackBps + routerSplit.parentBurnBps + routerSplit.rewardsBps === 10000 &&
+    // The parentBurn bucket is meaningless without a parent to burn.
+    (routerSplit.parentBurnBps === 0 || Boolean(routerSplit.parent));
   const formValid = projectValid && treasuryValid && quoteAssetsValid && routerSplitValid;
 
   function openConfirm() {
@@ -649,7 +660,9 @@ export function CreateFlow() {
               100% creator leaves current behavior unchanged (see
               routerIsDefault above); anything else routes the launch through
               FeeRouterFactory instead of BallastFactory directly. */}
-          {isFeeRouterFactoryConfigured && <FeesSection split={routerSplit} onChange={setRouterSplit} />}
+          {isFeeRouterFactoryConfigured && (
+            <FeesSection split={routerSplit} onChange={setRouterSplit} allowParent={isFeeRouterV2Active} thisTokenSymbol={symbolClean} />
+          )}
 
           {/* Advanced — creator wallet. See note: the factory records msg.sender as
               creator; there is no override parameter, so we surface the address as a
@@ -722,6 +735,8 @@ export function CreateFlow() {
               feeSplit={feeSplit}
               feeLoading={feeLoading}
               feeConfigured={feeConfigured}
+              routerSplit={routerSplit}
+              isV2={isFeeRouterV2Active}
               freshness={freshness}
               openFdv={openFdv}
               quoteAssets={quoteAssets}
@@ -751,6 +766,8 @@ export function CreateFlow() {
           feeSplit={feeSplit}
           feeLoading={feeLoading}
           feeConfigured={feeConfigured}
+          routerSplit={routerSplit}
+          isV2={isFeeRouterV2Active}
           freshness={freshness}
           openFdv={openFdv}
           quoteAssets={quoteAssets}
@@ -824,6 +841,8 @@ function PreviewCard(p: {
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number; feePct: number };
   feeLoading?: boolean;
   feeConfigured?: boolean;
+  routerSplit: RouterSplitBps;
+  isV2: boolean;
   freshness?: { tier: string; label: string };
   openFdv?: OpenFdv;
   quoteAssets: Address[];
@@ -938,9 +957,13 @@ function PreviewCard(p: {
           </PreviewRow>
         )}
 
-        <PreviewRow label="Fee split">
-          <FeeSplitValue split={p.feeSplit} loading={p.feeLoading} configured={p.feeConfigured} />
-        </PreviewRow>
+        <FeeSplitBlock
+          fee={p.feeSplit}
+          loading={p.feeLoading}
+          configured={p.feeConfigured}
+          router={p.routerSplit}
+          isV2={p.isV2}
+        />
 
         <PreviewRow label="Liquidity">Locked permanently</PreviewRow>
         <PreviewRow label="Creator allocation">
@@ -1487,6 +1510,59 @@ function formatFeedPrice(price?: bigint, dec?: number): string {
   if (price === undefined || dec === undefined) return "—";
   const v = Number(price) / 10 ** dec;
   return `$${Intl.NumberFormat("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)}`;
+}
+
+// The EFFECTIVE split of the TOTAL swap fee: the platform's live FeeConfig split
+// (creator/platform/referrer) with the creator share further divided across the
+// router buckets the creator chose. Colours + labels match the split bar; 0%
+// buckets are hidden; a subline states which share the router actually divides;
+// a timing label states when the chosen split takes effect (v2: from launch;
+// v1: 7-day schedule). The token page renders the identical helper output.
+function FeeSplitBlock({
+  fee,
+  loading,
+  configured,
+  router,
+  isV2,
+}: {
+  fee?: { creatorPct: number; platformPct: number; referrerPct: number };
+  loading?: boolean;
+  configured?: boolean;
+  router: RouterSplitBps;
+  isV2: boolean;
+}) {
+  if (!fee) {
+    return (
+      <PreviewRow label="Fee split">
+        <FeeSplitValue split={fee} loading={loading} configured={configured} />
+      </PreviewRow>
+    );
+  }
+  const parts = effectiveSplitParts(fee, router);
+  const isDefault =
+    router.creatorBps === 10000 && router.treasuryBps === 0 && router.buybackBps === 0 && router.parentBurnBps === 0 && router.rewardsBps === 0;
+  return (
+    <div className="space-y-2 border-t border-border pt-3 text-sm">
+      <span className="text-text-muted">Fee split</span>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {parts.map((pt) => (
+          <span key={pt.key} className="inline-flex items-center gap-1.5 text-text-primary">
+            <span className={cn("h-2 w-2 rounded-full", pt.color)} />
+            <span className="text-text-secondary">{pt.label}</span>
+            <span className="font-mono">{pt.pct}%</span>
+          </span>
+        ))}
+      </div>
+      <p className="text-xs text-text-faint">Your split applies to the {fee.creatorPct}% creator share.</p>
+      {!isDefault && (
+        <p className="text-xs text-text-faint">
+          {isV2
+            ? "Active from launch."
+            : "Scheduled: starts 7 days after launch. Until then 100% of the creator share goes to you."}
+        </p>
+      )}
+    </div>
+  );
 }
 
 // The live fee split, read from the deployed FeeConfig — never the string "read

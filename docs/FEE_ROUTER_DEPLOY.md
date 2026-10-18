@@ -18,6 +18,44 @@ deployer's nonce 0). The draft runbook below is retained for reference.
 
 ---
 
+## FeeRouterFactory **v2** (DEPLOYED — LIVE IN PRODUCTION)
+
+v2 is a brand-new factory alongside v1 (v1 untouched). It adds: an initial split
+**active from block one** (set in `createAndLaunch`, no 7-day wait for the launch
+split); an **asymmetric** `scheduleSplit` delay (instant when the change only
+lowers the creator share, 7-day for anything else); and a 5th **parent-burn**
+bucket for token families (buys an immutable Ballast-launched `parent` through its
+WETH pool and sends it to `0x…dEaD`). No owner/admin/upgrade/pause; `realCreator`
+immutable.
+
+| | |
+|---|---|
+| FeeRouterFactoryV2 | `0x5d3250C7ac29648cB54dEbBB89DaD6e733eec5D3` |
+| Deploy tx | `0xbff35d90fcdcd0b41dae0fe63e3afdc544e0d91de897035685a21a89bad33b08` |
+| Block | `91756428` |
+| Deployer | `0xD316888628c75A87e15A15DE36821Fe7371f0cBf` (keystore `feerouter-deployer`, nonce 1) |
+| BasketZap (ctor arg) | `0x87c046aB0fB8B7B86BA1a62A956242d499051aBA` |
+| Verification | **Sourcify `exact_match`** (Blockscout CLI verify is Cloudflare-gated on this chain; Blockscout auto-imports the Sourcify match). First instance `FeeRouterV2` `0x74dB6b4C2cdF7b04b61099F7c3fC7F9b4B87d92C` + its `HolderStakingVault` `0x57180a0EC9f53b7b819d6b220Be17B4645918AD2` also Sourcify `exact_match`. |
+| Frontend | `NEXT_PUBLIC_FEE_ROUTER_FACTORY_V2_ADDRESS` set on Production + Preview; unset ⇒ new launches fall back to v1. |
+| Tests | 65 unit + 8 mainnet-fork (all pass, incl. parent-burn end-to-end + deferred-then-flush). |
+
+Matches the dry-run's predicted address exactly (CREATE from the deployer's nonce
+1). Deploy script: `contracts/script/DeployFeeRouterFactoryV2.s.sol`.
+Verify (Sourcify):
+
+```
+cd contracts
+forge verify-contract 0x5d3250C7ac29648cB54dEbBB89DaD6e733eec5D3 \
+  src/FeeRouterFactoryV2.sol:FeeRouterFactoryV2 \
+  --verifier sourcify --chain-id 4663 \
+  --constructor-args $(cast abi-encode "constructor(address)" 0x87c046aB0fB8B7B86BA1a62A956242d499051aBA) --watch
+```
+
+Kill switch (same shape as v1): `vercel env rm NEXT_PUBLIC_FEE_ROUTER_FACTORY_V2_ADDRESS production --yes`
+then redeploy production — new launches revert to v1, existing v2 routers still work on-chain.
+
+---
+
 ## What
 
 `FeeRouterFactory` deploys one immutable `FeeRouter` per token (fixed four-bucket

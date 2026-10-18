@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { BaseError, ContractFunctionRevertedError, formatEther, getAbiItem, type Address, type Log } from "viem";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
-import { feeRouterAbi } from "@/lib/abis";
+import { feeRouterAbi, feeRouterV2Abi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
 import { pollReceipt } from "@/lib/waitForReceipt";
 import { decodeTxError } from "@/lib/txError";
@@ -11,12 +11,12 @@ import { backfillLogs } from "@/lib/eventBackfill";
 import { useFeeRouter, type FeeRouterState } from "@/hooks/useFeeRouter";
 import type { FeeSplitBps } from "@/hooks/useFeeRouterLaunchRunner";
 import { FeesSection } from "@/components/app/create/FeesSection";
-import { routeRevertReason, needsBuybackWire } from "@/lib/feeRouter";
+import { routeRevertReason, needsBuybackWire, needsParentWire } from "@/lib/feeRouter";
 
 const CHAIN_ID = activeChain.id;
 type Phase = "idle" | "pending" | "confirming" | "error" | "done";
 
-type RoutedRow = { txHash: `0x${string}`; total: bigint; toCreator: bigint; toTreasury: bigint; toBuyback: bigint; toRewards: bigint };
+type RoutedRow = { txHash: `0x${string}`; total: bigint };
 
 /**
  * Creator-only: schedule a new split (7-day delay, same rule as everyone) and
@@ -38,11 +38,20 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
   const { address: account } = useAccount();
   const { writeContractAsync } = useWriteContract();
 
+  // v2 routers have the 5th (parentBurn) bucket: scheduleSplit/route take an extra
+  // arg and there's a wireParentPool step. Pick the matching ABI + arities.
+  const abi = state.isV2 ? feeRouterV2Abi : feeRouterAbi;
+  const routeArgs = (state.isV2 ? [0n, 0n, 0n, 0n] : [0n, 0n, 0n]) as
+    | readonly [bigint, bigint, bigint]
+    | readonly [bigint, bigint, bigint, bigint];
+
   const [split, setSplit] = useState<FeeSplitBps>({
     creatorBps: state.creatorBps,
     treasuryBps: state.treasuryBps,
     buybackBps: state.buybackBps,
+    parentBurnBps: state.parentBurnBps,
     rewardsBps: state.rewardsBps,
+    parent: state.parent,
   });
   const [schedulePhase, setSchedulePhase] = useState<Phase>("idle");
   const [scheduleErr, setScheduleErr] = useState<string>();
@@ -54,8 +63,17 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
   // decoded on-chain reason route() would revert with right now.
   const [routeBlock, setRouteBlock] = useState<string | undefined>(undefined);
   const [history, setHistory] = useState<RoutedRow[]>([]);
+  const [parentWirePhase, setParentWirePhase] = useState<Phase>("idle");
+  const [parentWireErr, setParentWireErr] = useState<string>();
 
   const showWire = needsBuybackWire(state);
+  const showParentWire = needsParentWire({
+    hasParent: Boolean(state.parent),
+    parentWired: state.parentWired,
+    parentBurnBps: state.parentBurnBps,
+    hasPendingSplit: state.hasPendingSplit,
+    pendingParentBurnBps: state.pendingParentBurnBps,
+  });
 
   // Simulate route() before offering the button, so we never show "Ready now"
   // for a call that would revert (e.g. no fees yet = NothingToRoute). Re-runs on
@@ -69,9 +87,9 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
       try {
         await publicClient.simulateContract({
           address: router,
-          abi: feeRouterAbi,
+          abi,
           functionName: "route",
-          args: [0n, 0n, 0n],
+          args: routeArgs,
           account: account ?? state.realCreator,
         });
         if (!cancelled) setRouteBlock(""); // simulation passed → routable
@@ -96,7 +114,7 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
       const latest = await publicClient.getBlockNumber();
       const { logs } = await backfillLogs(publicClient, {
         address: router,
-        event: getAbiItem({ abi: feeRouterAbi, name: "Routed" }),
+        event: getAbiItem({ abi, name: "Routed" }),
         fromBlock: 0n,
         toBlock: latest,
       });
@@ -105,8 +123,8 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
         .slice(-20)
         .reverse()
         .map((l) => {
-          const a = (l as unknown as { args: { total: bigint; toCreator: bigint; toTreasury: bigint; toBuyback: bigint; toRewards: bigint } }).args;
-          return { txHash: l.transactionHash as `0x${string}`, ...a };
+          const a = (l as unknown as { args: { total: bigint } }).args;
+          return { txHash: l.transactionHash as `0x${string}`, total: a.total };
         });
       setHistory(rows);
     })();
@@ -121,13 +139,23 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
     setSchedulePhase("pending");
     let hash: `0x${string}`;
     try {
-      hash = await writeContractAsync({
-        address: router,
-        abi: feeRouterAbi,
-        functionName: "scheduleSplit",
-        args: [split.creatorBps, split.treasuryBps, split.buybackBps, split.rewardsBps],
-        chainId: CHAIN_ID,
-      });
+      if (state.isV2) {
+        hash = await writeContractAsync({
+          address: router,
+          abi: feeRouterV2Abi,
+          functionName: "scheduleSplit",
+          args: [split.creatorBps, split.treasuryBps, split.buybackBps, split.parentBurnBps, split.rewardsBps],
+          chainId: CHAIN_ID,
+        });
+      } else {
+        hash = await writeContractAsync({
+          address: router,
+          abi: feeRouterAbi,
+          functionName: "scheduleSplit",
+          args: [split.creatorBps, split.treasuryBps, split.buybackBps, split.rewardsBps],
+          chainId: CHAIN_ID,
+        });
+      }
     } catch (e) {
       setScheduleErr(decodeTxError(e));
       setSchedulePhase("error");
@@ -146,7 +174,7 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
     setWirePhase("pending");
     let hash: `0x${string}`;
     try {
-      hash = await writeContractAsync({ address: router, abi: feeRouterAbi, functionName: "wireBuybackPool", chainId: CHAIN_ID });
+      hash = await writeContractAsync({ address: router, abi, functionName: "wireBuybackPool", chainId: CHAIN_ID });
     } catch (e) {
       setWireErr(decodeTxError(e));
       setWirePhase("error");
@@ -159,13 +187,32 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
     else refetch();
   }
 
+  async function wireParent() {
+    if (!publicClient) return;
+    setParentWireErr(undefined);
+    setParentWirePhase("pending");
+    let hash: `0x${string}`;
+    try {
+      hash = await writeContractAsync({ address: router, abi: feeRouterV2Abi, functionName: "wireParentPool", chainId: CHAIN_ID });
+    } catch (e) {
+      setParentWireErr(decodeTxError(e));
+      setParentWirePhase("error");
+      return;
+    }
+    setParentWirePhase("confirming");
+    const outcome = await pollReceipt(publicClient, hash);
+    setParentWirePhase(outcome.status === "reverted" ? "error" : "done");
+    if (outcome.status === "reverted") setParentWireErr("Transaction reverted on-chain.");
+    else refetch();
+  }
+
   async function routeNow() {
     if (!publicClient) return;
     setRouteErr(undefined);
     setRoutePhase("pending");
     let hash: `0x${string}`;
     try {
-      hash = await writeContractAsync({ address: router, abi: feeRouterAbi, functionName: "route", args: [0n, 0n, 0n], chainId: CHAIN_ID });
+      hash = await writeContractAsync({ address: router, abi, functionName: "route", args: routeArgs, chainId: CHAIN_ID });
     } catch (e) {
       setRouteErr(decodeTxError(e));
       setRoutePhase("error");
@@ -181,6 +228,7 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
   const scheduleBusy = schedulePhase === "pending" || schedulePhase === "confirming";
   const routeBusy = routePhase === "pending" || routePhase === "confirming";
   const wireBusy = wirePhase === "pending" || wirePhase === "confirming";
+  const parentWireBusy = parentWirePhase === "pending" || parentWirePhase === "confirming";
   const checking = routeBlock === undefined;
   const routable = routeBlock === "";
 
@@ -188,13 +236,35 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
     <section className="space-y-4">
       <div>
         <h2 className="section-label mb-2">Change split</h2>
-        <FeesSection split={split} onChange={setSplit} />
+        <FeesSection split={split} onChange={setSplit} allowParent={state.isV2 && Boolean(state.parent)} lockParent />
         <button className="btn-primary mt-3 w-full" onClick={saveSplit} disabled={scheduleBusy}>
-          {schedulePhase === "pending" ? "Confirm in your wallet…" : schedulePhase === "confirming" ? "Waiting…" : "Save split (7-day delay)"}
+          {schedulePhase === "pending" ? "Confirm in your wallet…" : schedulePhase === "confirming" ? "Waiting…" : state.isV2 ? "Save split" : "Save split (7-day delay)"}
         </button>
-        {schedulePhase === "done" && <p className="mt-2 text-xs text-green">Scheduled ✓ — applies in 7 days.</p>}
+        {state.isV2 && (
+          <p className="mt-2 text-xs text-text-faint">
+            Lowering your own share applies instantly. Anything else takes effect 7 days after you schedule it.
+          </p>
+        )}
+        {schedulePhase === "done" && (
+          <p className="mt-2 text-xs text-green">Saved ✓{state.isV2 ? "" : " — applies in 7 days."}</p>
+        )}
         {scheduleErr && <p className="mt-2 text-xs text-negative">{scheduleErr}</p>}
       </div>
+
+      {showParentWire && (
+        <div className="card p-5">
+          <h2 className="section-label">Wire parent pool</h2>
+          <p className="mt-1 text-xs text-text-faint">
+            Your split sends fees to burning the parent token, but its pool isn&apos;t wired yet. Anyone can wire it once
+            the parent has a live WETH pool — do it now so route() can buy and burn the parent.
+          </p>
+          <button className="btn-primary mt-3 w-full" onClick={wireParent} disabled={parentWireBusy}>
+            {parentWirePhase === "pending" ? "Confirm in your wallet…" : parentWirePhase === "confirming" ? "Wiring…" : "Wire parent pool"}
+          </button>
+          {parentWirePhase === "done" && <p className="mt-2 text-xs text-green">Wired ✓</p>}
+          {parentWireErr && <p className="mt-2 text-xs text-negative">{parentWireErr}</p>}
+        </div>
+      )}
 
       {showWire && (
         <div className="card p-5">
