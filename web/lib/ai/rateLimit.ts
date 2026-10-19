@@ -10,18 +10,26 @@ import { RATE_LIMIT_WINDOW_SEC } from "@/lib/ai/config";
 
 type Decision = { allowed: boolean; remaining: number; resetSec: number };
 
-const UP_URL = process.env.UPSTASH_REDIS_REST_URL;
-const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+// Accept either the native Upstash var names OR the names the Vercel Marketplace
+// Upstash (Redis/KV) integration injects (KV_REST_API_URL / KV_REST_API_TOKEN) —
+// both point at the same Upstash REST endpoint + token, so the fixed-window counter
+// below works unchanged against either. Native names win if both are set.
+const UP_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const UP_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 export const RATE_LIMIT_DURABLE = Boolean(UP_URL && UP_TOKEN);
 
-let warned = false;
-function warnOnce() {
-  if (warned) return;
-  warned = true;
-  if (!RATE_LIMIT_DURABLE) {
+let announced = false;
+function announceBackendOnce() {
+  if (announced) return;
+  announced = true;
+  // Log the active backend ONCE — never the URL or token. Lets the Preview/Prod
+  // logs confirm durable (Upstash/KV) vs the in-memory fallback at a glance.
+  if (RATE_LIMIT_DURABLE) {
+    console.info("[ai:ratelimit] backend=upstash-rest (durable, cross-instance)");
+  } else {
     console.warn(
-      "[ai:ratelimit] Upstash not configured — using in-memory limiter (per-instance only). " +
-        "Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN for durable limits.",
+      "[ai:ratelimit] backend=in-memory (per-instance only). " +
+        "Set UPSTASH_REDIS_REST_URL/_TOKEN or the KV_REST_API_URL/_TOKEN integration vars for durable limits.",
     );
   }
 }
@@ -75,7 +83,7 @@ export async function rateLimit(
   limit: number,
   windowSec: number = RATE_LIMIT_WINDOW_SEC,
 ): Promise<Decision> {
-  warnOnce();
+  announceBackendOnce();
   const key = `ai:rl:${bucket}:${id}`;
   if (RATE_LIMIT_DURABLE) {
     try {
