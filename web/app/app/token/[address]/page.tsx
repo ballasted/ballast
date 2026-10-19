@@ -23,6 +23,7 @@ import { FeeRouterCard } from "@/components/app/token/FeeRouterCard";
 import { FeeSplitInfo } from "@/components/app/token/FeeSplitInfo";
 import { StakingPanel } from "@/components/app/token/StakingPanel";
 import { FeeRouterDashboard } from "@/components/app/token/FeeRouterDashboard";
+import { PlainEnglishCard } from "@/components/app/token/PlainEnglishCard";
 import {
   AllocationSlot,
   MetadataHistory,
@@ -268,6 +269,8 @@ export default function TokenDetailPage() {
             )}
 
             <ProtocolTokenNotice token={token} />
+
+            <PlainEnglishCard token={token!} />
 
             {/* The launch's swap-fee split, read from ITS generation's FeeConfig
                 (gen-4 = 80/20/0; gen-1..3 show their own 50/35/15). */}
