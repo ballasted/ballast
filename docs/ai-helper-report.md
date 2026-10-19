@@ -122,3 +122,24 @@ plain English"). If you'd like, I can instead capture **local** screenshots agai
   majors, or real brands (Apple, Tesla, Robinhood…) are dropped; if none survive,
   the suggestion is rejected.
 - Suggestions only ever **fill editable fields** — nothing is signed or submitted.
+
+---
+
+## 8. Review round (pre-production hardening)
+
+Preview review flagged investment-product framing. Fixed in `9868320`:
+- **No investment framing.** System prompts state the token is a community/meme/
+  project token that does NOT represent/track/hold/give exposure to assets; a
+  treasury (if any) is the creator's and holders have no claim. Post-filter now
+  **regenerates** on: represents, exposure, diversified, portfolio, asset class,
+  invest(*), index fund, ETF, securities, tracks, "backed by real", "real-world
+  asset".
+- **Names/tickers** block fund words (ETF, Fund, Trust, Securities, Capital,
+  Holdings, Bank, Treasury Bond); "Index" only when the user typed it.
+- **Pairing** keeps only ETH or listed stock tokens; USDC/USDT/stablecoin/generic
+  crypto dropped.
+- 176 tests green (incl. the exact bad screenshot output).
+
+Preview rebuilt: `https://ballast-dlvywo81s-ballastedapp.vercel.app`. Sample outputs
+(meme / AI / community) all now vibe/community-framed, ETH pairing, treasury phrased
+as "the creator's treasury holds X; holding the token gives no claim on it."
