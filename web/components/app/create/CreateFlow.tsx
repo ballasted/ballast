@@ -11,6 +11,7 @@ import { useFeeRouterLaunchRunner, type FeeSplitBps } from "@/hooks/useFeeRouter
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { FeesSection } from "@/components/app/create/FeesSection";
+import { AiSuggestPanel } from "@/components/app/create/AiSuggestPanel";
 import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -398,6 +399,17 @@ export function CreateFlow() {
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* ── LEFT: form ──────────────────────────────────────────────── */}
         <MotionSection className="min-w-0 space-y-5 pb-16 lg:pb-0">
+          <AiSuggestPanel
+            form={{ name, symbol, category, description }}
+            wallet={account}
+            onApplyName={(v) => setName(v.slice(0, NAME_MAX))}
+            onApplyTicker={(v) => setSymbol(v.slice(0, SYMBOL_MAX))}
+            onApplyDescription={(v) => setDescription(v.slice(0, DESC_MAX))}
+            onApplyNoticeDays={(d) => setNoticeDays(d)}
+            onApplyFeeSplit={(bps) =>
+              setRouterSplit((prev) => ({ ...prev, ...bps, parentBurnBps: 0, parent: undefined }))
+            }
+          />
           <section className="card space-y-4 p-5">
             <LogoUploader symbol={symbolClean} logoUri={logoUri} setLogoUri={setLogoUri} />
 
