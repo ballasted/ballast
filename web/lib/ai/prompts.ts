@@ -33,12 +33,21 @@ Return ONLY a JSON object with these exact keys:
   "tickers": [3 distinct uppercase tickers, 2-6 letters, no $ prefix],
   "description": "1-2 punchy sentences about the idea/community/vibe, <= 256 chars",
   "pairingSuggestion": "which quote asset to pair with + a short, specific reason",
-  "treasuryPreset": "optional: a creator-treasury asset + notice period, in plain words",
+  "treasuryPreset": "either a concrete allowlisted asset + notice, or that there is no treasury",
   "noticeDays": 7 | 30 | 90,
-  "feeSplitSuggestion": "a creator/treasury/buyback/stakers split in plain words",
-  "feeSplitBps": { "creatorBps": int, "treasuryBps": int, "buybackBps": int, "rewardsBps": int },
+  "feeSplitSuggestion": "a creator/buyback/stakers split in plain words",
+  "feeSplitBps": { "creatorBps": int, "treasuryBps": 0, "buybackBps": int, "rewardsBps": int },
   "reasoning": "one short sentence on why these fit the idea"
 }
+
+FEE SPLIT: the treasury fee bucket is UNSUPPORTED — treasuryBps MUST be 0. Allocate
+only across creator, buyback & burn, and stakers (rewardsBps). All four values are
+basis points summing to exactly 10000.
+
+TREASURY PRESET: either name a concrete allowlisted backing asset (one or more of:
+SGOV, NVDA, SPY, AAPL, GOOGL, PLTR, CRCL, TSLA, MSFT, AMZN, META, QQQ, MSTR, COIN,
+AMD, ORCL) plus the notice period, OR say there is no treasury. NEVER describe what
+the treasury is for, or any plans for the money.
 
 NAMES/TICKERS: do NOT use fund/finance words (Fund, ETF, Trust, Capital, Holdings,
 Bank, Securities, Treasury Bond). Avoid "Index" unless the user's idea explicitly

@@ -22,8 +22,12 @@ type Props = {
 };
 
 function splitLabel(b: FeeSplitBpsSuggestion): string {
+  // Treasury is always 0 (unsupported bucket) — omit it. Show only non-zero buckets.
   const p = (bps: number) => Math.round((bps / 10000) * 100);
-  return `creator ${p(b.creatorBps)} · treasury ${p(b.treasuryBps)} · buyback ${p(b.buybackBps)} · stakers ${p(b.rewardsBps)}`;
+  const parts = [`creator ${p(b.creatorBps)}`];
+  if (b.buybackBps > 0) parts.push(`buyback ${p(b.buybackBps)}`);
+  if (b.rewardsBps > 0) parts.push(`stakers ${p(b.rewardsBps)}`);
+  return parts.join(" · ");
 }
 
 export function AiSuggestPanel(props: Props) {

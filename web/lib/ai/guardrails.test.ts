@@ -6,6 +6,8 @@ import {
   isBlockedName,
   isFundLikeName,
   sanitizePairing,
+  sanitizeTreasuryPreset,
+  canonicalSplitText,
   filterSuggestion,
   isSummaryClean,
 } from "./guardrails";
@@ -133,7 +135,9 @@ describe("filterSuggestion", () => {
       expect(r.value.tickers).toEqual(["HRBR", "ANCH", "KEEL"]);
       expect(r.value.noticeDays).toBe(30);
       expect(r.value.pairingSuggestion).toMatch(/ETH/);
-      expect(r.value.feeSplitBps).toEqual({ creatorBps: 6000, treasuryBps: 2000, buybackBps: 1000, rewardsBps: 1000 });
+      // treasury (2000) repaired into buyback → treasury always 0, sum stays 10000.
+      expect(r.value.feeSplitBps).toEqual({ creatorBps: 6000, treasuryBps: 0, buybackBps: 3000, rewardsBps: 1000 });
+      expect(r.value.treasuryPreset).toBe("The creator's treasury holds SGOV. 30-day notice. Holding the token gives no claim on it.");
     }
   });
 
@@ -208,6 +212,63 @@ describe("filterSuggestion", () => {
     const r = filterSuggestion({ ...good, tickers: ["$hrbr", "anch", "keel"] });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.tickers).toEqual(["HRBR", "ANCH", "KEEL"]);
+  });
+});
+
+describe("fee split — treasury bucket is unsupported (always 0)", () => {
+  it("repairs the exact 'creator 50 · treasury 30 · buyback 20' output into treasury 0", () => {
+    const r = filterSuggestion({
+      names: ["Harbor Vibes", "Anchor Crew", "Keel Club"],
+      tickers: ["HRBR", "ANCH", "KEEL"],
+      description: "A playful community token for the sea crew.",
+      feeSplitBps: { creatorBps: 5000, treasuryBps: 3000, buybackBps: 2000, rewardsBps: 0 },
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.feeSplitBps).toEqual({ creatorBps: 5000, treasuryBps: 0, buybackBps: 5000, rewardsBps: 0 });
+      const sum =
+        r.value.feeSplitBps!.creatorBps + r.value.feeSplitBps!.treasuryBps +
+        r.value.feeSplitBps!.buybackBps + r.value.feeSplitBps!.rewardsBps;
+      expect(sum).toBe(10000);
+      // Derived text must agree and never mention treasury.
+      expect(r.value.feeSplitSuggestion).toBe("creator 50%, buyback & burn 50%");
+      expect(r.value.feeSplitSuggestion).not.toMatch(/treasury/i);
+    }
+  });
+
+  it("canonicalSplitText omits treasury and zero buckets", () => {
+    expect(canonicalSplitText({ creatorBps: 6000, treasuryBps: 0, buybackBps: 4000, rewardsBps: 0 })).toBe(
+      "creator 60%, buyback & burn 40%",
+    );
+    expect(canonicalSplitText({ creatorBps: 7000, treasuryBps: 0, buybackBps: 1500, rewardsBps: 1500 })).toBe(
+      "creator 70%, buyback & burn 15%, stakers 15%",
+    );
+  });
+});
+
+describe("treasury preset — concrete asset + notice only, no purpose", () => {
+  it("drops a purpose-describing preset ('funds for community events')", () => {
+    const out = sanitizeTreasuryPreset(
+      "the creator's treasury holds funds for community events; holding the token gives no claim on it.",
+      30,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("canonicalizes a concrete allowlisted asset + notice + no-claim line", () => {
+    const out = sanitizeTreasuryPreset("back it with SGOV from the start", 30);
+    expect(out).toBe("The creator's treasury holds SGOV. 30-day notice. Holding the token gives no claim on it.");
+    expect(out).not.toMatch(/\bfor\b/);
+    expect(out).toMatch(/no claim/i);
+  });
+
+  it("supports multiple allowlisted assets", () => {
+    const out = sanitizeTreasuryPreset("a mix of NVDA and SPY", 90);
+    expect(out).toBe("The creator's treasury holds NVDA + SPY. 90-day notice. Holding the token gives no claim on it.");
+  });
+
+  it("maps an explicit no-treasury to 'No treasury.'", () => {
+    expect(sanitizeTreasuryPreset("there is no treasury for this one", undefined)).toBe("No treasury.");
   });
 });
 

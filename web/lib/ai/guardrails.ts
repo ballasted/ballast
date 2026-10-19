@@ -211,7 +211,49 @@ function parseFeeSplitBps(v: unknown): FeeSplitBpsSuggestion | undefined {
   const rewardsBps = read("rewardsBps");
   if (creatorBps === null || treasuryBps === null || buybackBps === null || rewardsBps === null) return undefined;
   if (creatorBps + treasuryBps + buybackBps + rewardsBps !== 10000) return undefined;
-  return { creatorBps, treasuryBps, buybackBps, rewardsBps };
+  // The TREASURY fee bucket is unsupported on the create page ("soon" in the UI,
+  // rejected by the contract). Repair any treasury allocation into buyback & burn
+  // so treasury is always 0 and the split still sums to 10000.
+  return { creatorBps, treasuryBps: 0, buybackBps: buybackBps + treasuryBps, rewardsBps };
+}
+
+/** Canonical plain-English split text derived from the (already repaired) bps, so
+ *  the text and the one-click Apply always agree and never mention treasury. */
+export function canonicalSplitText(bps: FeeSplitBpsSuggestion): string {
+  const pct = (b: number) => Math.round((b / 10000) * 100);
+  const parts: string[] = [`creator ${pct(bps.creatorBps)}%`];
+  if (bps.buybackBps > 0) parts.push(`buyback & burn ${pct(bps.buybackBps)}%`);
+  if (bps.rewardsBps > 0) parts.push(`stakers ${pct(bps.rewardsBps)}%`);
+  return parts.join(", ");
+}
+
+// ── Treasury preset ────────────────────────────────────────────────────────
+// A treasury preset may ONLY name concrete allowlisted backing asset(s) + the
+// notice period, or say there is no treasury. It must never describe what the
+// treasury is "for" or any plans for the money.
+const ALLOWLIST_ASSETS: string[] = [...GREEN_TICKERS]; // SGOV, NVDA, SPY, AAPL, …
+
+function extractAllowlistAssets(text: string): string[] {
+  const tokens = new Set(text.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean));
+  const out: string[] = [];
+  for (const a of ALLOWLIST_ASSETS) if (tokens.has(a.toUpperCase())) out.push(a.toUpperCase());
+  return out;
+}
+
+export function sanitizeTreasuryPreset(
+  text: string | undefined,
+  noticeDays: 7 | 30 | 90 | undefined,
+): string | undefined {
+  if (!text) return undefined;
+  if (hasBannedContent(text)) return undefined;
+  const assets = extractAllowlistAssets(text);
+  if (assets.length) {
+    const notice = noticeDays ? ` ${noticeDays}-day notice.` : "";
+    return `The creator's treasury holds ${assets.join(" + ")}.${notice} Holding the token gives no claim on it.`;
+  }
+  if (/\bno (treasury|backing)\b|\bunbacked\b|\bnone\b|\bno asset/i.test(text)) return "No treasury.";
+  // Vague / purpose-only text with no concrete allowlisted asset → drop it.
+  return undefined;
 }
 
 export type FilterResult =
@@ -279,6 +321,9 @@ export function filterSuggestion(raw: unknown, opts: FilterOpts = {}): FilterRes
   if (tickers.length === 0) return { ok: false, violations: ["all-tickers-blocked"] };
   if (!description) return { ok: false, violations: ["empty-description"] };
 
+  const noticeDays = parseNoticeDays(o.noticeDays);
+  const feeSplitBps = parseFeeSplitBps(o.feeSplitBps);
+
   return {
     ok: true,
     value: {
@@ -286,10 +331,13 @@ export function filterSuggestion(raw: unknown, opts: FilterOpts = {}): FilterRes
       tickers,
       description,
       pairingSuggestion: sanitizePairing(rawPairing),
-      treasuryPreset,
-      noticeDays: parseNoticeDays(o.noticeDays),
-      feeSplitSuggestion,
-      feeSplitBps: parseFeeSplitBps(o.feeSplitBps),
+      // Only a concrete allowlisted asset + notice (or "No treasury") — never a purpose.
+      treasuryPreset: sanitizeTreasuryPreset(treasuryPreset, noticeDays),
+      noticeDays,
+      // Text is derived from the repaired bps so it never mentions the (unsupported)
+      // treasury bucket and always matches the one-click Apply.
+      feeSplitSuggestion: feeSplitBps ? canonicalSplitText(feeSplitBps) : undefined,
+      feeSplitBps,
       reasoning,
     },
   };
