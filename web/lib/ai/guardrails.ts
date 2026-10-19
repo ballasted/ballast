@@ -1,23 +1,24 @@
 // Copy + brand guardrails for AI-generated text. Pure and dependency-light so it
 // can run inside the API routes AND be unit-tested without a network or a DOM.
 //
-// Two jobs:
-//   1. Enforce CLAUDE.md's hard copy rules (rule 1 + the spec's extra bans) as a
-//      POST-filter on model output. The system prompt asks the model to obey them;
-//      this is the backstop that assumes it sometimes won't.
-//   2. Block names/tickers that impersonate a real company, one of our listed
-//      stock tickers, or a crypto major — the exact "deceptive content" risk the
-//      project already guards against elsewhere.
+// Jobs:
+//   1. Enforce CLAUDE.md's hard copy rules (rule 1) + the product rule that a
+//      launch token is a community/meme/project token and must NEVER be framed as
+//      an investment product, fund, index, or a thing that represents/tracks/holds
+//      assets. The system prompt asks for this; this is the backstop.
+//   2. Block names/tickers that impersonate a real company, a listed stock ticker,
+//      a crypto major, or that read as a fund/security.
+//   3. Keep pairing suggestions to the only real options on our create page
+//      (ETH or listed stock tokens) — never USDC/USDT or generic crypto.
 
 import { GREEN_TICKERS } from "@/lib/pairingAssets";
 
 // ── Banned words ────────────────────────────────────────────────────────────
-// CLAUDE.md rule 1: floor, guaranteed, protected, secured, safe, yield, insured,
-// returns. Plus the spec's additions: passive income, dividend, APR, APY.
-// Matched case-insensitively on word boundaries so "safely" / "returning" are
-// caught but "safeguard"-free substrings inside unrelated words are not (the list
-// is intentionally aggressive — a false reject just regenerates).
+// CLAUDE.md rule 1 + the spec's additions + the investment-framing ban. Matched
+// case-insensitively on word boundaries (the list is intentionally aggressive — a
+// false reject just regenerates).
 export const BANNED_WORDS: string[] = [
+  // Rule 1 / safety-framing
   "floor",
   "guarantee",
   "guaranteed",
@@ -40,22 +41,42 @@ export const BANNED_WORDS: string[] = [
   "apy",
   "risk-free",
   "riskless",
+  // Investment-product framing — a launch token does NOT represent/track/hold assets
+  "represents",
+  "represent",
+  "representing",
+  "exposure",
+  "diversified",
+  "diversify",
+  "diversification",
+  "portfolio",
+  "tracks",
+  "tracked",
+  "etf",
+  "etfs",
+  "securities",
 ];
 
-// Obvious price-prediction / hype shapes. These are phrases, not single words, so
-// they get their own regexes. We can't catch every prediction, but we catch the
-// blatant ones the system prompt also forbids.
-const PREDICTION_PATTERNS: RegExp[] = [
+// Phrase / stem patterns that word-boundary matching alone can't express.
+const BANNED_PATTERNS: RegExp[] = [
+  // price-prediction / hype
   /\bto the moon\b/i,
-  /\b\d+\s*x\b/i, // "100x", "10 x"
+  /\b\d+\s*x\b/i,
   /\bwill (?:reach|hit|moon|pump|double|triple|skyrocket|explode)\b/i,
   /\bguaranteed\s+(?:returns?|profit|gains?)\b/i,
   /\bprice\s+(?:prediction|target)\b/i,
   /\bnext\s+(?:bitcoin|ethereum|100x|1000x)\b/i,
+  // investment-product framing
+  /\binvest(?:s|ed|ing|ment|or|ors)?\b/i,
+  /\basset class(?:es)?\b/i,
+  /\bindex fund\b/i,
+  /\bbacked by real\b/i,
+  /\breal[-\s]world asset/i,
+  /\bgives?\s+(?:you\s+)?exposure\b/i,
+  /\bcollection of (?:tokenized|real)\b/i,
 ];
 
 function wordRegex(word: string): RegExp {
-  // Escape, then wrap in boundaries. For multi-word phrases, \b on each end.
   const esc = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${esc}\\b`, "i");
 }
@@ -71,7 +92,7 @@ export function findBannedWords(text: string): string[] {
     const word = BANNED_WORDS[i];
     if (re && word && re.test(text)) hits.add(word.toLowerCase());
   }
-  for (const re of PREDICTION_PATTERNS) {
+  for (const re of BANNED_PATTERNS) {
     const m = text.match(re);
     if (m) hits.add(m[0].toLowerCase().trim());
   }
@@ -83,59 +104,38 @@ export function hasBannedContent(text: string): boolean {
 }
 
 // ── Brand / ticker blocklist ────────────────────────────────────────────────
-// Our own listed stock tickers (anti-impersonation) plus crypto majors and the
-// real companies behind the tokenized equities. A suggested ticker or name that
-// collides with any of these is rejected.
 const CRYPTO_TICKERS = ["BTC", "ETH", "WETH", "USDC", "USDT", "USDG", "SOL", "BNB", "XRP", "DOGE", "ADA"];
 
 export const BLOCKED_TICKERS: Set<string> = new Set<string>(
   [...GREEN_TICKERS, ...CRYPTO_TICKERS].map((t) => t.toUpperCase()),
 );
 
-// Real brand / company names (lowercased). The tokenized equities on this chain
-// plus the obvious mega-caps and crypto brands. Substring match on word tokens so
-// "Apple Finance" is caught but we don't over-match tiny fragments.
 export const BLOCKED_BRANDS: string[] = [
-  "apple",
-  "tesla",
-  "nvidia",
-  "microsoft",
-  "google",
-  "alphabet",
-  "amazon",
-  "meta",
-  "facebook",
-  "coinbase",
-  "palantir",
-  "oracle",
-  "microstrategy",
-  "circle",
-  "robinhood",
-  "bitcoin",
-  "ethereum",
-  "solana",
-  "binance",
-  "ripple",
-  "dogecoin",
-  "cardano",
-  "nasdaq",
-  "s&p",
-  "sp500",
-  "spdr",
-  "vanguard",
-  "blackrock",
-  "ishares",
+  "apple", "tesla", "nvidia", "microsoft", "google", "alphabet", "amazon", "meta",
+  "facebook", "coinbase", "palantir", "oracle", "microstrategy", "circle", "robinhood",
+  "bitcoin", "ethereum", "solana", "binance", "ripple", "dogecoin", "cardano",
+  "nasdaq", "s&p", "sp500", "spdr", "vanguard", "blackrock", "ishares",
 ];
 
+// Fund / security words that must not appear in a NAME or TICKER — a launch token
+// is not a fund. ("index" is handled separately: allowed only if the user typed it.)
+const FUND_NAME_WORDS = ["etf", "fund", "trust", "securities", "capital", "holdings", "bank"];
+const FUND_NAME_PHRASES = ["treasury bond"];
+const FUND_TICKERS = new Set(["ETF", "FUND", "TRUST", "BANK", "BOND", "CAPITAL", "SECURITIES"]);
+
 export function isBlockedTicker(ticker: string): boolean {
-  return BLOCKED_TICKERS.has(ticker.trim().toUpperCase());
+  const t = ticker.trim().toUpperCase();
+  return BLOCKED_TICKERS.has(t) || FUND_TICKERS.has(t);
 }
 
-/** True if a proposed NAME collides with a known brand. Tokenizes on non-letters
- *  so "Apple-Index" and "apple index" both trip "apple". */
+function nameTokens(name: string): Set<string> {
+  return new Set(name.toLowerCase().split(/[^a-z0-9&]+/).filter(Boolean));
+}
+
+/** True if a proposed NAME collides with a known brand. */
 export function isBlockedName(name: string): boolean {
   const lower = name.toLowerCase();
-  const tokens = new Set(lower.split(/[^a-z0-9&]+/).filter(Boolean));
+  const tokens = nameTokens(name);
   for (const brand of BLOCKED_BRANDS) {
     if (brand.includes(" ")) {
       if (lower.includes(brand)) return true;
@@ -144,6 +144,33 @@ export function isBlockedName(name: string): boolean {
     }
   }
   return false;
+}
+
+/** True if a NAME reads as a fund/security. `allowIndex` lets "index" through only
+ *  when the user themselves used it. */
+export function isFundLikeName(name: string, allowIndex: boolean): boolean {
+  const lower = name.toLowerCase();
+  const tokens = nameTokens(name);
+  if (FUND_NAME_WORDS.some((w) => tokens.has(w))) return true;
+  if (FUND_NAME_PHRASES.some((p) => lower.includes(p))) return true;
+  if (!allowIndex && tokens.has("index")) return true;
+  return false;
+}
+
+// ── Pairing ──────────────────────────────────────────────────────────────────
+// The only real pairing options on the create page: ETH, or a listed stock token.
+const ALLOWED_PAIRING = new Set<string>(["ETH", "WETH", "ETHER", ...GREEN_TICKERS].map((t) => t.toUpperCase()));
+const DISALLOWED_PAIRING = /\b(usdc|usdt|usdg|dai|tether|usd ?coin|stablecoin|bitcoin|btc|solana|\bsol\b|bnb)\b/i;
+
+/** Keep a pairing suggestion only if it names an allowed asset and no disallowed
+ *  one. Returns the cleaned string, or undefined to drop it. */
+export function sanitizePairing(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  if (hasBannedContent(text)) return undefined;
+  if (DISALLOWED_PAIRING.test(text)) return undefined;
+  const tokens = new Set(text.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean));
+  const mentionsAllowed = [...tokens].some((t) => ALLOWED_PAIRING.has(t));
+  return mentionsAllowed ? text : undefined;
 }
 
 // ── Validation of model output ──────────────────────────────────────────────
@@ -166,9 +193,6 @@ export type SuggestionShape = {
   reasoning?: string;
 };
 
-// Validate the optional structured hints that back the one-click "Apply" buttons.
-// They are advisory, so anything malformed is simply dropped (undefined) rather
-// than failing the whole suggestion — the text fields still render.
 function parseNoticeDays(v: unknown): 7 | 30 | 90 | undefined {
   const n = typeof v === "number" ? v : typeof v === "string" ? parseInt(v, 10) : NaN;
   return n === 7 || n === 30 || n === 90 ? n : undefined;
@@ -186,7 +210,6 @@ function parseFeeSplitBps(v: unknown): FeeSplitBpsSuggestion | undefined {
   const buybackBps = read("buybackBps");
   const rewardsBps = read("rewardsBps");
   if (creatorBps === null || treasuryBps === null || buybackBps === null || rewardsBps === null) return undefined;
-  // Must sum to exactly 10000 — a split that doesn't would mis-apply on the form.
   if (creatorBps + treasuryBps + buybackBps + rewardsBps !== 10000) return undefined;
   return { creatorBps, treasuryBps, buybackBps, rewardsBps };
 }
@@ -195,16 +218,24 @@ export type FilterResult =
   | { ok: true; value: SuggestionShape }
   | { ok: false; violations: string[] };
 
+export type FilterOpts = {
+  /** The user's own idea + form text (lowercased internally). Used to allow
+   *  "index" in a name only when the user asked for it. */
+  userText?: string;
+};
+
 /**
- * Validate + lightly repair a raw suggestion object. Rejects (so the route can
- * regenerate once) when any free-text field carries banned copy. For the
- * name/ticker LISTS it drops the offending entries rather than failing the whole
- * batch — but if fewer than one clean name or ticker survives, that's a reject.
+ * Validate + lightly repair a raw suggestion. Rejects (so the route can regenerate
+ * once) when a free-text field carries banned/investment-framing copy. Name/ticker
+ * LISTS drop offending entries; fewer than one clean name or ticker is a reject.
+ * Pairing is dropped (not a reject) when it isn't a real option.
  */
-export function filterSuggestion(raw: unknown): FilterResult {
+export function filterSuggestion(raw: unknown, opts: FilterOpts = {}): FilterResult {
   const violations: string[] = [];
   if (!raw || typeof raw !== "object") return { ok: false, violations: ["not-an-object"] };
   const o = raw as Record<string, unknown>;
+  const userText = (opts.userText ?? "").toLowerCase();
+  const allowIndex = /\bindex\b/.test(userText);
 
   const asArr = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((s) => s.trim()) : [];
@@ -212,15 +243,14 @@ export function filterSuggestion(raw: unknown): FilterResult {
   const rawNames = asArr(o.names);
   const rawTickers = asArr(o.tickers);
   const description = typeof o.description === "string" ? o.description.trim() : "";
-  const pairingSuggestion = typeof o.pairingSuggestion === "string" ? o.pairingSuggestion.trim() : undefined;
   const treasuryPreset = typeof o.treasuryPreset === "string" ? o.treasuryPreset.trim() : undefined;
   const feeSplitSuggestion = typeof o.feeSplitSuggestion === "string" ? o.feeSplitSuggestion.trim() : undefined;
   const reasoning = typeof o.reasoning === "string" ? o.reasoning.trim() : undefined;
+  const rawPairing = typeof o.pairingSuggestion === "string" ? o.pairingSuggestion.trim() : undefined;
 
-  // Free-text fields: any banned content fails the batch.
+  // Free-text fields that REGENERATE on banned/investment-framing copy.
   for (const [label, text] of [
     ["description", description],
-    ["pairingSuggestion", pairingSuggestion ?? ""],
     ["treasuryPreset", treasuryPreset ?? ""],
     ["feeSplitSuggestion", feeSplitSuggestion ?? ""],
     ["reasoning", reasoning ?? ""],
@@ -230,14 +260,15 @@ export function filterSuggestion(raw: unknown): FilterResult {
   }
   if (violations.length) return { ok: false, violations };
 
-  // Names: drop brand collisions + banned copy. Keep order, cap at 3.
+  // Names: drop brand collisions, banned copy, and fund/security/index names.
   const names = rawNames
     .filter((n) => n.length > 0 && n.length <= 32)
     .filter((n) => !isBlockedName(n))
     .filter((n) => !hasBannedContent(n))
+    .filter((n) => !isFundLikeName(n, allowIndex))
     .slice(0, 3);
 
-  // Tickers: 1–10 chars, letters/digits only, not a blocked ticker.
+  // Tickers: 1–10 alnum, not a blocked or fund ticker.
   const tickers = rawTickers
     .map((t) => t.replace(/^\$/, "").toUpperCase())
     .filter((t) => /^[A-Z0-9]{1,10}$/.test(t))
@@ -254,7 +285,7 @@ export function filterSuggestion(raw: unknown): FilterResult {
       names,
       tickers,
       description,
-      pairingSuggestion,
+      pairingSuggestion: sanitizePairing(rawPairing),
       treasuryPreset,
       noticeDays: parseNoticeDays(o.noticeDays),
       feeSplitSuggestion,

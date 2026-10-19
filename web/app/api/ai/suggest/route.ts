@@ -54,15 +54,23 @@ export async function POST(req: NextRequest) {
 
   // Current editable form state (all optional) — lets the model refine, not reset.
   const form = (body.form ?? {}) as Record<string, unknown>;
+  const formName = clip(form.name, MAX_FORM_FIELD_LEN);
+  const formSymbol = clip(form.symbol, 16);
+  const formCategory = clip(form.category, 32);
+  const formDescription = clip(form.description, MAX_FORM_FIELD_LEN);
   const userPrompt = [
     `Idea: ${idea}`,
-    form.name ? `Current name: ${clip(form.name, MAX_FORM_FIELD_LEN)}` : "",
-    form.symbol ? `Current ticker: ${clip(form.symbol, 16)}` : "",
-    form.category ? `Category: ${clip(form.category, 32)}` : "",
-    form.description ? `Current description: ${clip(form.description, MAX_FORM_FIELD_LEN)}` : "",
+    formName ? `Current name: ${formName}` : "",
+    formSymbol ? `Current ticker: ${formSymbol}` : "",
+    formCategory ? `Category: ${formCategory}` : "",
+    formDescription ? `Current description: ${formDescription}` : "",
   ]
     .filter(Boolean)
     .join("\n");
+
+  // The user's own words — so filterSuggestion allows "Index" in a name ONLY when
+  // the user themselves used it.
+  const userText = [idea, formName, formSymbol, formCategory, formDescription].join(" ");
 
   try {
     // Up to two attempts: if guardrails reject the first (banned copy / all names or
@@ -84,7 +92,7 @@ export async function POST(req: NextRequest) {
         lastViolations = ["invalid-json"];
         continue;
       }
-      const filtered = filterSuggestion(parsed);
+      const filtered = filterSuggestion(parsed, { userText });
       if (filtered.ok) suggestion = filtered.value;
       else lastViolations = filtered.violations;
     }
