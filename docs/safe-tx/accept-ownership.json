@@ -1,0 +1,47 @@
+{
+  "version": "1.0",
+  "chainId": "4663",
+  "createdAt": 0,
+  "meta": {
+    "name": "Accept ownership of EOA-owned protocol contracts",
+    "description": "Step 2 of the ownership migration: the Safe (0xEFC97e16a24d2434C7138a2634E554a0631aC079) accepts ownership of the five Ownable2Step contracts the compromised EOA transfers to it. Load this in Safe{Wallet} Transaction Builder. RUN ONLY AFTER each contract's transferOwnership(SAFE) has been broadcast from the old EOA (see docs/ownership-migration.md).",
+    "txBuilderVersion": "1.16.5"
+  },
+  "transactions": [
+    {
+      "to": "0x427764d0d19aB765c35A41A5aa4771580307dA81",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": { "inputs": [], "name": "acceptOwnership", "payable": false },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": { "inputs": [], "name": "acceptOwnership", "payable": false },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xfd3534f2a6ca756e95e5d2ff7bd287954b856e4b",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": { "inputs": [], "name": "acceptOwnership", "payable": false },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xf814CA06aFfaBD1aa5Cd31aDB5F25D23E9871304",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": { "inputs": [], "name": "acceptOwnership", "payable": false },
+      "contractInputsValues": null
+    },
+    {
+      "to": "0xc0b895bc683bf4aca30c7277d42d068e0973a594",
+      "value": "0",
+      "data": "0x79ba5097",
+      "contractMethod": { "inputs": [], "name": "acceptOwnership", "payable": false },
+      "contractInputsValues": null
+    }
+  ]
+}
