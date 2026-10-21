@@ -10,6 +10,7 @@ export * as reads from "./reads";
 export * as quotes from "./quotes";
 export * as writes from "./writes";
 export type { BallastConfig, Ctx } from "./client";
+export type { FeeSplit, GetTokenOpts } from "./reads";
 
 import { toCtx, type BallastConfig, type Ctx } from "./client";
 import * as reads from "./reads";

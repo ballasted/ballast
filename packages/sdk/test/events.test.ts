@@ -24,8 +24,8 @@ const TOKEN = A(0xabc);
 // the decoder reconstructs the fields. This verifies topic/data layout without a
 // live chain, and would catch any ABI drift that breaks decoding.
 function mkLog(abi: readonly unknown[], eventName: string, args: Record<string, unknown>, address: Address) {
-  const topics = encodeEventTopics({ abi: abi as never, eventName: eventName as never, args: args as never });
-  const item = getAbiItem({ abi: abi as never, name: eventName as never }) as unknown as AbiEvent;
+  const topics = encodeEventTopics({ abi, eventName, args } as Parameters<typeof encodeEventTopics>[0]);
+  const item = getAbiItem({ abi, name: eventName } as Parameters<typeof getAbiItem>[0]) as unknown as AbiEvent;
   const nonIndexed = item.inputs.filter((i) => !("indexed" in i && i.indexed));
   const data = nonIndexed.length ? encodeAbiParameters(nonIndexed, nonIndexed.map((i) => args[i.name!])) : "0x";
   return { data: data as `0x${string}`, topics: topics as [`0x${string}`, ...`0x${string}`[]], address, transactionHash: ("0x" + "11".repeat(32)) as `0x${string}`, logIndex: 0 };
