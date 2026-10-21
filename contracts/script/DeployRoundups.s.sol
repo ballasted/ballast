@@ -23,16 +23,25 @@ contract DeployRoundups is Script {
     ///      constant to DeployBasketZap.s.sol's REGISTRY.
     address public constant REGISTRY = 0x427764d0d19aB765c35A41A5aa4771580307dA81;
 
-    /// @dev Current BallastFactory (launchIdOf). Identical to DeployBasketZap's.
-    address public constant FACTORY = 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67;
+    /// @dev ALL four BallastFactory generations, so a token launched by ANY of them
+    ///      is votable — gen-1..4, newest first. Verified on chain 4663 (this review):
+    ///      each implements launchIdOf (returns 0 for a non-launch, never reverts) and
+    ///      each has live launches. FeeRouter v1/v2 and Safe launches all go THROUGH
+    ///      one of these factories (the router/Safe calls BallastFactory.launch), so
+    ///      their tokens carry a launchIdOf here and need no separate entry. The set
+    ///      is IMMUTABLE after construction; a factory predating launchIdOf would just
+    ///      be skipped by the try/catch, so an extra entry is always safe.
+    address public constant FACTORY_GEN4 = 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67;
+    address public constant FACTORY_GEN3 = 0x3Eb5532e982931caD40d0416AdbD7930A57965aE;
+    address public constant FACTORY_GEN2 = 0x05aaA5c50e8c3067c3321dF07686Ac52be8F2ED1;
+    address public constant FACTORY_GEN1 = 0x069974136c78Cf0F2162463B95321E59F56523D8;
 
-    /// @dev HUMAN: append any PRIOR BallastFactory addresses whose launched tokens
-    ///      should also be votable before broadcasting. The set is IMMUTABLE after
-    ///      construction. A factory predating launchIdOf reverts the probe and is
-    ///      skipped at runtime, so including an older one is safe.
     function buildFactories() public pure returns (address[] memory factories) {
-        factories = new address[](1);
-        factories[0] = FACTORY;
+        factories = new address[](4);
+        factories[0] = FACTORY_GEN4;
+        factories[1] = FACTORY_GEN3;
+        factories[2] = FACTORY_GEN2;
+        factories[3] = FACTORY_GEN1;
     }
 
     function run() external returns (BurnVote bv, RoundupRouter rr) {

@@ -12,8 +12,18 @@ import {BurnVote} from "../src/BurnVote.sol";
 contract BurnVoteForkTest is Test {
     // Live chain-4663 addresses (identical to DeployRoundups.s.sol / DeployBasketZap).
     address constant REGISTRY = 0x427764d0d19aB765c35A41A5aa4771580307dA81;
-    address constant FACTORY = 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67;
+    address constant FACTORY_GEN4 = 0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67;
+    address constant FACTORY_GEN3 = 0x3Eb5532e982931caD40d0416AdbD7930A57965aE;
+    address constant FACTORY_GEN2 = 0x05aaA5c50e8c3067c3321dF07686Ac52be8F2ED1;
+    address constant FACTORY_GEN1 = 0x069974136c78Cf0F2162463B95321E59F56523D8;
     address constant SGOV = 0x92FD66527192E3e61d4DDd13322Aa222DE86F9B5; // allowlisted stock
+
+    // One real launch per factory generation (launch #0, launchIdOf == 1), verified
+    // live on 4663. Proves BurnVote recognises tokens from EVERY factory, not just gen-4.
+    address constant TOKEN_GEN4 = 0x3Fec2b548755d53fD8DB97CAc0C14DFA99F0e335;
+    address constant TOKEN_GEN3 = 0xf7e04472bE047263885480DAb2C42AB75b1386c1;
+    address constant TOKEN_GEN2 = 0x0107442A5EceDA6B3A108E0d55368deB91b18eE6;
+    address constant TOKEN_GEN1 = 0x069a260370C61d91bd3e9842d81D378F9750F7F3;
 
     BurnVote bv;
     bool forked;
@@ -24,9 +34,22 @@ contract BurnVoteForkTest is Test {
         vm.createSelectFork(url);
         forked = true;
 
-        address[] memory facs = new address[](1);
-        facs[0] = FACTORY;
+        address[] memory facs = new address[](4);
+        facs[0] = FACTORY_GEN4;
+        facs[1] = FACTORY_GEN3;
+        facs[2] = FACTORY_GEN2;
+        facs[3] = FACTORY_GEN1;
         bv = new BurnVote(REGISTRY, facs);
+    }
+
+    /// Every factory generation's tokens are votable; a non-launch is not.
+    function test_Fork_RecognisesAllFactoryGenerations() public {
+        if (!forked) return;
+        assertTrue(bv.isVotableToken(TOKEN_GEN4), "gen-4 token votable");
+        assertTrue(bv.isVotableToken(TOKEN_GEN3), "gen-3 token votable");
+        assertTrue(bv.isVotableToken(TOKEN_GEN2), "gen-2 token votable");
+        assertTrue(bv.isVotableToken(TOKEN_GEN1), "gen-1 token votable");
+        assertFalse(bv.isVotableToken(makeAddr("notALaunch")), "random addr not votable");
     }
 
     /// The real AssetRegistry recognises SGOV as allowed.

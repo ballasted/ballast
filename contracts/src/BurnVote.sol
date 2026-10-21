@@ -205,6 +205,14 @@ contract BurnVote is ReentrancyGuard {
         return top;
     }
 
+    /// @notice True if `token` was launched by any registered Ballast factory —
+    ///         the same gate `vote()` enforces. Exposed so the UI can decide whether
+    ///         to show the burn-to-vote card, and so coverage across every factory
+    ///         generation is directly testable.
+    function isVotableToken(address token) external view returns (bool) {
+        return _isBallastToken(token);
+    }
+
     function _isBallastToken(address token) internal view returns (bool) {
         uint256 len = _factories.length;
         for (uint256 i; i < len; ++i) {

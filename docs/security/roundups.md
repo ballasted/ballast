@@ -138,18 +138,46 @@ Monday; `EPOCH_LENGTH = 7 days`).
 - **Bounded loops.** Per-epoch work is bounded by the number of *distinct stocks
   voted that epoch*, itself bounded by the allowlist size.
 
+### Factory coverage — ALL generations
+
+`vote()` recognises a token via `launchIdOf` on every factory in the immutable
+constructor set, and `DeployRoundups.buildFactories()` now seeds **all four
+BallastFactory generations** (gen-1..4), verified live on 4663 — each implements
+`launchIdOf` (returns 0 for a non-launch, never reverts) and each has live
+launches. FeeRouter v1/v2 launches and Safe launches all call
+`BallastFactory.launch` on one of these four, so their tokens carry a `launchIdOf`
+there and need no separate entry. A new public view `isVotableToken(token)`
+exposes the same gate (for the UI and for direct test coverage). A fork test
+(`test/BurnVoteFork.t.sol::test_Fork_RecognisesAllFactoryGenerations`) asserts one
+real token from each generation is votable; a unit test
+(`test_RecognisesTokenFromAnyFactory`) proves the loop scans past the first factory.
+
 ### Security status — DEPLOYABLE
 
 `BurnVote` is self-contained: it needs only the live AssetRegistry and the live
-`BallastFactory` (both already deployed). 14 tests pass
-(`test/BurnVote.t.sol`), including adversarial cases (non-Ballast token, stock
-not allowed, self-vote, zero amount, reentrancy) and the full
-winner/tie/carry-over/long-gap matrix. See `contracts/script/DeployBurnVote.s.sol`.
+`BallastFactory` set (all already deployed). 15 unit + 4 fork tests pass
+(`test/BurnVote.t.sol`, `test/BurnVoteFork.t.sol`), including adversarial cases
+(non-Ballast token, stock not allowed, self-vote, zero amount, reentrancy), the
+full winner/tie/carry-over/long-gap matrix, and multi-factory recognition. See
+`contracts/script/DeployRoundups.s.sol`.
 
-The only cross-contract coupling is advisory: the UI reads `defaultStock()` to
-*pre-fill* the round-up stock. A wrong or manipulated default only mis-suggests;
-the trader confirms the stock per trade and `RoundupRouter` re-checks the
-allowlist on-chain regardless.
+### Dependency on AssetRegistry (read this with docs/ownership-migration.md)
+
+`BurnVote` trusts `AssetRegistry.isAllowed(stock)` to gate which stock a vote may
+name. **If the AssetRegistry is compromised, BurnVote is still fund-safe** — it
+holds nothing, moves nothing, and burns go straight to the dead address; the only
+achievable harm is that an attacker who can allowlist a junk "stock" could make it
+*win a vote and become the suggested default round-up*. That is a UI suggestion,
+not an action: the trader confirms the stock per trade and `RoundupRouter`
+re-checks `isAllowed` on-chain at execution time.
+
+This is NOT hypothetical today: the live `AssetRegistry`
+(`0x427764d0d19aB765c35A41A5aa4771580307dA81`) is **currently owned by the
+compromised EOA `0xA277…37D1`** (see docs/ownership-migration.md). The same
+registry is the allowlist `RoundupRouter`'s stock leg trusts to decide what it
+will buy — so a compromised registry is a materially bigger problem for the
+round-up *purchase* path than for the vote. **Migrate AssetRegistry ownership to
+the Safe (Step 2) before relying on round-ups or votes in production.**
 
 ---
 

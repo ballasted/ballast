@@ -169,6 +169,27 @@ contract BurnVoteTest is Test {
 
     // ── votes reach the dead address ──
 
+    // Recognition must scan EVERY registered factory, not just the first.
+    function test_RecognisesTokenFromAnyFactory() public {
+        MockFactory fac2 = new MockFactory();
+        address[] memory facs = new address[](2);
+        facs[0] = address(fac); // gen-4 style
+        facs[1] = address(fac2); // a prior generation
+        BurnVote bv2 = new BurnVote(address(reg), facs);
+
+        MockERC20 tok2 = new MockERC20();
+        fac2.setLaunch(address(tok2), 1); // launched only by the SECOND factory
+        tok2.mint(alice, 10 ether);
+        vm.prank(alice);
+        tok2.approve(address(bv2), type(uint256).max);
+
+        assertTrue(bv2.isVotableToken(address(tok2)), "recognised via 2nd factory");
+        assertFalse(bv2.isVotableToken(makeAddr("random")), "non-launch not votable");
+        vm.prank(alice);
+        bv2.vote(address(tok2), NVDA, 1 ether); // must not revert NotBallastToken
+        assertEq(bv2.tally(address(tok2), bv2.currentEpoch(), NVDA), 1 ether);
+    }
+
     function test_VotesBurnToDead() public {
         uint256 before = token.balanceOf(DEAD);
         vm.prank(alice);
