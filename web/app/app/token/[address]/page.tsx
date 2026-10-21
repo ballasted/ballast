@@ -34,7 +34,7 @@ import {
 import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
 import { PriceChart } from "@/components/app/token/PriceChart";
-import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled, isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS } from "@/lib/contracts";
+import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled, isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS, isHiddenToken, HIDDEN_TOKEN_NOTICE } from "@/lib/contracts";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
@@ -61,6 +61,7 @@ export default function TokenDetailPage() {
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(raw);
   const token = isAddr ? (raw as Address) : undefined;
   const retired = isRetiredToken(token);
+  const hidden = isHiddenToken(token);
 
   // Old deep link into the since-removed Backing tab -> its own page now.
   useEffect(() => {
@@ -129,6 +130,10 @@ export default function TokenDetailPage() {
   const livePriceUsd = marketPriceUsd !== undefined ? Number(marketPriceUsd) / 1e18 : market?.priceUsd;
 
   if (!isAddr) return <Notice title="Invalid address" body="This page needs a valid token address." />;
+  // Hidden (throwaway test/smoke) token: reachable by direct URL only, but never
+  // rendered as a live token. Neutral notice — no ticker, no buy/sell, no claims.
+  // Checked before every other gate so no live reads run for a hidden address.
+  if (hidden) return <Notice title="This token is hidden" body={HIDDEN_TOKEN_NOTICE} />;
   // Retired token (e.g. $BALLAST v1): reachable, but short-circuit to a minimal
   // read-only page — the migrated banner + a link to v2, no buy/sell. Done BEFORE
   // the loading/found gates so it renders regardless of whether the backing reads
