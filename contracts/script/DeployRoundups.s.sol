@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script, console2} from "forge-std/Script.sol";
 import {BurnVote} from "../src/BurnVote.sol";
 import {RoundupRouter} from "../src/RoundupRouter.sol";
+import {RoundupMainAdapter} from "../src/RoundupMainAdapter.sol";
 
 /// @title DeployRoundups — deploys BurnVote (now) and, when its routing adapters
 ///        are supplied, RoundupRouter. DRY-RUN ONLY — no broadcast is signed here.
@@ -50,15 +51,22 @@ contract DeployRoundups is Script {
         bv = new BurnVote(REGISTRY, buildFactories());
         console2.log("BurnVote deployed:", address(bv));
 
-        // RoundupRouter only when both adapters are supplied (0 = skip).
-        address mainRouter = vm.envOr("ROUNDUP_MAIN_ROUTER", address(0));
+        // RoundupRouter needs both adapters. The stock buyer (BasketStockBuyer, 0.8.26
+        // V4Router) is deployed separately by DeployBasketStockBuyer.s.sol and passed
+        // in via ROUNDUP_STOCK_BUYER. The main adapter (RoundupMainAdapter, 0.8.28) is
+        // deployed HERE over the live BallastRouterV2 when BALLAST_ROUTER_V2 is set.
+        // All of it stays GATED until the adapters are fork-tested + audited — do not
+        // set NEXT_PUBLIC_ROUNDUP_ROUTER until then (docs/security/roundups.md).
         address stockBuyer = vm.envOr("ROUNDUP_STOCK_BUYER", address(0));
-        if (mainRouter != address(0) && stockBuyer != address(0)) {
-            rr = new RoundupRouter(REGISTRY, mainRouter, stockBuyer);
+        address routerV2 = vm.envOr("BALLAST_ROUTER_V2", address(0)); // 0xa0Aba92d…747E0
+        if (stockBuyer != address(0) && routerV2 != address(0)) {
+            RoundupMainAdapter mainAdapter = new RoundupMainAdapter(routerV2);
+            console2.log("RoundupMainAdapter deployed:", address(mainAdapter));
+            rr = new RoundupRouter(REGISTRY, address(mainAdapter), stockBuyer);
             console2.log("RoundupRouter deployed:", address(rr));
         } else {
-            console2.log("RoundupRouter SKIPPED: set ROUNDUP_MAIN_ROUTER + ROUNDUP_STOCK_BUYER");
-            console2.log("(adapters must be fork-tested + audited first; see docs/security/roundups.md)");
+            console2.log("RoundupRouter SKIPPED: set ROUNDUP_STOCK_BUYER (from DeployBasketStockBuyer)");
+            console2.log("and BALLAST_ROUTER_V2. Adapters must be fork-tested + audited first.");
         }
 
         vm.stopBroadcast();

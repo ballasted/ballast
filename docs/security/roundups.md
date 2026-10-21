@@ -77,32 +77,48 @@ ETH folds back into the trader's payout. The remaining ETH is sent to the trader
 - **Cap.** `roundupBps` is bounded by `MAX_ROUNDUP_BPS = 500` (5%). Checked in
   both `_roundupOnTop` and `_roundupShareOfInput`.
 
-### Security status — NOT YET DEPLOYABLE
+### Security status — adapters BUILT, fork-unverified + audit-gated
 
-The orchestration logic (cap, split, try/catch refund, no-stuck-funds, events)
-is unit-tested deterministically against mocks (`test/RoundupRouter.t.sol`, 9
-tests). **The injected adapters are not built yet.**
+The orchestration logic (cap, split, try/catch refund, no-stuck-funds, events) is
+unit-tested against mocks (`test/RoundupRouter.t.sol`, 9 tests). Both injected
+adapters now exist:
 
-`RoundupRouter` never reimplements routing. It delegates to two injected,
-immutable adapters supplied at construction:
+- **`IStockBuyer` → `BasketStockBuyer.sol`** — ETH→stock→trader. A single-asset
+  extraction of BasketZap's EXACT Fables/Ramses routing (same V4Router base, path
+  builder, Ramses v3 callback, hop/route tables passed verbatim), re-pointed from
+  `creator` to an arbitrary `recipient`. BasketZap is unmodified (its legs are
+  `onlySelf`, so its routing can't be reused by call — only the config + mechanism
+  are reused). Deployed by `script/DeployBasketStockBuyer.s.sol` (0.8.26, reuses
+  `DeployBasketZap`'s table builders field-for-field).
+- **`IMainSwapRouter` → `RoundupMainAdapter.sol`** — wraps the deployed
+  `BallastRouterV2` (`0xa0Aba92d…747E0`) buy/sell so the main leg runs exactly as
+  today (gen-4 hook fee unchanged), forwarding the token to the trader / ETH to
+  RoundupRouter. Deployed inside `DeployRoundups.s.sol` when `BALLAST_ROUTER_V2`
+  + `ROUNDUP_STOCK_BUYER` are set.
 
-- `IMainSwapRouter` — the trader's main Ballast swap (the forked UniversalRouter
-  wrapper / `BallastRouterV2`, or a thin adapter over it).
-- `IStockBuyer` — ETH→stock, delivering to the trader. Must wrap the **same**
-  Fables/Ramses hop config `BasketZap`/`BallastRouterV2` already use (read-only
-  reuse — see `docs/BASKET_DISCOVERY.md`), refund unspent ETH, and revert on
-  failure so the `try/catch` can refund.
+**⚠️ Neither adapter is fork-tested on 4663 (the build environment had no paid
+RPC) nor externally audited. Both are REQUIRED before the router is deployed and
+`NEXT_PUBLIC_ROUNDUP_ROUTER` is set.** The per-stock fork suite
+(`test/BasketStockBuyerFork.t.sol`: buy NVDA/SPY/SGOV, slippage, unlisted,
+no-leftover-ETH) is written to the `RH_RPC_URL_PAID` skip pattern and is the
+gating pre-deploy run for the stock leg.
 
-**Before mainnet, the adapters MUST be:**
-1. Implemented as thin wrappers over the already-verified routing config (reuse
-   the exact `fablesHops`/`ramsesRoutes` tables verbatim, do not re-derive —
-   same rule as `DeployBasketZap.s.sol`).
-2. Fork-tested against live pools (the main swap is already proven on-chain; the
-   round-up leg is not — mirror `BasketZapFork.t.sol`).
-3. Audited for the ETH-handling + delivery/refund contract above.
+**Main-leg scope limitation (important).** `BallastRouterV2.buyWithETH/sellToETH`
+cover only the ETH-via-Fables/Ramses **routed** path — tokens paired against a
+non-WETH quote asset (SGOV/NVDA/SPY). Tokens paired **directly against WETH** (the
+common case) trade through the app's direct v4 path, which `RoundupMainAdapter`
+does NOT cover. Two ways forward, to decide before shipping round-up execution:
+1. Add a second direct-v4 main adapter; or
+2. **(Recommended)** keep the main swap on the app's existing proven path and
+   batch it with a **stock-only** round-up call via **EIP-5792** (the app already
+   uses EIP-5792). Then RoundupRouter needs only the stock leg and no main adapter
+   at all — strictly less new fund-routing code to audit. This would be a small
+   RoundupRouter variant exposing a `roundupOnly(stock, recipient, minOut, route)`
+   entry that never reverts the batch on a routing failure (refunds instead).
 
-Until then, **do not** write a `DeployRoundupRouter.s.sol` with placeholder
-adapter addresses. The deploy is blocked on the adapters, by design.
+Because of this, the frontend `RoundupToggle` remains **preview-only** today; its
+execution wiring waits on the main-leg decision above AND the adapter fork/audit.
+The flag stays off until then, so nothing changes in production.
 
 ---
 
