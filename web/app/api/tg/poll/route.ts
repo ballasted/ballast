@@ -20,6 +20,7 @@ import {
   BALLAST_V2_TOKEN_ADDRESS,
   WETH_ADDRESS,
   LENS_ADDRESS,
+  isHiddenToken,
 } from "@/lib/contracts";
 import { backingLensAbi } from "@/lib/abis";
 import { TG, botConfigured, MAX_BLOCKS_PER_RUN, MAX_MESSAGES_PER_RUN, KV_CURSOR_KEY, KV_POOLMAP_KEY } from "@/lib/tg/config";
@@ -132,6 +133,10 @@ export async function GET(req: Request) {
 
   for (const e of all) {
     if (!e.txHash || e.logIndex === undefined) continue;
+    // Never post activity for a hidden (test/smoke) token — the same canonical
+    // hide list the app uses (web/lib/hiddenTokens.ts, re-exported from contracts).
+    const hideTok = tokenForHiding(e, poolMap, routerToken, treasuryToken);
+    if (hideTok && isHiddenToken(hideTok)) continue;
     const dedupKey = `tg:seen:${e.txHash}:${e.logIndex}`;
     const msg = await buildMessage(e, { poolMap, sym, routerToken, treasuryToken, launchDetails, minSwapWei, minBurnWei });
     if (!msg) continue;
@@ -247,6 +252,34 @@ async function resolveLaunchDetails(client: ReturnType<typeof serverClient>, lau
     out[e.token.toLowerCase()] = { pairAddrs, split, parent, treasury };
   }
   return out;
+}
+
+/** The token an event is "about", for applying the hide list. Protocol-level
+ *  events ($BALLAST buyback/burn) return undefined — never hidden. */
+function tokenForHiding(
+  e: TgEventWithMeta,
+  poolMap: Record<string, string>,
+  routerToken: Record<string, Address>,
+  treasuryToken: Record<string, Address>,
+): Address | undefined {
+  switch (e.kind) {
+    case "launch":
+    case "poolSeeded":
+    case "deadTransfer":
+      return e.token;
+    case "basketFill":
+      return e.launchToken;
+    case "swap":
+      return poolMap[e.poolId.toLowerCase()]?.split("|")[0] as Address | undefined;
+    case "splitScheduled":
+    case "splitApplied":
+    case "parentBurned":
+      return routerToken[e.router.toLowerCase()];
+    case "treasuryDeposit":
+      return treasuryToken[e.treasury.toLowerCase()];
+    default:
+      return undefined;
+  }
 }
 
 async function buildMessage(e: TgEventWithMeta, ctx: BuildCtx): Promise<string | null> {
