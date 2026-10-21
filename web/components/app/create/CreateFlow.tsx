@@ -13,6 +13,7 @@ import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { FeesSection } from "@/components/app/create/FeesSection";
 import { AiSuggestPanel } from "@/components/app/create/AiSuggestPanel";
 import { LaunchTemplates } from "@/components/app/create/LaunchTemplates";
+import { ShareOnX } from "@/components/app/ShareOnX";
 import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -1230,6 +1231,9 @@ function SuccessCard({
           >
             View token on Blockscout ↗
           </a>
+          <div className="flex justify-center">
+            <ShareOnX params={{ type: "launch", ticker: symbol, token }} />
+          </div>
         </div>
       </section>
       {isBasketEnabled && (
