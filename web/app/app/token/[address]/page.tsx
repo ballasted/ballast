@@ -24,6 +24,7 @@ import { FeeSplitInfo } from "@/components/app/token/FeeSplitInfo";
 import { StakingPanel } from "@/components/app/token/StakingPanel";
 import { FeeRouterDashboard } from "@/components/app/token/FeeRouterDashboard";
 import { PlainEnglishCard } from "@/components/app/token/PlainEnglishCard";
+import { BurnVoteCard } from "@/components/app/token/BurnVoteCard";
 import {
   AllocationSlot,
   MetadataHistory,
@@ -34,7 +35,7 @@ import {
 import { cn } from "@/lib/cn";
 import { TokenStatRow } from "@/components/app/token/TokenStatRow";
 import { PriceChart } from "@/components/app/token/PriceChart";
-import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled, isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS } from "@/lib/contracts";
+import { WETH_ADDRESS, isBasketEnabled, isRamsesEnabled, isRetiredToken, RETIRED_NOTICES, BALLAST_V2_TOKEN_ADDRESS, isBurnVoteConfigured } from "@/lib/contracts";
 import { useHolders } from "@/hooks/useHolders";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { VerificationPanel } from "@/components/app/VerificationPanel";
@@ -279,6 +280,7 @@ export default function TokenDetailPage() {
             <FeeRouterCard token={token} factory={ownerFactory} />
             <StakingPanel token={token} symbol={symbol} />
             <FeeRouterDashboard token={token} />
+            {isBurnVoteConfigured && <BurnVoteCard token={token!} />}
 
             {shownMeta && (shownMeta.description || shownMeta.website || shownMeta.x || shownMeta.telegram) && (
               <section className="card p-5">

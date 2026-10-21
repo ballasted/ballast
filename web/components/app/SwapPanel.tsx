@@ -11,7 +11,8 @@ import { ActingAs } from "@/components/app/ActingAs";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
-import { isSwapConfigured, isRouterV2Configured } from "@/lib/contracts";
+import { isSwapConfigured, isRouterV2Configured, isRoundupConfigured } from "@/lib/contracts";
+import { RoundupToggle } from "@/components/app/RoundupToggle";
 import { erc20Abi } from "@/lib/abis";
 import { routerV2RoutesFor } from "@/lib/routerV2";
 import { cn } from "@/lib/cn";
@@ -429,6 +430,23 @@ export function SwapPanel({
               splitting it, keeps more of the quote.
             </p>
           )}
+        </div>
+      )}
+
+      {/* Optional stock round-up — preview + selection; hidden unless the
+          RoundupRouter env is set (see RoundupToggle). */}
+      {isRoundupConfigured && (
+        <div className="mt-4">
+          <RoundupToggle
+            token={token}
+            baseEth={
+              side === "buy"
+                ? parseFloat(amount) || 0
+                : s.quote !== undefined
+                  ? Number(formatUnits(s.quote, 18))
+                  : 0
+            }
+          />
         </div>
       )}
 

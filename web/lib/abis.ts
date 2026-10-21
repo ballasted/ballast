@@ -1964,3 +1964,114 @@ export const ramsesV3PoolAbi = [
     ],
   },
 ] as const;
+
+// ── RoundupRouter (Phase 3) ──────────────────────────────────────────────────
+export const roundupRouterAbi = [
+  {
+    type: "function",
+    name: "buyWithRoundup",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "minOut", type: "uint256" },
+      { name: "roundupBps", type: "uint256" },
+      { name: "stock", type: "address" },
+      { name: "minStockOut", type: "uint256" },
+      { name: "mainRoute", type: "bytes" },
+      { name: "stockRoute", type: "bytes" },
+    ],
+    outputs: [{ name: "tokenOut", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "sellWithRoundup",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amountIn", type: "uint256" },
+      { name: "minOut", type: "uint256" },
+      { name: "roundupBps", type: "uint256" },
+      { name: "stock", type: "address" },
+      { name: "minStockOut", type: "uint256" },
+      { name: "mainRoute", type: "bytes" },
+      { name: "stockRoute", type: "bytes" },
+    ],
+    outputs: [{ name: "ethOut", type: "uint256" }],
+  },
+  { type: "function", name: "MAX_ROUNDUP_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  {
+    type: "event",
+    name: "RoundupExecuted",
+    inputs: [
+      { name: "trader", type: "address", indexed: true },
+      { name: "token", type: "address", indexed: true },
+      { name: "stock", type: "address", indexed: true },
+      { name: "ethIn", type: "uint256", indexed: false },
+      { name: "stockOut", type: "uint256", indexed: false },
+      { name: "isBuy", type: "bool", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "RoundupFailed",
+    inputs: [
+      { name: "trader", type: "address", indexed: true },
+      { name: "stock", type: "address", indexed: false },
+      { name: "ethRefunded", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+// ── BurnVote (Phase 3) ───────────────────────────────────────────────────────
+export const burnVoteAbi = [
+  {
+    type: "function",
+    name: "vote",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "stock", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  { type: "function", name: "defaultStock", stateMutability: "view", inputs: [{ name: "token", type: "address" }], outputs: [{ type: "address" }] },
+  {
+    type: "function",
+    name: "currentLeader",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "stock", type: "address" }, { name: "votes", type: "uint256" }],
+  },
+  { type: "function", name: "currentEpoch", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "timeLeftInEpoch", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  {
+    type: "function",
+    name: "epochTallies",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }, { name: "epoch", type: "uint256" }],
+    outputs: [{ name: "stocks", type: "address[]" }, { name: "votes", type: "uint256[]" }],
+  },
+  { type: "function", name: "finalize", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }], outputs: [] },
+  {
+    type: "event",
+    name: "Voted",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "voter", type: "address", indexed: true },
+      { name: "stock", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "epoch", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "DefaultChanged",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "oldStock", type: "address", indexed: false },
+      { name: "newStock", type: "address", indexed: false },
+      { name: "epoch", type: "uint256", indexed: false },
+    ],
+  },
+] as const;

@@ -69,6 +69,17 @@ export const METADATA_DENYLIST_ADDRESS = asAddress(
 export const BUYBACK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BUYBACK_ADDRESS);
 export const isBuybackConfigured = Boolean(BUYBACK_ADDRESS);
 
+// ── Round-ups + burn-to-vote (Phase 3) ───────────────────────────────────────
+// Both features are hidden until their contracts are deployed and these env vars
+// are set. Empty => the Swap "Stock round-up" toggle and the token-page
+// "Burn-to-vote" card never render, so nothing breaks pre-deploy.
+export const ROUNDUP_ROUTER_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_ROUNDUP_ROUTER,
+);
+export const BURN_VOTE_ADDRESS = asAddress(process.env.NEXT_PUBLIC_BURN_VOTE);
+export const isRoundupConfigured = Boolean(ROUNDUP_ROUTER_ADDRESS);
+export const isBurnVoteConfigured = Boolean(BURN_VOTE_ADDRESS);
+
 // BuybackBurnerV2 — $BALLAST v2's manual-funded, ownerless buyback burner
 // (contracts/src/BuybackBurnerV2.sol). Unset until deployed; the buyback page
 // degrades to an honest "manual, not live yet" state exactly like v1 did
