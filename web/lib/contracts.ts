@@ -280,27 +280,17 @@ export const ETH_USD_FEED_ADDRESS = asAddress(
 export const PERMIT2_ADDRESS =
   "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address;
 
-// Tokens deliberately excluded from every listing surface (Discover grid,
-// search, Top Movers, stat tiles) — e.g. a throwaway test launch used to
-// prove a new factory generation end-to-end. Still fully readable by direct
-// URL/address (nothing here touches useProjects or the token page itself),
-// just never surfaced anywhere a real visitor browses. Env-driven so a new
-// disposable test token needs no code change.
-// Throwaway test launches hidden in CODE (env extends, never replaces). The
-// gen-4 "TEST" token (0x3Fec2b…) was a disposable end-to-end factory probe and
-// should never surface on a browsable list. Correct default lives here; the env
-// var stays an override/extension only.
-const CODE_HIDDEN_TOKENS: Address[] = [
-  "0x3fec2b548755d53fd8db97cac0c14dfa99f0e335", // gen-4 "TEST" factory probe
-  "0x28c53790d77a23715972ae01ab7fa8430b31846f", // FeeRouter v2 smoke-test launch (reachable by direct URL only)
-];
-export const HIDDEN_TOKEN_ADDRESSES: Address[] = [
-  ...CODE_HIDDEN_TOKENS,
-  ...parseAddressList(process.env.NEXT_PUBLIC_HIDDEN_TOKEN_ADDRESSES),
-];
-export function isHiddenToken(token: Address | undefined): boolean {
-  return Boolean(token) && HIDDEN_TOKEN_ADDRESSES.some((a) => a.toLowerCase() === token!.toLowerCase());
-}
+// Hidden (throwaway test/smoke) tokens — the canonical list, helper and notice
+// copy now live in ONE shared, dependency-free module so the Telegram bot and
+// the SDK can import the same source. Re-exported here for back-compat with the
+// many call sites that import { isHiddenToken, HIDDEN_TOKEN_ADDRESSES } from
+// "@/lib/contracts".
+export {
+  CODE_HIDDEN_TOKENS,
+  HIDDEN_TOKEN_ADDRESSES,
+  isHiddenToken,
+  HIDDEN_TOKEN_NOTICE,
+} from "./hiddenTokens";
 
 export const isLensConfigured = Boolean(LENS_ADDRESS);
 export const isFactoryConfigured = Boolean(FACTORY_ADDRESS);

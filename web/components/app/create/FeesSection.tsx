@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { cn } from "@/lib/cn";
 import type { FeeSplitBps } from "@/hooks/useFeeRouterLaunchRunner";
 import { useProjects } from "@/hooks/useProjects";
-import { WETH_ADDRESS } from "@/lib/contracts";
+import { WETH_ADDRESS, isHiddenToken, isRetiredToken } from "@/lib/contracts";
 import { shortAddress } from "@/lib/format";
 
 const BPS = 10000;
@@ -60,7 +60,13 @@ export function FeesSection({
     if (!allowParent) return [];
     const weth = WETH_ADDRESS?.toLowerCase();
     return projects
-      .filter((p) => p.hasPool && (!weth || p.quoteAssets.some((q) => q.toLowerCase() === weth)))
+      .filter(
+        (p) =>
+          !isHiddenToken(p.token) &&
+          !isRetiredToken(p.token) &&
+          p.hasPool &&
+          (!weth || p.quoteAssets.some((q) => q.toLowerCase() === weth)),
+      )
       .map((p) => ({ token: p.token, label: p.symbol ? `$${p.symbol}` : shortAddress(p.token) }));
   }, [projects, allowParent]);
 

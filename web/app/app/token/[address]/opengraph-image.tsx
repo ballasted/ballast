@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Address } from "viem";
 import { getOgTokenData } from "@/lib/ogTokenData";
 import { formatBackingPerToken } from "@/lib/format";
-import { isRetiredToken } from "@/lib/contracts";
+import { isRetiredToken, isHiddenToken } from "@/lib/contracts";
 
 // Per-token link-preview card. Most people meet a token as a shared link before
 // they ever see the page, so this is the real first impression. It shows only what
@@ -52,13 +52,18 @@ export default async function Image({ params }: { params: Promise<{ address: str
 async function renderCard(params: Promise<{ address: string }>) {
   const { address } = await params;
   const isAddr = /^0x[0-9a-fA-F]{40}$/.test(address);
-  const data = isAddr
+  // Hidden (test/smoke) tokens never get a share card — skip the reads and render
+  // a neutral card with no ticker, name, or figures.
+  const hidden = isAddr && isHiddenToken(address as Address);
+  const data = isAddr && !hidden
     ? await getOgTokenData(address as Address)
     : { found: false, denied: false, ballasted: false };
 
   const retired = isAddr && isRetiredToken(address as Address);
-  const ticker = data.symbol ? (data.symbol.startsWith("$") ? data.symbol : `$${data.symbol}`) : "BALLAST";
-  const name = retired
+  const ticker = hidden ? "BALLAST" : data.symbol ? (data.symbol.startsWith("$") ? data.symbol : `$${data.symbol}`) : "BALLAST";
+  const name = hidden
+    ? "Token not available"
+    : retired
     ? "Retired — migrated to $BALLAST v2"
     : data.found
       ? data.denied

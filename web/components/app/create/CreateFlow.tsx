@@ -12,6 +12,8 @@ import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { FeesSection } from "@/components/app/create/FeesSection";
 import { AiSuggestPanel } from "@/components/app/create/AiSuggestPanel";
+import { LaunchTemplates } from "@/components/app/create/LaunchTemplates";
+import { ShareOnX } from "@/components/app/ShareOnX";
 import { useOpeningFdv } from "@/hooks/useOpeningFdv";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -409,6 +411,17 @@ export function CreateFlow() {
             onApplyFeeSplit={(bps) =>
               setRouterSplit((prev) => ({ ...prev, ...bps, parentBurnBps: 0, parent: undefined }))
             }
+          />
+          <LaunchTemplates
+            assets={assets}
+            quoteOptions={quoteOptions}
+            feeRouterActive={isFeeRouterFactoryConfigured}
+            feeRouterV2Active={isFeeRouterV2Active}
+            setQuoteAssets={setQuoteAssets}
+            setMode={setMode}
+            setAssetAddr={setAssetAddr}
+            setNoticeDays={setNoticeDays}
+            setRouterSplit={setRouterSplit}
           />
           <section className="card space-y-4 p-5">
             <LogoUploader symbol={symbolClean} logoUri={logoUri} setLogoUri={setLogoUri} />
@@ -1218,6 +1231,9 @@ function SuccessCard({
           >
             View token on Blockscout ↗
           </a>
+          <div className="flex justify-center">
+            <ShareOnX params={{ type: "launch", ticker: symbol, token }} />
+          </div>
         </div>
       </section>
       {isBasketEnabled && (

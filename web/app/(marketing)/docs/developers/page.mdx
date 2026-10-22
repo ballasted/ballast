@@ -1,0 +1,84 @@
+export const metadata = {
+  title: "Developers (SDK)",
+  description:
+    "ballast-sdk — a preview TypeScript SDK for reading tokens, launching, and watching on-chain events on Robinhood Chain.",
+};
+
+# Developers
+
+`ballast-sdk` is a small TypeScript SDK for building on Ballast (Robinhood Chain,
+id 4663): typed reads, quotes, writes, and event decoders over [viem](https://viem.sh).
+
+> **Preview.** The API may change between 0.x releases — pin an exact version.
+> Every write **simulates before it sends**; you review and sign with your own wallet.
+> Holding a token gives no claim, redemption right, or entitlement to treasury assets.
+
+## Install
+
+```bash
+npm install viem ballast-sdk@preview
+```
+
+`viem` is a peer dependency. Reads need only a `publicClient`; writes need a `walletClient`.
+
+## 1 · Read a token
+
+```ts
+import { createPublicClient, http, type Address } from "viem";
+import { createBallast, robinhoodChain } from "ballast-sdk";
+
+const publicClient = createPublicClient({ chain: robinhoodChain, transport: http() });
+const ballast = createBallast({ publicClient });
+
+const token = "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C" as Address; // $BALLAST
+const info = await ballast.getToken(token);
+
+console.log(info.symbol, info.name);
+console.log("hook gen:", info.hookGen, "graduated:", info.graduated);
+console.log("backing per token:", info.backing?.backingPerToken?.toString());
+console.log("current fee split:", info.currentSplit);
+```
+
+## 2 · Launch a token
+
+`launch()` mirrors the Create page exactly (pairs, optional treasury + withdrawal
+notice, fee split incl. parent burn). It **simulates first**, then your wallet signs.
+
+```ts
+import { createWalletClient, custom } from "viem";
+import { createBallast, robinhoodChain } from "ballast-sdk";
+
+const walletClient = createWalletClient({ chain: robinhoodChain, transport: custom(window.ethereum) });
+const ballast = createBallast({ publicClient, walletClient });
+
+const { token, treasury } = await ballast.launch({
+  name: "Example",
+  symbol: "EXMPL",
+  pairs: ["WETH"],            // ETH and/or up to 2 stock quote assets
+  treasury: { enabled: false }, // or { enabled: true, asset, amount, noticePeriodDays }
+  split: { creatorBps: 8000, buybackBps: 2000 }, // read live caps; must be valid
+});
+console.log("launched", token, "treasury", treasury);
+```
+
+## 3 · Watch on-chain events
+
+Decode Ballast activity from logs with typed decoders — launches, swaps on Ballast
+pools, buyback/burns, dead-address transfers, split scheduled/applied, and more.
+
+```ts
+import { parseBallastLogs } from "ballast-sdk";
+
+const unwatch = publicClient.watchBlocks({
+  onBlock: async (block) => {
+    const logs = await publicClient.getLogs({ fromBlock: block.number, toBlock: block.number });
+    for (const ev of parseBallastLogs(logs)) {
+      if (ev.kind === "launch") console.log("new launch", ev.token);
+      if (ev.kind === "buybackBurned") console.log("burned to dead:", ev.totalBallastBurned.toString());
+    }
+  },
+});
+```
+
+See the package README for every function, the quote helpers, and the typed error
+list. Source: [`packages/sdk`](https://github.com/ballasted/ballast/tree/main/packages/sdk).
