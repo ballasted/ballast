@@ -2,7 +2,7 @@
 
 TypeScript SDK for the [Ballast](https://ballasted.fun) launchpad on **Robinhood Chain (4663)**: typed reads, quotes, writes, and on-chain event decoders, built on [viem](https://viem.sh).
 
-> **Preview.** The API is marked preview and may change between 0.x releases. Not published to npm — consume it from this monorepo. Every write **simulates before it sends**; you still review and sign with your own wallet.
+> **Preview.** The API is marked preview and may change between 0.x releases — pin an exact version. Published to npm under the `preview` dist-tag (`npm i ballast-sdk@preview`). Every write **simulates before it sends**; you still review and sign with your own wallet.
 
 Addresses, ABIs, and the launch/fee-split rules are taken from the repo's **compiled Foundry artifacts** and deploy docs — not hand-written. Refresh the ABIs after a `forge build` with `npm run gen:abis`.
 
@@ -10,9 +10,7 @@ Addresses, ABIs, and the launch/fee-split rules are taken from the repo's **comp
 
 ```bash
 # viem is a peer dependency
-npm install viem
-# then build the SDK (from packages/sdk)
-npm install && npm run build
+npm install viem ballast-sdk@preview
 ```
 
 ## Quickstart

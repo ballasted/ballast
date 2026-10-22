@@ -1,10 +1,27 @@
 {
   "name": "ballast-sdk",
-  "version": "0.1.0",
+  "version": "0.1.0-preview",
   "description": "Preview SDK for the Ballast launchpad on Robinhood Chain (4663). Reads, quotes, writes, and typed event decoders.",
-  "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "author": "Ballast",
+  "homepage": "https://ballasted.fun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ballasted/ballast.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/ballasted/ballast/issues"
+  },
+  "keywords": [
+    "ballast",
+    "robinhood-chain",
+    "uniswap-v4",
+    "viem",
+    "launchpad",
+    "sdk"
+  ],
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -20,12 +37,16 @@
     "dist",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "gen:abis": "node scripts/gen-abis.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:fork": "vitest run --config vitest.fork.config.ts"
+    "test:fork": "vitest run --config vitest.fork.config.ts",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "viem": "^2.0.0"
