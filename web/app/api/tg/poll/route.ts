@@ -40,19 +40,30 @@ function authed(req: Request): boolean {
   return h.get("x-cron-secret") === TG.cronSecret;
 }
 
+// This chain's public RPC caps eth_getLogs at 10,000,000 blocks per request, so a
+// wide range (notably the first-run pool-map seed over 0..tip, ~95M blocks) must be
+// split or the single call throws and silently returns nothing (empty pool map ->
+// no buy/sell alerts ever). Regular per-run windows are <= MAX_BLOCKS_PER_RUN and
+// take the fast single-call path. Each chunk is independently try/caught so one
+// transient failure doesn't drop the rest.
+const GETLOGS_MAX_SPAN = 9_000_000n; // safely under the 10M RPC limit
+
 async function getLogsFor(client: ReturnType<typeof serverClient>, params: { address?: Address; abi: readonly unknown[]; eventName: string; from: bigint; to: bigint }): Promise<TgEventWithMeta[]> {
   const event = getAbiItem({ abi: params.abi as never, name: params.eventName as never });
-  try {
-    const logs = (await client.getLogs({ address: params.address, event: event as never, fromBlock: params.from, toBlock: params.to })) as Array<{ transactionHash?: Hex | null; logIndex?: number | null; address?: Address; topics: [Hex, ...Hex[]]; data: Hex }>;
-    const out: TgEventWithMeta[] = [];
-    for (const log of logs) {
-      const ev = decodeTgLog(log);
-      if (ev) out.push({ ...ev, txHash: log.transactionHash ?? undefined, logIndex: log.logIndex ?? undefined, address: log.address as Address });
+  const out: TgEventWithMeta[] = [];
+  for (let lo = params.from; lo <= params.to; lo += GETLOGS_MAX_SPAN) {
+    const hi = lo + GETLOGS_MAX_SPAN - 1n > params.to ? params.to : lo + GETLOGS_MAX_SPAN - 1n;
+    try {
+      const logs = (await client.getLogs({ address: params.address, event: event as never, fromBlock: lo, toBlock: hi })) as Array<{ transactionHash?: Hex | null; logIndex?: number | null; address?: Address; topics: [Hex, ...Hex[]]; data: Hex }>;
+      for (const log of logs) {
+        const ev = decodeTgLog(log);
+        if (ev) out.push({ ...ev, txHash: log.transactionHash ?? undefined, logIndex: log.logIndex ?? undefined, address: log.address as Address });
+      }
+    } catch {
+      // skip this chunk; best-effort (pool-map seed and per-run reads both tolerate it)
     }
-    return out;
-  } catch {
-    return [];
   }
+  return out;
 }
 
 export async function GET(req: Request) {
