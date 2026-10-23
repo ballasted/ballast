@@ -1,4 +1,9 @@
-import { V1_CLAIM_DEADLINE_UNIX, isV1ClaimConfigured, isCreatorSplitterConfigured } from "@/lib/contracts";
+import {
+  V1_CLAIM_DEADLINE_UNIX,
+  isV1ClaimConfigured,
+  isCreatorSplitterConfigured,
+  isBurnVoteConfigured,
+} from "@/lib/contracts";
 
 // Single source of truth for the app's primary navigation. Both the desktop
 // SideNav and the mobile TopBar render from this list via `visibleNavItems`,
@@ -35,6 +40,9 @@ export const NAV_ITEMS: NavItem[] = [
   ...(isCreatorSplitterConfigured
     ? [{ href: "/app/team-split", label: "Team split", icon: IconPortfolio }]
     : []),
+  // Burn-to-vote hub — only shown once BurnVote is deployed (NEXT_PUBLIC_BURN_VOTE
+  // set), never before.
+  ...(isBurnVoteConfigured ? [{ href: "/app/vote", label: "Vote", icon: IconBurn }] : []),
 ];
 
 // The mobile bottom tab bar's fixed set (see BottomNav). Centralised here so the
