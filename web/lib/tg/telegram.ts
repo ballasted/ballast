@@ -45,6 +45,85 @@ export async function sendMessage(html: string): Promise<{ sent: boolean; dryRun
   return { sent: true, dryRun: false };
 }
 
+/**
+ * Edit an existing message's text — used to fix/maintain the group's PINNED
+ * message. The "?"-instead-of-the-anchor bug came from editing that message with
+ * a body that wasn't UTF-8, so Telegram received replacement bytes for the
+ * multibyte character (e.g. the ⚓ anchor). The `charset=utf-8` content-type +
+ * `JSON.stringify` here are the fix and are load-bearing — same encoding as
+ * sendMessage, never a raw/latin-1 body.
+ */
+export async function editMessageText(
+  messageId: number,
+  html: string,
+): Promise<{ edited: boolean; dryRun: boolean }> {
+  if (TG.dryRun) {
+    console.info(`[tg:dry-run] editMessageText #${messageId}\n` + html);
+    return { edited: false, dryRun: true };
+  }
+  if (!TG.botToken || !TG.chatId) return { edited: false, dryRun: false };
+  const res = await fetch(API("editMessageText"), {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({
+      chat_id: TG.chatId,
+      message_id: messageId,
+      text: html,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`telegram editMessageText ${res.status} ${body.slice(0, 200)}`);
+  }
+  return { edited: true, dryRun: false };
+}
+
+/** Post a message and return its message_id (needed to pin / later edit it). */
+export async function sendMessageReturningId(
+  html: string,
+): Promise<{ messageId?: number; dryRun: boolean }> {
+  if (TG.dryRun) {
+    console.info("[tg:dry-run] sendMessage (for pin)\n" + html);
+    return { dryRun: true };
+  }
+  if (!TG.botToken || !TG.chatId) return { dryRun: false };
+  const res = await fetch(API("sendMessage"), {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ chat_id: TG.chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`telegram sendMessage ${res.status} ${body.slice(0, 200)}`);
+  }
+  const data = (await res.json().catch(() => ({}))) as { result?: { message_id?: number } };
+  return { messageId: data.result?.message_id, dryRun: false };
+}
+
+/** Pin a message in the chat (silent — no "pinned a message" notification spam). */
+export async function pinChatMessage(messageId: number): Promise<{ pinned: boolean; dryRun: boolean }> {
+  if (TG.dryRun) {
+    console.info(`[tg:dry-run] pinChatMessage #${messageId}`);
+    return { pinned: false, dryRun: true };
+  }
+  if (!TG.botToken || !TG.chatId) return { pinned: false, dryRun: false };
+  const res = await fetch(API("pinChatMessage"), {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ chat_id: TG.chatId, message_id: messageId, disable_notification: true }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`telegram pinChatMessage ${res.status} ${body.slice(0, 200)}`);
+  }
+  return { pinned: true, dryRun: false };
+}
+
 // The four animation kinds and their files under /public/tg. Buyback-and-burn and
 // manual burns both reuse the burn clip; new launches use launch; buys/sells use
 // their own. (Split changes and digests stay text-only — no entry here.)
