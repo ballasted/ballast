@@ -21,6 +21,11 @@ const C = {
   bone: "#F5F3EC",
   boneMuted: "rgba(245,243,236,0.4)",
   faint: "rgba(245,243,236,0.18)",
+  // Decorative layers (design bar relaxed slightly for share surfaces): a soft
+  // patina glow top-right + a near-black deep-green pool bottom-left give depth
+  // without a hard gradient wash; the divider reads as a lit keel-line.
+  glow: "radial-gradient(1120px 560px at 88% -14%, rgba(0,200,5,0.16), rgba(0,200,5,0) 60%), radial-gradient(760px 520px at -10% 116%, rgba(11,42,15,0.9), rgba(11,42,15,0) 58%)",
+  rule: "linear-gradient(90deg, rgba(0,200,5,0.5), rgba(0,200,5,0.06) 52%, rgba(0,200,5,0))",
 };
 const SIZE = { width: 1200, height: 630 };
 const VALID: ShareEventType[] = ["launch", "buyback", "burn", "backing", "split", "basket", "vote-winner"];
@@ -49,7 +54,15 @@ export async function GET(req: Request) {
   try {
     return new ImageResponse(
       (
-        <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", backgroundColor: C.bg, padding: 64, fontFamily: "sans-serif" }}>
+        <div style={{ position: "relative", overflow: "hidden", width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", backgroundColor: C.bg, backgroundImage: C.glow, padding: 64, fontFamily: "sans-serif" }}>
+          {/* Oversized keel watermark bleeding off the bottom-right corner. Low
+              opacity — a texture, not a second logo. Absolute, so it never shifts
+              the three content rows below. */}
+          <svg width="560" height="560" viewBox="0 0 24 24" fill="none" style={{ position: "absolute", right: -72, bottom: -104, opacity: 0.05 }}>
+            <path d="M3 7h18" stroke={C.green} strokeWidth="1.4" strokeLinecap="round" />
+            <path d="M12 7v6m0 0l-4 4h8l-4-4z" stroke={C.green} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+
           {/* Header — keel mark + wordmark, event-type pill on the right. */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -59,14 +72,18 @@ export async function GET(req: Request) {
               </svg>
               <span style={{ fontSize: 34, fontWeight: 600, letterSpacing: 6, color: C.bone }}>BALLAST</span>
             </div>
-            <div style={{ display: "flex", fontSize: 26, fontWeight: 600, letterSpacing: 2, padding: "12px 24px", borderRadius: 999, backgroundColor: C.greenDeep, color: C.green }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 26, fontWeight: 600, letterSpacing: 2, padding: "12px 24px", borderRadius: 999, backgroundColor: C.greenDeep, border: "1px solid rgba(0,200,5,0.3)", color: C.green }}>
               {d.emoji} {d.headline}
             </div>
           </div>
 
           {/* Body — ticker (if any), big value, label. */}
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {ticker ? <span style={{ display: "flex", fontSize: 48, color: C.boneMuted, marginBottom: 8 }}>{ticker}</span> : null}
+            {ticker ? (
+              <span style={{ display: "flex", alignSelf: "flex-start", fontSize: 34, fontWeight: 600, letterSpacing: 4, textTransform: "uppercase", color: C.green, marginBottom: 14 }}>
+                {ticker}
+              </span>
+            ) : null}
             <span style={{ fontSize: value && value.length > 16 ? 96 : 128, fontWeight: 700, letterSpacing: -3, color: C.bone, lineHeight: 1 }}>
               {value ?? d.headline}
             </span>
@@ -75,10 +92,13 @@ export async function GET(req: Request) {
 
           {/* Footer — optional context + domain. */}
           <div style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", height: 2, backgroundColor: C.border, marginBottom: 24 }} />
+            <div style={{ display: "flex", height: 2, backgroundImage: C.rule, marginBottom: 24 }} />
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
               <span style={{ display: "flex", fontSize: 28, color: C.boneMuted, maxWidth: 820 }}>{sub ?? ""}</span>
-              <span style={{ display: "flex", fontSize: 26, color: C.faint, letterSpacing: 1 }}>ballasted.fun</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 26, color: C.faint, letterSpacing: 1 }}>
+                <span style={{ display: "flex", width: 8, height: 8, borderRadius: 999, backgroundColor: C.green }} />
+                ballasted.fun
+              </span>
             </div>
           </div>
         </div>
