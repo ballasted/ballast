@@ -17,10 +17,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // GeckoTerminal chart must render), and confirm project logos load. If anything is
 // blocked, flip the header name below to "Content-Security-Policy-Report-Only"
 // to observe violations without enforcing, tighten, then switch back.
-const csp = [
+// Shared directives, minus frame-ancestors (which differs for the Telegram Mini
+// App route, below).
+const cspBase = [
   "default-src 'self'",
-  // Next injects inline bootstrap scripts (no nonce here); some wallet libs use eval/wasm.
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  // Next injects inline bootstrap scripts (no nonce here); some wallet libs use
+  // eval/wasm; telegram.org serves the Mini App Web App SDK (telegram-web-app.js).
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
@@ -33,14 +36,30 @@ const csp = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'",
   "upgrade-insecure-requests",
-].join("; ");
+];
+// Default: no page may be framed (clickjacking protection).
+const csp = [...cspBase, "frame-ancestors 'none'"].join("; ");
+// Telegram launch Mini App: Telegram's web/desktop clients embed it in an iframe
+// (mobile uses a native webview where framing headers don't apply). Allow only
+// Telegram to frame it; every OTHER route keeps 'none'.
+const miniAppCsp = [...cspBase, "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org"].join("; ");
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+];
+
+// Mini App route: same headers, but X-Frame-Options is dropped (it has no
+// allow-specific-origin value, so it would block Telegram's iframe) in favour of
+// the Telegram-scoped frame-ancestors above.
+const miniAppHeaders = [
+  { key: "Content-Security-Policy", value: miniAppCsp },
+  { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
@@ -55,7 +74,13 @@ const nextConfig = {
   // making Next infer the wrong root for output file tracing.
   outputFileTracingRoot: __dirname,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      // Telegram Mini App route first — Telegram-framing headers (no X-Frame-Options).
+      { source: "/app/tg-launch", headers: miniAppHeaders },
+      { source: "/app/tg-launch/:path*", headers: miniAppHeaders },
+      // Everything else keeps the strict headers (frame-ancestors 'none' + XFO DENY).
+      { source: "/((?!app/tg-launch).*)", headers: securityHeaders },
+    ];
   },
   async redirects() {
     // No landing page — the root domain opens straight on Discover. Old

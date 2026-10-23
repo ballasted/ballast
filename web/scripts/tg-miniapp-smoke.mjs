@@ -1,0 +1,21 @@
+import { chromium } from "@playwright/test";
+const URL = process.env.SMOKE_URL || "http://localhost:3123/app/tg-launch";
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
+await page.addInitScript(() => {
+  window.Telegram = { WebApp: { ready() {}, expand() {}, initData: "", initDataUnsafe: { user: { id: 1, username: "tester" } }, colorScheme: "dark", themeParams: {} } };
+});
+const errors = [];
+page.on("pageerror", (e) => errors.push("pageerror: " + String(e).slice(0, 160)));
+page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text().slice(0, 160)); });
+const resp = await page.goto(URL, { waitUntil: "load", timeout: 90000 });
+await page.waitForTimeout(3500);
+const heading = await page.locator("h1").first().textContent().catch(() => null);
+const body = (await page.locator("body").textContent().catch(() => "")) || "";
+console.log("HTTP status:", resp?.status());
+console.log("heading:", JSON.stringify(heading));
+console.log("mentions 'not enabled':", /not enabled/i.test(body));
+console.log("has Connect/Create affordance:", /connect|create|name|ticker|symbol/i.test(body));
+await page.screenshot({ path: "test-screenshots/ui-overhaul/tg-launch-375.png", fullPage: true });
+console.log("client errors:", errors.length ? errors.slice(0, 6) : "none");
+await browser.close();
