@@ -2075,3 +2075,53 @@ export const burnVoteAbi = [
     ],
   },
 ] as const;
+
+// ── CreatorSplitter (team split) — feat/creator-splitter ─────────────────────
+export const creatorSplitterFactoryAbi = [
+  {
+    type: "function",
+    name: "create",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "recipients", type: "address[]" },
+      { name: "sharesBps", type: "uint16[]" },
+    ],
+    outputs: [{ name: "splitter", type: "address" }],
+  },
+  { type: "function", name: "isSplitter", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "creatorOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "address" }] },
+  {
+    type: "event",
+    name: "CreatorSplitterCreated",
+    inputs: [
+      { name: "splitter", type: "address", indexed: true },
+      { name: "creator", type: "address", indexed: true },
+      { name: "recipients", type: "address[]", indexed: false },
+      { name: "sharesBps", type: "uint16[]", indexed: false },
+    ],
+  },
+] as const;
+
+export const creatorSplitterAbi = [
+  { type: "function", name: "recipients", stateMutability: "view", inputs: [], outputs: [{ type: "address[]" }] },
+  { type: "function", name: "shareBps", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint16" }] },
+  { type: "function", name: "totalReceived", stateMutability: "view", inputs: [{ name: "token", type: "address" }], outputs: [{ type: "uint256" }] },
+  {
+    type: "function",
+    name: "releasable",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }, { name: "recipient", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+  { type: "function", name: "release", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "recipient", type: "address" }], outputs: [] },
+  { type: "function", name: "releaseAll", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }], outputs: [] },
+  {
+    type: "event",
+    name: "PaymentReleased",
+    inputs: [
+      { name: "token", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
