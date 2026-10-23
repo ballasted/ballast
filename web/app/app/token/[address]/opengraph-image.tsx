@@ -33,6 +33,10 @@ const C = {
   boneMuted: "rgba(245,243,236,0.35)",
   textPrimary: "#F5F3EC",
   faint: "rgba(245,243,236,0.18)",
+  // Soft depth for the link-preview surface — a patina glow top-right and a deep
+  // pool bottom-left. Subtle on purpose: hierarchy still carries the card.
+  glow: "radial-gradient(1120px 560px at 88% -14%, rgba(34,201,58,0.15), rgba(34,201,58,0) 60%), radial-gradient(760px 520px at -10% 116%, rgba(15,42,20,0.9), rgba(15,42,20,0) 58%)",
+  rule: "linear-gradient(90deg, rgba(34,201,58,0.45), rgba(34,201,58,0.05) 52%, rgba(34,201,58,0))",
 };
 
 export default async function Image({ params }: { params: Promise<{ address: string }> }) {
@@ -85,16 +89,26 @@ async function renderCard(params: Promise<{ address: string }>) {
     (
       <div
         style={{
+          position: "relative",
+          overflow: "hidden",
           width: "100%",
           height: "100%",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           backgroundColor: C.bg,
+          backgroundImage: C.glow,
           padding: 64,
           fontFamily: "sans-serif",
         }}
       >
+        {/* Oversized keel watermark bleeding off the bottom-right — texture, not a
+            second logo. Absolute, so the three content rows keep their spacing. */}
+        <svg width="560" height="560" viewBox="0 0 24 24" fill="none" style={{ position: "absolute", right: -72, bottom: -104, opacity: 0.05 }}>
+          <path d="M3 7h18" stroke={C.green} strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M12 7v6m0 0l-4 4h8l-4-4z" stroke={C.green} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+
         {/* Header — keel mark + wordmark, and a backing-status pill on the right. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -124,6 +138,7 @@ async function renderCard(params: Promise<{ address: string }>) {
                 padding: "12px 24px",
                 borderRadius: 999,
                 backgroundColor: C.card,
+                border: "1px solid rgba(245,243,236,0.12)",
                 color: C.boneMuted,
               }}
             >
@@ -139,6 +154,7 @@ async function renderCard(params: Promise<{ address: string }>) {
                 padding: "12px 24px",
                 borderRadius: 999,
                 backgroundColor: C.greenDeep,
+                border: "1px solid rgba(34,201,58,0.3)",
                 color: C.green,
               }}
             >
@@ -179,7 +195,7 @@ async function renderCard(params: Promise<{ address: string }>) {
             with the domain on the far right. Every value uses the same formatter, so
             decimals line up. */}
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", height: 2, backgroundColor: C.border, marginBottom: 28 }} />
+          <div style={{ display: "flex", height: 2, backgroundImage: C.rule, marginBottom: 28 }} />
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div style={{ display: "flex", gap: 72 }}>
               <Stat label="PRICE" value={price} muted={price === "—"} />
@@ -191,7 +207,10 @@ async function renderCard(params: Promise<{ address: string }>) {
                 <Stat label="BACKING" value={backing} muted />
               )}
             </div>
-            <span style={{ display: "flex", fontSize: 26, color: C.faint, letterSpacing: 1 }}>ballasted.fun</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 26, color: C.faint, letterSpacing: 1 }}>
+              <span style={{ display: "flex", width: 8, height: 8, borderRadius: 999, backgroundColor: C.green }} />
+              ballasted.fun
+            </span>
           </div>
         </div>
       </div>
