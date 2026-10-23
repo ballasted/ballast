@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { formatUnits, erc20Abi, type Address } from "viem";
+import { erc20Abi, type Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
+import { formatTokenAmount } from "@/lib/format";
 import { useAssets } from "@/hooks/useAssets";
 import { useBasketRunner } from "@/hooks/useBasketRunner";
 import { useInvalidateChainReads } from "@/hooks/useInvalidateChainReads";
@@ -59,7 +60,10 @@ export function ResumeDepositBanner({
         const balance = r?.status === "success" ? (r.result as bigint) : 0n;
         const reg = registryAssets.find((a) => a.address.toLowerCase() === asset.toLowerCase());
         const floor = reg && reg.minDeposit > 0n ? reg.minDeposit : 1n;
-        return { asset, symbol: reg?.symbol, balance, ok: balance >= floor };
+        // Carry the asset's ACTUAL registry decimals so the balance is formatted
+        // correctly (not every listed asset is 18-decimal); fall back to 18 only
+        // if the registry entry can't be resolved.
+        return { asset, symbol: reg?.symbol, decimals: reg?.decimals ?? 18, balance, ok: balance >= floor };
       })
       .filter((p) => p.ok);
   }, [account, unique, balanceReads.data, registryAssets]);
@@ -88,12 +92,12 @@ export function ResumeDepositBanner({
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-input border border-warning/40 bg-warning/5 px-3 py-2">
-      <p className="text-xs text-text-muted">
+      <p className="min-w-0 flex-1 text-xs text-text-muted">
         {pending.length} swapped asset{pending.length === 1 ? "" : "s"} from a basket{" "}
         {pending.length === 1 ? "is" : "are"} still in your wallet, not the treasury
         {" — "}
         {pending
-          .map((p) => `${formatUnits(p.balance, 18)} ${p.symbol ?? p.asset.slice(0, 8)}`)
+          .map((p) => `${formatTokenAmount(p.balance, { decimals: p.decimals })} ${p.symbol ?? p.asset.slice(0, 8)}`)
           .join(", ")}
         .
       </p>

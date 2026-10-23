@@ -6,7 +6,7 @@ import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useNow } from "@/hooks/useNow";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { activeChain } from "@/lib/chain";
-import { shortAddress } from "@/lib/format";
+import { shortAddress, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { erc20Abi } from "@/lib/abis";
 import { liveQuery } from "@/lib/refresh";
@@ -116,15 +116,15 @@ function BuybackV2Panel() {
     <section className="card p-5">
       <h2 className="section-label">v2 buyback</h2>
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div>
+        <div className="min-w-0">
           <div className="eyebrow">$BALLAST burned</div>
-          <div className="mt-1 tabular-nums text-text-primary">{amt(v2.totalBallastBurned, 0)}</div>
+          <div className="mt-1 truncate tabular-nums text-text-primary">{amt(v2.totalBallastBurned, 0)}</div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="eyebrow">Last burn</div>
           {v2.lastBurn ? (
             <a
-              className="mt-1 inline-flex items-center gap-1 text-sm text-green underline underline-offset-2"
+              className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-sm text-green underline underline-offset-2"
               href={`${EXPLORER}/tx/${v2.lastBurn.txHash}`}
               target="_blank"
               rel="noreferrer"
@@ -137,15 +137,15 @@ function BuybackV2Panel() {
             <div className="mt-1 text-sm text-text-muted">None yet</div>
           )}
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="eyebrow">Buybacks run</div>
-          <div className="mt-1 tabular-nums text-text-primary">{v2.buybackCount ?? 0}</div>
+          <div className="mt-1 truncate tabular-nums text-text-primary">{v2.buybackCount ?? 0}</div>
         </div>
         {BUYBACK_V2_ADDRESS && (
-          <div>
+          <div className="min-w-0">
             <div className="eyebrow">Contract</div>
             <a
-              className="mt-1 inline-block text-sm text-green underline underline-offset-2"
+              className="mt-1 inline-block max-w-full truncate text-sm text-green underline underline-offset-2"
               href={`${EXPLORER}/address/${BUYBACK_V2_ADDRESS}`}
               target="_blank"
               rel="noreferrer"
@@ -197,11 +197,12 @@ function BuybackV2Panel() {
           <div className="mt-2 space-y-2">
             {v2.otherPending.map((row) => (
               <div key={row.address} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-text-secondary">
-                  {amt(row.amount, 4)} {row.symbol ?? shortAddress(row.address)} pending
+                <span className="min-w-0 truncate text-text-secondary">
+                  {formatTokenAmount(row.amount, { decimals: 18 })}{" "}
+                  <span className="whitespace-nowrap">{row.symbol ?? shortAddress(row.address)} pending</span>
                 </span>
                 <button
-                  className="btn-secondary text-xs"
+                  className="btn-secondary shrink-0 text-xs"
                   disabled={v2.forwardOtherPhase === "triggering" || !isConnected}
                   onClick={() => void v2.forwardOther(row.address)}
                 >

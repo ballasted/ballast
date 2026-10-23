@@ -10,6 +10,16 @@ function envFloat(name: string, dflt: number): number {
   const n = v ? Number(v) : NaN;
   return Number.isFinite(n) ? n : dflt;
 }
+function envBool(name: string, dflt: boolean): boolean {
+  const v = process.env[name];
+  if (v === undefined || v === "") return dflt;
+  return /^(1|true|yes)$/i.test(v);
+}
+
+// $BALLAST v2 — another buy bot already posts its buys in the group, so by
+// default we skip posting buys for it here (launches, buybacks, burns and split
+// changes still post). Kept in sync with contracts.ts BALLAST_V2_TOKEN_ADDRESS.
+const BALLAST_V2 = "0xDc605041F02e41CbD8FDC347023e93C4c3fA243C";
 
 export const TG = {
   botToken: process.env.TELEGRAM_BOT_TOKEN,
@@ -17,10 +27,19 @@ export const TG = {
   enabled: /^(1|true|yes)$/i.test(process.env.TG_BOT_ENABLED ?? ""),
   dryRun: /^(1|true|yes)$/i.test(process.env.TG_DRY_RUN ?? ""),
   cronSecret: process.env.CRON_SECRET,
-  /** Minimum swap size (in ETH) to post. Default 0.01. */
+  /** Minimum swap size (in ETH) to post. Default 0.01 (production: 0.005). */
   minSwapEth: envFloat("TG_MIN_SWAP_ETH", 0.01),
   /** Minimum manual $BALLAST burn (whole tokens) to post. Default 100,000. */
   minBurn: envFloat("TG_MIN_BURN", 100_000),
+  /** Post sells at all? Default false — sells are noise in the group. */
+  postSells: envBool("TG_POST_SELLS", false),
+  /** Tokens whose BUYS are not posted (already covered by another bot). Buys only
+   *  — launches/buybacks/burns/splits for these still post. Comma-separated env;
+   *  defaults to the $BALLAST v2 address. */
+  skipTokens: (process.env.TG_SKIP_TOKENS ?? BALLAST_V2)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 } as const;
 
 /** Hard caps (CLAUDE.md chain gotchas: batch reads, bound work per run). */

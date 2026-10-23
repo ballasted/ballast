@@ -81,13 +81,15 @@ export function MarketPanel({
           {market.pools.map((p) => {
             const gen = poolGeneration(p.address);
             return (
-            <li key={p.address} className="flex items-center justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate">
-                <span className="text-text-primary">{dexLabel(p.dexId)}</span>
-                {gen === "current" && <span className="chip chip-accent ml-2">Current</span>}
-                {gen === "prior" && <span className="chip chip-neutral ml-2">Prior pool</span>}
-                <span className="metric-secondary ml-2">{compactUsd(p.reserveUsd)} liq · {compactUsd(p.volume24hUsd)} 24h</span>
-              </span>
+            <li key={p.address} className="flex items-start justify-between gap-3 text-sm">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-text-primary">{dexLabel(p.dexId)}</span>
+                  {gen === "current" && <span className="chip chip-accent">Current</span>}
+                  {gen === "prior" && <span className="chip chip-neutral">Prior pool</span>}
+                </div>
+                <div className="metric-secondary mt-0.5">{compactUsd(p.reserveUsd)} liq · {compactUsd(p.volume24hUsd)} 24h</div>
+              </div>
               <span className="flex shrink-0 gap-3 text-xs">
                 <a className="text-green underline underline-offset-2" href={geckoPoolUrl(p.address)} target="_blank" rel="noreferrer">
                   GeckoTerminal ↗

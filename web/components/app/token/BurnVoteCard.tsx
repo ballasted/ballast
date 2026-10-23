@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { type Address, parseUnits, formatUnits, maxUint256 } from "viem";
+import { type Address, parseUnits, maxUint256 } from "viem";
 import {
   useAccount,
   useReadContract,
@@ -17,6 +17,7 @@ import { useNow } from "@/hooks/useNow";
 import { formatDuration } from "@/lib/format";
 import { shortAddress } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { TokenAmount } from "@/components/app/TokenAmount";
 
 const CHAIN_ID = activeChain.id;
 
@@ -141,8 +142,8 @@ export function BurnVoteCard({ token }: { token: Address }) {
   const voted = voteReceipt.isSuccess;
 
   return (
-    <div className="card space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="card space-y-4 p-5">
+      <div className="flex items-center justify-between gap-3">
         <div className="section-label">Burn-to-vote</div>
         <div className="text-xs text-white/50">
           {timeLeft !== undefined ? `${formatDuration(timeLeft)} left this week` : "—"}
@@ -173,11 +174,9 @@ export function BurnVoteCard({ token }: { token: Address }) {
           <div className="eyebrow">This week</div>
           <ul className="space-y-1 text-sm">
             {tallyStocks.map((s, i) => (
-              <li key={s} className="flex items-center justify-between">
-                <span>{symbolOf(s)}</span>
-                <span className="tabular-nums text-white/70">
-                  {formatUnits(tallyVotes[i] ?? 0n, dec)}
-                </span>
+              <li key={s} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate">{symbolOf(s)}</span>
+                <TokenAmount value={tallyVotes[i] ?? 0n} decimals={dec} className="text-white/70" />
               </li>
             ))}
           </ul>

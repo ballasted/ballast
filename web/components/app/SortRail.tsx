@@ -44,7 +44,7 @@ export function SortRail({
           onClick={() => onSort(s.id)}
           aria-pressed={sort === s.id}
           className={cn(
-            "transition-colors",
+            "inline-flex min-h-[44px] items-center transition-colors md:min-h-0",
             sort === s.id ? "font-semibold text-text-primary" : "text-text-muted hover:text-text-secondary",
           )}
         >
@@ -58,7 +58,7 @@ export function SortRail({
           onClick={() => onFilter(f.id)}
           aria-pressed={filter === f.id}
           className={cn(
-            "transition-colors",
+            "inline-flex min-h-[44px] items-center transition-colors md:min-h-0",
             filter === f.id ? "font-semibold text-green" : "text-text-muted hover:text-text-secondary",
           )}
         >

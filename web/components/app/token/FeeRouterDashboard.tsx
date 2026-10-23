@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BaseError, ContractFunctionRevertedError, formatEther, getAbiItem, type Address, type Log } from "viem";
+import { BaseError, ContractFunctionRevertedError, getAbiItem, type Address, type Log } from "viem";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { feeRouterAbi, feeRouterV2Abi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
@@ -11,6 +11,7 @@ import { backfillLogs } from "@/lib/eventBackfill";
 import { useFeeRouter, type FeeRouterState } from "@/hooks/useFeeRouter";
 import type { FeeSplitBps } from "@/hooks/useFeeRouterLaunchRunner";
 import { FeesSection } from "@/components/app/create/FeesSection";
+import { TokenAmount } from "@/components/app/TokenAmount";
 import { routeRevertReason, needsBuybackWire, needsParentWire } from "@/lib/feeRouter";
 
 const CHAIN_ID = activeChain.id;
@@ -298,16 +299,16 @@ function DashboardBody({ router, state, refetch }: { router: Address; state: Fee
           <h2 className="section-label">History</h2>
           <ul className="mt-2 space-y-2 text-xs">
             {history.map((h) => (
-              <li key={h.txHash} className="flex items-center justify-between text-text-secondary">
+              <li key={h.txHash} className="flex items-center justify-between gap-3 text-text-secondary">
                 <a
                   href={`${activeChain.blockExplorers.default.url}/tx/${h.txHash}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono underline underline-offset-2"
+                  className="shrink-0 font-mono underline underline-offset-2"
                 >
                   {h.txHash.slice(0, 10)}…
                 </a>
-                <span className="font-mono text-text-primary">{formatEther(h.total)} WETH</span>
+                <TokenAmount value={h.total} symbol="WETH" className="text-text-primary" />
               </li>
             ))}
           </ul>

@@ -1,14 +1,15 @@
 "use client";
 
 import { useAccount } from "wagmi";
-import { formatUnits, type Address } from "viem";
+import { type Address } from "viem";
 import { useAccruedFees } from "@/hooks/useAccruedFees";
 import { activeChain } from "@/lib/chain";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, formatTokenAmount } from "@/lib/format";
+import { TokenAmount } from "@/components/app/TokenAmount";
 
 function fmtWeth(v?: bigint): string {
   if (v === undefined) return "…";
-  return Number(formatUnits(v, 18)).toLocaleString("en", { maximumFractionDigits: 6 });
+  return formatTokenAmount(v, { decimals: 18 });
 }
 
 // The connected wallet's accrued WETH swap fees, with a Claim button. Scoped to the
@@ -48,10 +49,14 @@ export function FeePanel({
       <h2 className="section-label">{title}</h2>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span key={fmtWeth(f.accruedWeth)} className="figure-primary anim-fade text-3xl">
-          {fmtWeth(f.accruedWeth)}
+        <span key={fmtWeth(f.accruedWeth)} className="anim-fade min-w-0">
+          {f.accruedWeth === undefined ? (
+            <span className="figure-primary text-3xl">…</span>
+          ) : (
+            <TokenAmount value={f.accruedWeth} decimals={18} className="figure-primary text-3xl" />
+          )}
         </span>
-        <span className="metric-secondary">WETH accrued</span>
+        <span className="metric-secondary shrink-0">WETH accrued</span>
       </div>
       <div className="metric-secondary mt-0.5">
         {f.accruedUsd1e18 !== undefined ? `≈ ${formatUsd(f.accruedUsd1e18)}` : "USD equivalent unavailable"}
@@ -60,9 +65,10 @@ export function FeePanel({
       {f.otherOwed.length > 0 && (
         <ul className="mt-2 space-y-0.5">
           {f.otherOwed.map((o) => (
-            <li key={o.currency} className="metric-secondary">
-              + {Number(formatUnits(o.amount, o.decimals)).toLocaleString("en", { maximumFractionDigits: 6 })}{" "}
-              {o.symbol ?? "tokens"} accrued
+            <li key={o.currency} className="metric-secondary flex min-w-0 items-baseline gap-1">
+              <span className="shrink-0">+</span>
+              <TokenAmount value={o.amount} decimals={o.decimals} symbol={o.symbol ?? "tokens"} className="metric-secondary" />
+              <span className="shrink-0">accrued</span>
             </li>
           ))}
         </ul>

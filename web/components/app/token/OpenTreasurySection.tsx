@@ -13,7 +13,7 @@ import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useOpenTreasury } from "@/hooks/useOpenTreasury";
 import { useOpenTreasuryActivity } from "@/hooks/useOpenTreasuryActivity";
 import { useAccruedFees } from "@/hooks/useAccruedFees";
-import { formatUsd, formatDuration, shortAddress } from "@/lib/format";
+import { formatUsd, formatDuration, shortAddress, formatTokenAmount } from "@/lib/format";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { cn } from "@/lib/cn";
 
@@ -102,7 +102,7 @@ export function OpenTreasurySection({ token, creator, symbol }: { token?: Addres
 
 function ThreeFigures({ backing }: { backing?: ReturnType<typeof useOpenTreasury>["backing"] }) {
   return (
-    <div className="grid grid-cols-3 gap-3 rounded-card border border-border p-3 text-center">
+    <div className="grid grid-cols-1 gap-3 rounded-card border border-border p-3 text-center sm:grid-cols-3">
       <Stat label="Creator-funded treasury" value={backing ? formatUsd(backing.creatorFundedUsd, { compact: true }) : "Unknown"} />
       <Stat
         label="Community deposits — withdrawable"
@@ -140,7 +140,7 @@ function NetFlowRow({
     Object.entries(net).map(([asset, n]) => {
       const net_ = n.deposited - n.withdrawn;
       const dec = decOf(asset);
-      return `${net_ >= 0n ? "+" : ""}${fmt(net_, dec)} ${symbolOf(asset)}`;
+      return `${net_ >= 0n ? "+" : ""}${formatTokenAmount(net_, { decimals: dec })} ${symbolOf(asset)}`;
     });
 
   if (status === "loading" || status === "idle") return <p className="text-xs text-text-faint">Net flow: loading…</p>;
@@ -150,8 +150,8 @@ function NetFlowRow({
   const r7 = rows(net7d);
   return (
     <div className="flex flex-wrap gap-4 text-xs text-text-secondary">
-      <span>Net 24h: {r24.length ? r24.join(", ") : "0"}</span>
-      <span>Net 7d: {r7.length ? r7.join(", ") : "0"}</span>
+      <span className="min-w-0 break-words">Net 24h: {r24.length ? r24.join(", ") : "0"}</span>
+      <span className="min-w-0 break-words">Net 7d: {r7.length ? r7.join(", ") : "0"}</span>
       {status === "partial" && <span className="text-text-faint">(partial scan)</span>}
     </div>
   );
@@ -342,12 +342,12 @@ function DepositWithdrawPanel({
       </select>
 
       <label className="mt-3 block">
-        <div className="mb-1 flex justify-between text-xs text-text-secondary">
-          <span>Amount</span>
-          <span>
+        <div className="mb-1 flex justify-between gap-2 text-xs text-text-secondary">
+          <span className="shrink-0">Amount</span>
+          <span className="min-w-0 truncate text-right">
             {mode === "deposit"
-              ? `Wallet: ${fmt(walletBalance, decimals)} ${asset?.symbol ?? ""} · min ${fmt(minDeposit, decimals)}`
-              : `Deposited: ${fmt(position?.principal ?? 0n, decimals)} ${asset?.symbol ?? ""}`}
+              ? `Wallet: ${formatTokenAmount(walletBalance, { decimals })} ${asset?.symbol ?? ""} · min ${formatTokenAmount(minDeposit, { decimals })}`
+              : `Deposited: ${formatTokenAmount(position?.principal ?? 0n, { decimals })} ${asset?.symbol ?? ""}`}
           </span>
         </div>
         <div className="flex gap-2">
@@ -585,9 +585,9 @@ function FundRewardsPanel({ vault, rewardAsset, onDone }: { vault: Address; rewa
       )}
 
       <label className="mt-3 block">
-        <div className="mb-1 flex justify-between text-xs text-text-secondary">
-          <span>Amount to fund</span>
-          <span>Wallet: {fmt(walletWeth, 18)} WETH</span>
+        <div className="mb-1 flex justify-between gap-2 text-xs text-text-secondary">
+          <span className="shrink-0">Amount to fund</span>
+          <span className="min-w-0 truncate text-right">Wallet: {formatTokenAmount(walletWeth, { decimals: 18 })} WETH</span>
         </div>
         <div className="flex gap-2">
           <input className="input flex-1" inputMode="decimal" placeholder="0.0" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} />
@@ -698,8 +698,8 @@ function ContributorList({
             <div key={`${e.txHash}-${i}`} className="flex items-center justify-between gap-2 text-xs">
               <span className={e.kind === "deposit" ? "text-green" : "text-text-faint"}>{e.kind === "deposit" ? "+" : "−"}</span>
               <span className="flex-1 truncate text-text-secondary">{shortAddress(e.depositor)}</span>
-              <span className="text-text-faint">
-                {fmt(e.amount, dec)} {sym}
+              <span className="shrink-0 whitespace-nowrap text-text-faint">
+                {formatTokenAmount(e.amount, { decimals: dec })} {sym}
               </span>
               <a className="text-text-faint underline hover:text-text-secondary" href={`${explorer}/tx/${e.txHash}`} target="_blank" rel="noreferrer">
                 tx

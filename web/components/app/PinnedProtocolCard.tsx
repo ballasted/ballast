@@ -34,7 +34,7 @@ export function PinnedProtocolCard({ project }: { project: Project }) {
             <p className="truncate text-sm text-text-muted">{name ?? "BALLASTED"}</p>
           </div>
         </div>
-        <div key={priceStr} className="figure-primary anim-fade text-lg">{priceStr}</div>
+        <div key={priceStr} className="figure-primary anim-fade min-w-0 shrink truncate text-right text-lg">{priceStr}</div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center text-sm">

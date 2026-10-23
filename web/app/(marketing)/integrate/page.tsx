@@ -210,7 +210,10 @@ await router.execute(
 
         <p className="text-sm text-text-faint">
           Router address:{" "}
-          <a href="https://robinhoodchain.blockscout.com/address/0x8876789976dEcBfCbBbe364623C63652db8C0904?tab=contract">
+          <a
+            className="break-all"
+            href="https://robinhoodchain.blockscout.com/address/0x8876789976dEcBfCbBbe364623C63652db8C0904?tab=contract"
+          >
             0x8876789976dEcBfCbBbe364623C63652db8C0904
           </a>{" "}
           — verified fork source on Blockscout. Two look-alike router addresses exist on this chain;

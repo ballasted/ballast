@@ -159,8 +159,8 @@ function SplitLegend({ parts }: { parts: SplitPart[] }) {
       {parts.map((p) => (
         <div key={p.key} className="flex items-center gap-1.5">
           <span className={cn("h-2 w-2 shrink-0 rounded-full", p.color)} />
-          <span className="text-text-secondary">{p.label}</span>
-          <span className="ml-auto font-mono text-text-primary">{p.pct}%</span>
+          <span className="min-w-0 truncate text-text-secondary">{p.label}</span>
+          <span className="ml-auto shrink-0 font-mono text-text-primary">{p.pct}%</span>
         </div>
       ))}
     </div>

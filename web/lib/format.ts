@@ -1,6 +1,51 @@
 // Display helpers. All BackingLens USD values are 1e18 fixed point.
 
+import { formatUnits } from "viem";
+
 const WAD = 10n ** 18n;
+
+// ── Token / quantity amounts (any decimals) ──────────────────────────────────
+// One shared formatter for every on-screen token/ETH quantity. It exists because
+// raw `formatEther`/`formatUnits` output (e.g. "103414705.86458323289904159")
+// overflows mobile stat columns and overlaps the next value. DISPLAY ONLY — any
+// "Max" button or math must keep using the raw bigint, never these strings.
+
+/** Lossy bigint→number for display only (precision loss is irrelevant once the
+ *  value is being abbreviated anyway). */
+function amountToNumber(raw: bigint | number, decimals: number): number {
+  return typeof raw === "number" ? raw : Number(formatUnits(raw, decimals));
+}
+
+/**
+ * Compact, overflow-proof display for a token/quantity amount:
+ *   103,414,705.864… → "103.41M"   1234.5 → "1,234.5"   0.000123 → "0.000123"
+ *   5e-7 → "<0.0001"   0 → "0"
+ * ≥1e6 abbreviates with M/B/T; sub-1 keeps ≤4 significant digits; anything with
+ * magnitude below 0.0001 collapses to "<0.0001" rather than a misleading "0".
+ * `raw` is a bigint scaled by `decimals` (default 18) or a plain number.
+ */
+export function formatTokenAmount(raw: bigint | number, opts?: { decimals?: number }): string {
+  const n = amountToNumber(raw, opts?.decimals ?? 18);
+  if (!Number.isFinite(n)) return "0";
+  if (n === 0) return "0";
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs < 0.0001) return `${sign}<0.0001`;
+  if (abs >= 1e6) return sign + Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(abs);
+  if (abs >= 1) return sign + Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(abs);
+  return sign + Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 }).format(abs);
+}
+
+/** Full-precision, comma-grouped exact value for a tap/hover reveal. Never used
+ *  as the primary display (it's the thing that overflows); the tooltip only. */
+export function formatTokenExact(raw: bigint, decimals = 18): string {
+  const s = formatUnits(raw, decimals); // viem trims trailing zeros
+  const neg = s.startsWith("-");
+  const body = neg ? s.slice(1) : s;
+  const [intPart = body, frac] = body.split(".");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-" : "") + grouped + (frac ? `.${frac}` : "");
+}
 
 /** Format a 1e18-scaled USD value as a dollar string. */
 export function formatUsd(value1e18: bigint, opts?: { compact?: boolean }): string {

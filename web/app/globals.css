@@ -438,6 +438,10 @@
   }
   .prose-doc code {
     @apply bg-bg border border-border rounded px-1.5 py-0.5 text-sm font-mono text-text-primary;
+    /* Long unbreakable tokens (42-char 0x… addresses) must wrap rather than
+       force the whole page to scroll sideways on mobile. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   .prose-doc pre {
     @apply bg-bg border border-border rounded-card p-4 my-6 overflow-x-auto text-sm;
@@ -453,6 +457,11 @@
   }
   .prose-doc table {
     @apply my-6 w-full text-sm border-collapse;
+    /* Confine a wide table (e.g. an address column) to its own horizontal
+       scroll instead of forcing the whole page to scroll on mobile. */
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
   .prose-doc th {
     @apply text-left text-text-primary font-semibold border-b border-border py-2 pr-4;

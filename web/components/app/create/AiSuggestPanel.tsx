@@ -180,7 +180,7 @@ function Pill({ children, onClick }: { children: React.ReactNode; onClick: () =>
     <button
       type="button"
       onClick={onClick}
-      className="tab tab-idle !min-h-0 !py-1 hover:border-green hover:text-green"
+      className="tab tab-idle min-h-[44px] !py-1 hover:border-green hover:text-green md:!min-h-0"
     >
       {children}
     </button>

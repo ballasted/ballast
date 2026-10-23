@@ -155,8 +155,8 @@ function ProfileLaunch({ p }: { p: Project }) {
   return (
     <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
       <div className="min-w-0">
-        <div className="font-semibold text-text-primary">{p.symbol ?? "—"}</div>
-        <div className="metric-secondary">{p.name ?? "Unnamed project"}</div>
+        <div className="truncate font-semibold text-text-primary">{p.symbol ?? "—"}</div>
+        <div className="truncate metric-secondary">{p.name ?? "Unnamed project"}</div>
       </div>
       <div className="text-right">
         {p.ballasted && p.backing ? (

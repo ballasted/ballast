@@ -35,7 +35,11 @@ export function PlainEnglishCard({ token }: { token: Address }) {
               {rateLimited ? `Too many requests — try again in ${error.retryAfterSec}s.` : "AI helper is unavailable right now."}
             </span>
             {!rateLimited && (
-              <button type="button" className="chip chip-neutral shrink-0" onClick={run}>
+              <button
+                type="button"
+                className="chip chip-neutral shrink-0 inline-flex min-h-[44px] items-center px-3 md:min-h-0 md:px-2"
+                onClick={run}
+              >
                 Retry
               </button>
             )}

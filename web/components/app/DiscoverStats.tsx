@@ -116,20 +116,20 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div className={cn("card p-4", accent && "border-accent")}>
+    <div className={cn("card min-w-0 p-4", accent && "border-accent")}>
       <div className="eyebrow">{label}</div>
       {loading ? (
         <div className="mt-1.5 h-7 w-20 animate-pulse rounded bg-surface-raised" />
       ) : value === null || value === undefined ? (
-        <div className="mt-1 figure-primary text-2xl text-text-muted">—</div>
+        <div className="mt-1 figure-primary truncate text-2xl text-text-muted">—</div>
       ) : (
-        <div className="mt-1 figure-primary text-2xl tabular-nums">
+        <div className="mt-1 figure-primary truncate text-2xl tabular-nums">
           <span key={value} className="anim-fade inline-block">
             {value}
           </span>
         </div>
       )}
-      {subFigure && !loading && <div className="metric-secondary mt-0.5">{subFigure}</div>}
+      {subFigure && !loading && <div className="metric-secondary mt-0.5 truncate">{subFigure}</div>}
       <div className="mt-1 flex items-center gap-1 text-xs text-text-faint">
         {loading ? (
           <span className="inline-block h-3 w-16 animate-pulse rounded bg-surface-raised align-middle" />

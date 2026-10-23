@@ -36,7 +36,7 @@ import {
   WETH_ADDRESS,
 } from "@/lib/contracts";
 import { effectiveSplitParts, type RouterSplitBps } from "@/lib/feeRouter";
-import { formatBackingPerToken, formatUsd, shortAddress } from "@/lib/format";
+import { formatBackingPerToken, formatTokenAmount, formatUsd, shortAddress } from "@/lib/format";
 import { classifyFreshness, nextOpenSec, formatEt, isMarketOpenAt, type Freshness } from "@/lib/marketHours";
 import { CATEGORIES, type Category } from "@/lib/metadata";
 import { activeChain } from "@/lib/chain";
@@ -597,7 +597,7 @@ export function CreateFlow() {
                       <button
                         type="button"
                         onClick={() => setAmount(formatUnits(balance, selected.decimals ?? 18))}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-border px-2 py-1 text-xs font-medium text-text-secondary hover:text-text-primary"
+                        className="absolute right-2 top-1/2 flex min-h-[44px] -translate-y-1/2 items-center rounded bg-border px-2 text-xs font-medium text-text-secondary hover:text-text-primary md:min-h-0 md:py-1"
                       >
                         Max
                       </button>
@@ -605,8 +605,8 @@ export function CreateFlow() {
                   </div>
                   {selected && balance !== undefined && (
                     <p className="mt-1 text-xs text-text-faint">
-                      Balance: {Number(formatUnits(balance, selected.decimals ?? 18)).toLocaleString("en", { maximumFractionDigits: 6 })}{" "}
-                      {selected.symbol}
+                      Balance: {formatTokenAmount(balance, { decimals: selected.decimals ?? 18 })}
+                      <span className="whitespace-nowrap">&nbsp;{selected.symbol}</span>
                     </p>
                   )}
                   {belowMin && selected && <p className="mt-1 text-xs text-warning">Below the minimum deposit for this asset.</p>}
@@ -837,9 +837,9 @@ function OpeningIsFixedNote({ openFdv }: { openFdv: OpenFdv }) {
   const eth = openFdv.fdvWeth;
   const usd = fmtUsdApprox(openFdv.fdvUsd);
   return (
-    <div className="flex items-center justify-between rounded-input border border-border bg-bg p-3">
-      <span className="eyebrow">Opening valuation — fixed, regardless of treasury</span>
-      <span className="text-right">
+    <div className="flex items-center justify-between gap-3 rounded-input border border-border bg-bg p-3">
+      <span className="eyebrow min-w-0">Opening valuation — fixed, regardless of treasury</span>
+      <span className="shrink-0 text-right">
         <span className="figure-primary block tabular-nums">{fmtEthFdv(eth)}</span>
         {usd && <span className="metric-secondary tabular-nums">{usd}</span>}
       </span>
@@ -1388,7 +1388,7 @@ function LogoUploader({
                 setLogoUri("");
                 setError(undefined);
               }}
-              className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-bg/80 text-text-secondary transition-colors hover:text-text-primary"
+              className="absolute right-1.5 top-1.5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-bg/80 text-text-secondary transition-colors hover:text-text-primary md:h-6 md:w-6"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -1706,8 +1706,8 @@ function PrefixInput({
 function PreviewRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-right font-medium text-text-primary">{children}</span>
+      <span className="shrink-0 text-text-muted">{label}</span>
+      <span className="min-w-0 break-words text-right font-medium text-text-primary">{children}</span>
     </div>
   );
 }
@@ -1715,8 +1715,8 @@ function PreviewRow({ label, children }: { label: string; children: React.ReactN
 function ConfirmRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 text-sm">
-      <span className="text-text-muted">{label}</span>
-      <span className={cn("text-right font-medium text-text-primary", mono && "font-mono")}>{value}</span>
+      <span className="shrink-0 text-text-muted">{label}</span>
+      <span className={cn("min-w-0 break-words text-right font-medium text-text-primary", mono && "font-mono")}>{value}</span>
     </div>
   );
 }
