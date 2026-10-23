@@ -122,6 +122,15 @@ export const isFeeRouterV2Active = Boolean(FEE_ROUTER_FACTORY_V2_ADDRESS);
 // The factory NEW launches route through: v2 when configured, else v1.
 export const CURRENT_FEE_ROUTER_FACTORY = FEE_ROUTER_FACTORY_V2_ADDRESS ?? FEE_ROUTER_FACTORY_ADDRESS;
 
+// CreatorSplitter (team split) — an immutable payout target a creator points their
+// fee share to (FeeRouter adopt path, where that address is settable); the
+// fresh-launch flow can't auto-install one (realCreator is immutable = the
+// launcher), so this is a standalone create/manage tool, not a Create step.
+export const CREATOR_SPLITTER_FACTORY_ADDRESS = asAddress(
+  process.env.NEXT_PUBLIC_CREATOR_SPLITTER_FACTORY,
+);
+export const isCreatorSplitterConfigured = Boolean(CREATOR_SPLITTER_FACTORY_ADDRESS);
+
 // Every fee-router factory to scan for existing routers (FeeRouterCreated events),
 // newest-first, so routers from BOTH v1 and v2 are detected/displayed. Each entry
 // carries its version so the UI can apply v2's instant-vs-delayed timing only to v2
