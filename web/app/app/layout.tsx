@@ -24,6 +24,10 @@ import { cn } from "@/lib/cn";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const hasRail = pathname?.startsWith("/app/terminal") ?? false;
+  // The Telegram launch Mini App runs inside the Telegram webview — render it
+  // full-screen and chrome-free (no app nav / ticker), keeping only the wallet
+  // Providers so the launch still signs in the user's own wallet.
+  const isMiniApp = pathname?.startsWith("/app/tg-launch") ?? false;
 
   return (
     <Providers>
@@ -34,18 +38,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* One shared "More" sheet, opened by both the header hamburger (TopBar)
           and the bottom bar's More tab (BottomNav) — both live inside here. */}
       <MoreMenuProvider>
-        {hasRail && <SideNav />}
-        <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-60")}>
-          <TopBar hasRail={hasRail} />
+        {hasRail && !isMiniApp && <SideNav />}
+        <div className={cn("flex min-h-dvh flex-col", hasRail && !isMiniApp && "lg:pl-60")}>
+          {!isMiniApp && <TopBar hasRail={hasRail} />}
           <ConfigGuard />
           <NetworkGuard />
           {/* Content sits in a wide column, centred. Bottom padding below lg clears
               BottomNav's fixed tab bar plus the device safe-area inset; at lg+ the
-              tab bar doesn't render, so padding drops back to normal. */}
-          <main className="mx-auto w-full max-w-content flex-1 px-6 pb-[calc(52px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10">
+              tab bar doesn't render, so padding drops back to normal. The Mini App
+              drops all of that for a tight full-screen webview layout. */}
+          <main
+            className={cn(
+              "mx-auto w-full max-w-content flex-1",
+              isMiniApp
+                ? "px-4 py-4"
+                : "px-6 pb-[calc(52px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10",
+            )}
+          >
             {children}
           </main>
-          <BottomNav />
+          {!isMiniApp && <BottomNav />}
         </div>
       </MoreMenuProvider>
     </Providers>
