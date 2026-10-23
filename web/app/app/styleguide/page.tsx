@@ -7,6 +7,7 @@ import { NetworkChip } from "@/components/app/NetworkChip";
 import { PortfolioValueChip } from "@/components/app/PortfolioValueChip";
 import { AvatarMenu } from "@/components/app/AvatarMenu";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { UiOverhaulShowcase } from "@/components/app/styleguide/UiOverhaulShowcase";
 import { TICKER_LOGOS } from "@/lib/tickerLogos";
 
 // Living reference for every design-system primitive (spec §13). Lives under
@@ -59,6 +60,16 @@ export default function StyleguidePage() {
         Every primitive, every state. Internal reference only — update this page
         in the same change that adds or restyles a component.
       </p>
+
+      <Section title="UI overhaul primitives (feat/ui-overhaul)">
+        <p className="mb-4 max-w-prose text-sm text-text-muted">
+          Shared primitives for the rebuilt Token / Discover / Analytics pages —
+          Card (20px), Segmented, Chip, Tag, Stat, Skeleton, DeltaText,
+          AddressPill, plus the additive semantic palette. Scoped to those pages;
+          the existing tokens and classes below are unchanged.
+        </p>
+        <UiOverhaulShowcase />
+      </Section>
 
       <Section title="Color">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

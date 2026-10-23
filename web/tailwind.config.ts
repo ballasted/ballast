@@ -56,9 +56,23 @@ const config: Config = {
           4: "#6E8B77",
           5: "#C9A96A",
         },
+        // ── feat/ui-overhaul semantic palette (spec §1) ──────────────────────
+        // Additive: used by the rebuilt Token / Discover / Analytics surfaces
+        // and their ui/* primitives. Brighter up/down than positive/negative so
+        // deltas read clearly on the calm new cards; brand green #22C93A stays
+        // the CTA/logo colour. Existing tokens above are untouched.
+        up: "#3BE070", // price up
+        down: "#FF6464", // price down
+        backing: "#E9B44C", // treasury backing (amber)
+        burn: "#FF8A2B", // buyback & burn (orange)
+        "creator-accent": "#7FB3FF", // creator side (blue)
+        staked: "#C792EA", // stakers (lilac)
+        hairline: "rgba(255,255,255,0.06)", // neutral soft border for new cards
       },
       borderRadius: {
         card: "16px",
+        "card-lg": "20px", // feat/ui-overhaul: generous card radius (spec §1)
+        chip: "10px", // feat/ui-overhaul: chip/pill-label radius (spec §1)
         input: "12px",
         button: "12px",
         pill: "999px",
