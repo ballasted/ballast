@@ -18,6 +18,7 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
+  { href: "/app/analytics", label: "Analytics", icon: IconAnalytics },
   { href: "/app/backing", label: "Backing", icon: IconBacking },
   { href: "/app/treasury", label: "Treasury", icon: IconTreasury },
   { href: "/app/baskets", label: "Baskets", icon: IconBaskets },
@@ -78,6 +79,17 @@ function IconBurn({ active }: { active: boolean }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+function IconAnalytics({ active }: { active: boolean }) {
+  // Bar chart on an axis — analytics. Inline SVG, no icon library or emoji.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 4v16h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="7.5" y="12" width="2.6" height="5" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
+      <rect x="12" y="9" width="2.6" height="8" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
+      <rect x="16.5" y="6" width="2.6" height="11" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
 }

@@ -1,7 +1,8 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { AnalyticsView } from "@/components/app/analytics/AnalyticsView";
 
-// Analytics was removed from navigation. Redirect old bookmarks/links to
-// Discover rather than 404.
+export const metadata: Metadata = { title: "Analytics · BALLAST" };
+
 export default function AnalyticsPage() {
-  redirect("/app/discover");
+  return <AnalyticsView />;
 }
