@@ -12,6 +12,7 @@ import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { formatDuration } from "@/lib/format";
 import { formatEt } from "@/lib/marketHours";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { TokenAmount } from "@/components/app/TokenAmount";
 import type { PendingWithdrawal } from "@/hooks/useBacking";
 
 type AssetView = { asset: Address; withdrawableBalance: bigint; assetDecimals: number };
@@ -132,8 +133,9 @@ function ActiveWithdrawal({ writeTarget, pending, now }: { writeTarget: Address;
   return (
     <section className="card border-accent p-5">
       <h2 className="section-label">Creator deposit — withdrawal announced</h2>
-      <p className="mt-2 text-sm text-text-secondary">
-        {formatUnits(pending.amount, assetDecimals)} {assetSymbol} queued to withdraw.
+      <p className="mt-2 flex flex-wrap items-baseline gap-1 text-sm text-text-secondary">
+        <TokenAmount value={pending.amount} decimals={assetDecimals} symbol={assetSymbol} />
+        <span>queued to withdraw.</span>
       </p>
       <p className="mt-1 text-sm">
         {executable ? (

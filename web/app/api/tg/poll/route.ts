@@ -26,7 +26,8 @@ import { backingLensAbi } from "@/lib/abis";
 import { TG, botConfigured, MAX_BLOCKS_PER_RUN, MAX_MESSAGES_PER_RUN, KV_CURSOR_KEY, KV_POOLMAP_KEY } from "@/lib/tg/config";
 import { KV_CONFIGURED, kvGet, kvSet, kvSetDedup, kvHGetAll, kvHSet } from "@/lib/tg/kv";
 import { decodeTgLog, buybackBurnedAbi, type TgEventWithMeta } from "@/lib/tg/decode";
-import { sendMessage } from "@/lib/tg/telegram";
+import { sendMessage, sendAnimation, type AnimKind } from "@/lib/tg/telegram";
+import { classifySwap } from "@/lib/tg/swapDirection";
 import * as fmt from "@/lib/tg/format";
 
 export const dynamic = "force-dynamic";
@@ -139,7 +140,8 @@ export async function GET(req: Request) {
   // Build messages in chronological order, applying thresholds + dedup.
   const minSwapWei = BigInt(Math.round(TG.minSwapEth * 1e18));
   const minBurnWei = BigInt(Math.round(TG.minBurn)) * 10n ** 18n;
-  const built: string[] = [];
+  const skipBuyTokens = new Set(TG.skipTokens.map((a) => a.toLowerCase()));
+  const built: BuiltMsg[] = [];
   const counts: Record<string, number> = {};
 
   for (const e of all) {
@@ -149,7 +151,7 @@ export async function GET(req: Request) {
     const hideTok = tokenForHiding(e, poolMap, routerToken, treasuryToken);
     if (hideTok && isHiddenToken(hideTok)) continue;
     const dedupKey = `tg:seen:${e.txHash}:${e.logIndex}`;
-    const msg = await buildMessage(e, { poolMap, sym, routerToken, treasuryToken, launchDetails, minSwapWei, minBurnWei });
+    const msg = await buildMessage(e, { poolMap, sym, routerToken, treasuryToken, launchDetails, minSwapWei, minBurnWei, skipBuyTokens });
     if (!msg) continue;
     // Only consume a dedup slot once we actually have a postable message.
     const fresh = await kvSetDedup(dedupKey).catch(() => true);
@@ -158,11 +160,20 @@ export async function GET(req: Request) {
     counts[e.kind] = (counts[e.kind] ?? 0) + 1;
   }
 
-  // Send, collapsing overflow into a single digest.
+  // Send, collapsing overflow into a single (text) digest. Animated kinds
+  // (buy/sell/launch/burn) go out as mp4 + caption; everything else is text.
   let sent = 0;
-  const toSend = built.length <= MAX_MESSAGES_PER_RUN ? built : [...built.slice(0, MAX_MESSAGES_PER_RUN - 1), fmt.msgDigest(built.length - (MAX_MESSAGES_PER_RUN - 1), counts)];
+  const toSend: BuiltMsg[] =
+    built.length <= MAX_MESSAGES_PER_RUN
+      ? built
+      : [...built.slice(0, MAX_MESSAGES_PER_RUN - 1), { text: fmt.msgDigest(built.length - (MAX_MESSAGES_PER_RUN - 1), counts) }];
   for (const m of toSend) {
-    try { const r = await sendMessage(m); if (r.sent || r.dryRun) sent++; } catch (err) { console.error("[tg] send failed", (err as Error).message); }
+    try {
+      const r = m.anim ? await sendAnimation(m.anim, m.text) : await sendMessage(m.text);
+      if (r.sent || r.dryRun) sent++;
+    } catch (err) {
+      console.error("[tg] send failed", (err as Error).message);
+    }
   }
 
   await kvSet(KV_CURSOR_KEY, to.toString());
@@ -217,9 +228,14 @@ type BuildCtx = {
   launchDetails: Record<string, LaunchDetail>;
   minSwapWei: bigint;
   minBurnWei: bigint;
+  /** Lower-cased token addresses whose BUYS are not posted (another bot covers them). */
+  skipBuyTokens: Set<string>;
 };
 
 const DEFAULT_SPLIT: Split = { creatorBps: 10000, treasuryBps: 0, buybackBps: 0, parentBurnBps: 0, rewardsBps: 0 };
+
+/** A postable message plus the animation clip to attach (text-only when absent). */
+type BuiltMsg = { text: string; anim?: AnimKind };
 
 // Resolve each launch's quote-asset pairs (quoteAssetsOf), its fee split + parent
 // (from the FeeRouterCreated in the SAME tx), and whether its treasury holds
@@ -293,7 +309,7 @@ function tokenForHiding(
   }
 }
 
-async function buildMessage(e: TgEventWithMeta, ctx: BuildCtx): Promise<string | null> {
+async function buildMessage(e: TgEventWithMeta, ctx: BuildCtx): Promise<BuiltMsg | null> {
   const tx = e.txHash!;
   switch (e.kind) {
     case "launch": {
@@ -301,52 +317,61 @@ async function buildMessage(e: TgEventWithMeta, ctx: BuildCtx): Promise<string |
       const pairs = (d?.pairAddrs ?? (WETH_ADDRESS ? [WETH_ADDRESS] : [])).map((a) =>
         WETH_ADDRESS && a.toLowerCase() === WETH_ADDRESS.toLowerCase() ? "WETH" : (ctx.sym(a) ?? "?"),
       );
-      return fmt.msgLaunch({
-        token: e.token, symbol: ctx.sym(e.token), pairs: pairs.length ? pairs : ["WETH"],
-        treasury: d?.treasury ?? false, split: d?.split ?? DEFAULT_SPLIT,
-        parentSymbol: d?.parent ? ctx.sym(d.parent) : undefined, txHash: tx,
-      });
+      return {
+        anim: "launch",
+        text: fmt.msgLaunch({
+          token: e.token, symbol: ctx.sym(e.token), pairs: pairs.length ? pairs : ["WETH"],
+          treasury: d?.treasury ?? false, split: d?.split ?? DEFAULT_SPLIT,
+          parentSymbol: d?.parent ? ctx.sym(d.parent) : undefined, txHash: tx,
+        }),
+      };
     }
     case "swap": {
       const m = ctx.poolMap[e.poolId.toLowerCase()];
       if (!m) return null; // unknown pool (not one of ours, or seeded before the bot started)
       const [token, quoteAsset] = m.split("|") as [Address, Address];
       if (!WETH_ADDRESS || quoteAsset.toLowerCase() !== WETH_ADDRESS.toLowerCase()) return null; // ETH-threshold only applies to WETH pools
-      // Determine which side is WETH (currency sort: lower address = currency0).
-      const tokenIsC0 = token.toLowerCase() < WETH_ADDRESS.toLowerCase();
-      const wethDelta = tokenIsC0 ? e.amount1 : e.amount0;
-      const tokenDelta = tokenIsC0 ? e.amount0 : e.amount1;
-      const absWeth = wethDelta < 0n ? -wethDelta : wethDelta;
-      if (absWeth < ctx.minSwapWei) return null;
-      const side: "buy" | "sell" = wethDelta > 0n ? "buy" : "sell";
-      const absTok = tokenDelta < 0n ? -tokenDelta : tokenDelta;
-      return fmt.msgSwap({ side, token, symbol: ctx.sym(token), ethAmount: Number(absWeth) / 1e18, tokenAmount: Number(absTok) / 1e18, isProtocol: token.toLowerCase() === BALLAST_V2_TOKEN_ADDRESS.toLowerCase(), txHash: tx });
+      // Direction from the v4 swapper-perspective deltas (see swapDirection.ts):
+      // buy = swapper received the launched token, sell = swapper paid it. The
+      // quote amount is WETH here, so quoteAbs is the ETH size for the threshold.
+      const { side, tokenAbs, quoteAbs } = classifySwap(token, WETH_ADDRESS, e.amount0, e.amount1);
+      if (quoteAbs < ctx.minSwapWei) return null;
+      const isProtocol = token.toLowerCase() === BALLAST_V2_TOKEN_ADDRESS.toLowerCase();
+      // Noise controls: optionally suppress sells entirely, and skip buys for
+      // tokens already covered by another buy bot (launches/burns still post).
+      if (side === "sell" && !TG.postSells) return null;
+      if (side === "buy" && ctx.skipBuyTokens.has(token.toLowerCase())) return null;
+      return {
+        anim: side, // "buy" → buy.mp4, "sell" → sell.mp4
+        text: fmt.msgSwap({ side, token, symbol: ctx.sym(token), ethAmount: Number(quoteAbs) / 1e18, tokenAmount: Number(tokenAbs) / 1e18, isProtocol, txHash: tx }),
+      };
     }
     case "buybackBurned": {
       const asset = e.asset.toLowerCase() === (WETH_ADDRESS?.toLowerCase() ?? "") ? "WETH" : (ctx.sym(e.asset) ?? "asset");
-      return fmt.msgBuyback({ ballastBurned: Number(e.ballastBought) / 1e18, asset, spent: Number(e.spent) / 1e18, txHash: tx });
+      return { anim: "burn", text: fmt.msgBuyback({ ballastBurned: Number(e.ballastBought) / 1e18, asset, spent: Number(e.spent) / 1e18, txHash: tx }) };
     }
     case "deadTransfer": {
       if (e.value < ctx.minBurnWei) return null;
-      return fmt.msgBurn({ amount: Number(e.value) / 1e18, from: e.from, txHash: tx });
+      return { anim: "burn", text: fmt.msgBurn({ amount: Number(e.value) / 1e18, from: e.from, txHash: tx }) };
     }
     case "splitScheduled": {
       const token = ctx.routerToken[e.router.toLowerCase()];
-      return fmt.msgSplitScheduled({ token: token ?? e.router, symbol: ctx.sym(token), split: e, effectiveAt: e.effectiveAt, txHash: tx });
+      return { text: fmt.msgSplitScheduled({ token: token ?? e.router, symbol: ctx.sym(token), split: e, effectiveAt: e.effectiveAt, txHash: tx }) };
     }
     case "splitApplied": {
       const token = ctx.routerToken[e.router.toLowerCase()];
-      return fmt.msgSplitApplied({ token: token ?? e.router, symbol: ctx.sym(token), split: e, instant: e.instant, txHash: tx });
+      return { text: fmt.msgSplitApplied({ token: token ?? e.router, symbol: ctx.sym(token), split: e, instant: e.instant, txHash: tx }) };
     }
     case "parentBurned": {
-      return fmt.msgParentBurn({ parent: e.parent, parentSymbol: ctx.sym(e.parent), parentOut: Number(e.parentOut) / 1e18, txHash: tx });
+      // Parent tokens sent to the dead address — a burn, so it uses the burn clip.
+      return { anim: "burn", text: fmt.msgParentBurn({ parent: e.parent, parentSymbol: ctx.sym(e.parent), parentOut: Number(e.parentOut) / 1e18, txHash: tx }) };
     }
     case "treasuryDeposit": {
       const token = ctx.treasuryToken[e.treasury.toLowerCase()];
-      return fmt.msgTreasuryDeposit({ token: token ?? e.treasury, symbol: ctx.sym(token), assetSymbol: ctx.sym(e.asset) ?? "asset", amount: Number(e.amount) / 1e18, txHash: tx });
+      return { text: fmt.msgTreasuryDeposit({ token: token ?? e.treasury, symbol: ctx.sym(token), assetSymbol: ctx.sym(e.asset) ?? "asset", amount: Number(e.amount) / 1e18, txHash: tx }) };
     }
     case "basketFill": {
-      return fmt.msgBasketFill({ token: e.launchToken, symbol: ctx.sym(e.launchToken), ethIn: Number(e.ethIn) / 1e18, nAssets: e.assets.length, txHash: tx });
+      return { text: fmt.msgBasketFill({ token: e.launchToken, symbol: ctx.sym(e.launchToken), ethIn: Number(e.ethIn) / 1e18, nAssets: e.assets.length, txHash: tx }) };
     }
     default:
       return null;

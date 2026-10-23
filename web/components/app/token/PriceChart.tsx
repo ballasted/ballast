@@ -188,6 +188,9 @@ function PriceChartInner({
   const [dotPos, setDotPos] = useState<{ x: number; y: number } | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number; candle: Candle } | null>(null);
   const [revealed, setRevealed] = useState(false);
+  // Live plot width (px) so the hover tooltip can be clamped to the actual chart
+  // edge instead of a hardcoded cap that sits off-screen on a ~328px mobile plot.
+  const [plotWidth, setPlotWidth] = useState(0);
 
   // ── Create the chart once, tear down on unmount. ──────────────────────────
   useEffect(() => {
@@ -210,7 +213,15 @@ function PriceChartInner({
     });
     chartRef.current = chart;
 
+    setPlotWidth(el.clientWidth);
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setPlotWidth(w);
+    });
+    ro.observe(el);
+
     return () => {
+      ro.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -441,7 +452,10 @@ function PriceChartInner({
           <div
             className="pointer-events-none absolute z-20 w-[168px] rounded-input border border-border-strong bg-card/95 p-2 text-[11px] shadow-lg"
             style={{
-              left: Math.min(Math.max(0, hover.x + 12), 999),
+              // Keep the 168px-wide tooltip fully inside the plot: cap left at
+              // (width − tooltip − 4px gutter), falling back to the raw offset
+              // before the width is first measured.
+              left: Math.max(0, Math.min(hover.x + 12, (plotWidth || hover.x + 12 + 172) - 172)),
               top: Math.max(0, hover.y - 60),
             }}
           >
@@ -490,7 +504,7 @@ function Pills<K extends string>({
           key={o.key}
           onClick={() => onChange(o.key)}
           className={cn(
-            "rounded-full px-2 py-0.5 text-xs tabular-nums transition-colors",
+            "rounded-full px-3 py-1.5 text-xs tabular-nums transition-colors md:px-2 md:py-0.5",
             o.key === value ? "bg-green text-bg font-semibold" : "text-text-muted hover:text-text-secondary",
           )}
         >

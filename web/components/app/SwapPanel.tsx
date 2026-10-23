@@ -9,9 +9,11 @@ import { useTokenQuotePools } from "@/hooks/useTokenQuotePools";
 import { ConnectButton } from "@/components/app/ConnectButton";
 import { ActingAs } from "@/components/app/ActingAs";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { formatTokenAmount } from "@/lib/format";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
-import { isSwapConfigured, isRouterV2Configured } from "@/lib/contracts";
+import { isSwapConfigured, isRouterV2Configured, isRoundupConfigured } from "@/lib/contracts";
+import { RoundupToggle } from "@/components/app/RoundupToggle";
 import { erc20Abi } from "@/lib/abis";
 import { routerV2RoutesFor } from "@/lib/routerV2";
 import { cn } from "@/lib/cn";
@@ -268,17 +270,18 @@ export function SwapPanel({
           placeholder="0.0"
           disabled={busy}
         />
-        <div className="mt-1 flex items-center justify-between text-xs text-text-faint">
-          <span>
-            Balance: {balance !== undefined ? fmt(balance, 4) : "…"} {inSym}
+        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-text-faint">
+          <span className="min-w-0 truncate">
+            Balance: {balance !== undefined ? formatTokenAmount(balance) : "…"}
+            {inSym ? <span className="whitespace-nowrap">&nbsp;{inSym}</span> : null}
           </span>
-          <div className="flex gap-1">
+          <div className="flex shrink-0 gap-1">
             {[25, 50, 75, 100].map((pct) => (
               <button
                 key={pct}
                 onClick={() => setSize(pct)}
                 disabled={busy || balance === undefined}
-                className="rounded bg-border px-1.5 py-0.5 text-[11px] tabular-nums text-text-secondary hover:text-text-primary disabled:opacity-40"
+                className="rounded bg-border px-2 py-1.5 text-[11px] tabular-nums text-text-secondary hover:text-text-primary disabled:opacity-40"
               >
                 {pct === 100 ? "Max" : `${pct}%`}
               </button>
@@ -310,13 +313,19 @@ export function SwapPanel({
           <span className="field-label mb-0 text-text-faint">You receive</span>
           <AssetChip sym={outSym} />
         </div>
-        <div className="mt-1 text-2xl font-semibold tabular-nums text-text-primary">
-          {/* Crossfade the figure as the quote updates (Phase 4). */}
+        <div className="mt-1 truncate text-2xl font-semibold tabular-nums text-text-primary">
+          {/* Crossfade the figure as the quote updates (Phase 4). Compact so a
+              cheap-token buy (millions of tokens out) can't overflow on mobile;
+              exact value stays available via the quote detail rows below. */}
           {s.phase === "quoting" ? (
             <span className="text-text-faint">…</span>
           ) : (
-            <span key={fmt(s.quote)} className="anim-fade inline-block">
-              {fmt(s.quote)}
+            <span
+              key={s.quote?.toString() ?? "none"}
+              title={s.quote !== undefined ? fmt(s.quote) : undefined}
+              className="anim-fade inline-block max-w-full truncate align-bottom"
+            >
+              {s.quote === undefined ? "—" : formatTokenAmount(s.quote)}
             </span>
           )}
         </div>
@@ -429,6 +438,23 @@ export function SwapPanel({
               splitting it, keeps more of the quote.
             </p>
           )}
+        </div>
+      )}
+
+      {/* Optional stock round-up — preview + selection; hidden unless the
+          RoundupRouter env is set (see RoundupToggle). */}
+      {isRoundupConfigured && (
+        <div className="mt-4">
+          <RoundupToggle
+            token={token}
+            baseEth={
+              side === "buy"
+                ? parseFloat(amount) || 0
+                : s.quote !== undefined
+                  ? Number(formatUnits(s.quote, 18))
+                  : 0
+            }
+          />
         </div>
       )}
 

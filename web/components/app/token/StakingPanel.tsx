@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { formatEther, formatUnits, parseUnits, type Address } from "viem";
+import { useState, type ReactNode } from "react";
+import { formatUnits, parseUnits, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract, useReadContracts, useWriteContract } from "wagmi";
 import { holderStakingVaultAbi, erc20Abi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
@@ -11,6 +11,8 @@ import { decodeTxError } from "@/lib/txError";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useFeeRouter } from "@/hooks/useFeeRouter";
 import { ConnectButton } from "@/components/app/ConnectButton";
+import { TokenAmount } from "@/components/app/TokenAmount";
+import { formatTokenAmount } from "@/lib/format";
 
 const CHAIN_ID = activeChain.id;
 type Phase = "idle" | "pending" | "confirming" | "lost" | "error" | "done";
@@ -115,11 +117,14 @@ export function StakingPanel({ token, symbol }: { token?: Address; symbol?: stri
     <section className="card space-y-4 p-5">
       <h2 className="section-label">Stake ${symbol ?? "TOKEN"}</h2>
 
-      <div className="grid grid-cols-2 gap-3 text-center">
-        <Stat label="Staked" value={`${formatEther(staked)} ${symbol ?? ""}`} />
-        <Stat label="Claimable" value={`${formatEther(claimable)} WETH`} />
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Staked" value={<TokenAmount value={staked} symbol={symbol ?? undefined} />} />
+        <Stat label="Claimable" value={<TokenAmount value={claimable} symbol="WETH" />} />
       </div>
-      <div className="text-center text-xs text-text-faint">Rewards paid, all-time: {formatEther(totalRewards)} WETH</div>
+      <div className="flex flex-wrap items-baseline gap-x-1 text-xs text-text-faint">
+        <span>Rewards paid, all-time:</span>
+        <TokenAmount value={totalRewards} symbol="WETH" className="text-text-faint" />
+      </div>
 
       {!account ? (
         <ConnectButton />
@@ -146,21 +151,27 @@ export function StakingPanel({ token, symbol }: { token?: Address; symbol?: stri
           </div>
 
           <label className="block">
-            <div className="mb-1 flex justify-between text-xs text-text-secondary">
-              <span>Amount</span>
-              <span>
-                Balance: {formatUnits(maxAmount, 18)} {symbol ?? ""}
-              </span>
+            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs text-text-secondary">
+              <span className="shrink-0">Amount</span>
+              <button
+                type="button"
+                onClick={() => setAmountStr(formatUnits(maxAmount, 18))}
+                className="min-w-0 truncate text-right text-text-muted hover:text-text-secondary"
+                title="Tap to use your full balance"
+              >
+                Balance: {formatTokenAmount(maxAmount)}
+                {symbol ? <span className="whitespace-nowrap">&nbsp;{symbol}</span> : null}
+              </button>
             </div>
             <div className="flex gap-2">
               <input
-                className="input flex-1"
+                className="input min-h-[44px] flex-1"
                 inputMode="decimal"
                 placeholder="0.0"
                 value={amountStr}
                 onChange={(e) => setAmountStr(e.target.value)}
               />
-              <button type="button" className="btn-secondary shrink-0 px-3" onClick={() => setAmountStr(formatUnits(maxAmount, 18))}>
+              <button type="button" className="btn-secondary min-h-[44px] shrink-0 px-4" onClick={() => setAmountStr(formatUnits(maxAmount, 18))}>
                 Max
               </button>
             </div>
@@ -191,11 +202,11 @@ export function StakingPanel({ token, symbol }: { token?: Address; symbol?: stri
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0 rounded-input border border-border bg-bg px-3 py-2">
       <div className="text-xs text-text-faint">{label}</div>
-      <div className="mt-0.5 font-mono text-sm text-text-primary">{value}</div>
+      <div className="mt-0.5 text-sm text-text-primary">{value}</div>
     </div>
   );
 }

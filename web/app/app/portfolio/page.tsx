@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { formatUnits } from "viem";
 import { useAccount } from "wagmi";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
 import { WalletGate } from "@/components/app/WalletGate";
 import { FeePanel } from "@/components/app/FeePanel";
 import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { AssetDisc } from "@/components/app/AssetDisc";
+import { TokenAmount } from "@/components/app/TokenAmount";
 import { useAssets } from "@/hooks/useAssets";
 import { isRetiredToken } from "@/lib/contracts";
 import { CopyAddress } from "@/components/app/CopyAddress";
@@ -171,7 +171,6 @@ function HoldingRow({ h }: { h: Holding }) {
   const { project: p } = h;
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const backingAsset = (p.backing?.assets as unknown as { asset: `0x${string}` }[] | undefined)?.[0];
-  const amount = Number(formatUnits(h.balance, 18)).toLocaleString("en", { maximumFractionDigits: 2 });
   const ratio =
     h.marketValueUsd !== undefined && h.backingValueUsd > 0n
       ? Number((h.marketValueUsd * 10n ** 18n) / h.backingValueUsd) / 1e18
@@ -181,16 +180,19 @@ function HoldingRow({ h }: { h: Holding }) {
       <div className="flex min-w-0 items-center gap-3">
         <AssetDisc symbol={p.symbol} size={32} />
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
-            {isRetiredToken(p.token) && <span className="chip chip-neutral">Retired</span>}
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="min-w-0 truncate font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+            {isRetiredToken(p.token) && <span className="chip chip-neutral shrink-0">Retired</span>}
             <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
             <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
           </div>
-          <div className="metric-secondary">{amount} tokens</div>
+          <div className="metric-secondary flex min-w-0 items-center gap-1">
+            <TokenAmount value={h.balance} decimals={18} />
+            <span className="shrink-0">tokens</span>
+          </div>
         </div>
       </div>
-      <div className="text-right">
+      <div className="shrink-0 text-right">
         <div data-balance className="figure-primary">{formatUsd(h.displayValueUsd, { compact: true })}</div>
         {p.ballasted ? (
           <div className="metric-secondary">
@@ -212,16 +214,16 @@ function LaunchRow({ p }: { p: Project }) {
       <div className="flex min-w-0 items-center gap-3">
         <AssetDisc symbol={p.symbol} size={32} />
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-text-primary">{p.symbol ?? "—"}</span>
-            {isRetiredToken(p.token) && <span className="chip chip-neutral">Retired</span>}
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="min-w-0 truncate font-semibold text-text-primary">{p.symbol ?? "—"}</span>
+            {isRetiredToken(p.token) && <span className="chip chip-neutral shrink-0">Retired</span>}
             <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} compact />
             <PoolChips quoteAssets={p.quoteAssets} registry={registry} registryLoaded={!registryLoading} compact />
           </div>
-          <div className="metric-secondary">{p.name ?? "Unnamed project"}</div>
+          <div className="metric-secondary truncate">{p.name ?? "Unnamed project"}</div>
         </div>
       </div>
-      <div className="text-right">
+      <div className="shrink-0 text-right">
         {p.ballasted && p.backing ? (
           <>
             <div data-balance className="figure-primary">{formatUsd(p.backing.totalValueUsd, { compact: true })}</div>

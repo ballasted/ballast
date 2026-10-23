@@ -129,9 +129,9 @@ export function FeesSection({
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         {visibleBuckets.map((b) => (
           <div key={b.key} className={cn("flex items-center gap-1.5", b.disabled && "opacity-40")}>
-            <span className={cn("h-2 w-2 rounded-full", b.color)} />
-            <span className="text-text-secondary">{b.label}</span>
-            <span className="ml-auto font-mono text-text-primary">{(split[b.key] / 100).toFixed(0)}%</span>
+            <span className={cn("h-2 w-2 shrink-0 rounded-full", b.color)} />
+            <span className="min-w-0 truncate text-text-secondary">{b.label}</span>
+            <span className="ml-auto shrink-0 font-mono text-text-primary">{(split[b.key] / 100).toFixed(0)}%</span>
           </div>
         ))}
       </div>

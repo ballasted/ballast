@@ -28,6 +28,7 @@ import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useRamsesPosition } from "@/hooks/useRamsesPosition";
 import { useRouterCreator } from "@/hooks/useRouterCreator";
 import { shortAddress } from "@/lib/format";
+import { TokenAmount } from "@/components/app/TokenAmount";
 import { cn } from "@/lib/cn";
 
 const CHAIN_ID = activeChain.id;
@@ -242,12 +243,24 @@ function ExistingPosition({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3 rounded-card border border-border p-3 text-center">
-        <div>
-          <div className="figure-primary text-base">{fmt(pos.pendingFees0, 18)}</div>
+        <div className="min-w-0">
+          <div className="flex justify-center">
+            {pos.pendingFees0 === undefined ? (
+              <span className="figure-primary text-base">Unknown</span>
+            ) : (
+              <TokenAmount value={pos.pendingFees0} decimals={18} className="figure-primary text-base" />
+            )}
+          </div>
           <div className="mt-0.5 text-[11px] text-text-faint">Pending fees — {sym0}</div>
         </div>
-        <div>
-          <div className="figure-primary text-base">{fmt(pos.pendingFees1, 18)}</div>
+        <div className="min-w-0">
+          <div className="flex justify-center">
+            {pos.pendingFees1 === undefined ? (
+              <span className="figure-primary text-base">Unknown</span>
+            ) : (
+              <TokenAmount value={pos.pendingFees1} decimals={18} className="figure-primary text-base" />
+            )}
+          </div>
           <div className="mt-0.5 text-[11px] text-text-faint">Pending fees — {sym1}</div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { ASSET_REGISTRY_ADDRESS, hookForFactory } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
 import { isProtocolToken } from "@/components/app/token/ProtocolTokenNotice";
+import { shortAddress } from "@/lib/format";
 
 const CHAIN_ID = activeChain.id;
 
@@ -115,7 +116,7 @@ export function ProtocolControlsPanel({
       </ul>
       {isProtocolToken(token) && creator && (
         <p className="mt-3 text-xs text-text-faint">
-          Creator share goes to the Safe ({creator}). The buyback-and-burn is manual until FeeSplitter ships — there
+          Creator share goes to the Safe (<span className="font-mono">{shortAddress(creator)}</span>). The buyback-and-burn is manual until FeeSplitter ships — there
           is no on-chain mechanism enforcing it yet.
         </p>
       )}

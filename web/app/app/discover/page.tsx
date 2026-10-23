@@ -179,7 +179,7 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
         onClick={() => onPage(p)}
         aria-current={p === page ? "page" : undefined}
         className={cn(
-          "h-8 min-w-8 rounded-input px-2 text-sm tabular-nums transition-colors",
+          "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-input px-2 text-sm tabular-nums transition-colors md:h-8 md:min-h-0 md:min-w-8",
           p === page ? "bg-green text-bg font-semibold" : "text-text-muted hover:bg-surface-raised hover:text-text-secondary",
         )}
       >
@@ -195,7 +195,7 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
         onClick={() => onPage(Math.max(1, page - 1))}
         disabled={page <= 1}
         aria-label="Previous page"
-        className="h-8 rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30"
+        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30 md:h-8 md:min-h-0 md:min-w-0"
       >
         ‹
       </button>
@@ -204,7 +204,7 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
         onClick={() => onPage(Math.min(totalPages, page + 1))}
         disabled={page >= totalPages}
         aria-label="Next page"
-        className="h-8 rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30"
+        className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-input px-2 text-sm text-text-muted transition-colors hover:bg-surface-raised disabled:opacity-30 md:h-8 md:min-h-0 md:min-w-0"
       >
         ›
       </button>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Address } from "viem";
-import { formatUnits, erc20Abi } from "viem";
+import { erc20Abi } from "viem";
 import { useAccount, useCapabilities, useReadContracts } from "wagmi";
 import { useBasket } from "@/hooks/useBasket";
 import { useBasketRunner, type BasketLeg } from "@/hooks/useBasketRunner";
@@ -13,7 +13,7 @@ import { supportsAtomicBatch, stepSignatureCount } from "@/lib/eip5792";
 import { computeMinOut, swapDeadline } from "@/lib/swap";
 import { activeChain } from "@/lib/chain";
 import { AssetDisc } from "@/components/app/AssetDisc";
-import { formatUsd } from "@/lib/format";
+import { formatUsd, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const CHAIN_ID = activeChain.id;
@@ -309,10 +309,10 @@ function LegRow({
           className="w-full"
         />
         {amountIn > 0n && (
-          <div className="text-xs text-text-faint">
-            {Number(formatUnits(amountIn, 18)).toLocaleString("en", { maximumFractionDigits: 5 })} ETH
+          <div className="min-w-0 break-words text-xs text-text-faint">
+            {formatTokenAmount(amountIn, { decimals: 18 })} ETH
             {leg.quoteOut !== undefined && leg.decimals !== undefined && (
-              <> → {Number(formatUnits(leg.quoteOut, leg.decimals)).toLocaleString("en", { maximumFractionDigits: 4 })} {leg.symbol}</>
+              <> → {formatTokenAmount(leg.quoteOut, { decimals: leg.decimals })} {leg.symbol}</>
             )}
             {leg.illiquid && leg.impactBps !== undefined && (
               <span className="ml-2 text-negative">{(leg.impactBps / 100).toFixed(1)}% below Chainlink</span>
