@@ -3,6 +3,7 @@
 import { useAccount } from "wagmi";
 import { type Address } from "viem";
 import { useAccruedFees } from "@/hooks/useAccruedFees";
+import { useFeeSplit } from "@/hooks/useFeeSplit";
 import { activeChain } from "@/lib/chain";
 import { formatUsd, formatTokenAmount } from "@/lib/format";
 import { TokenAmount } from "@/components/app/TokenAmount";
@@ -33,6 +34,7 @@ export function FeePanel({
 }) {
   const { address } = useAccount();
   const f = useAccruedFees(address);
+  const { split } = useFeeSplit(); // live from the current FeeConfig
 
   if (!address || !f.isConfigured) return null;
   if (requireAccount && address.toLowerCase() !== requireAccount.toLowerCase()) return null;
@@ -76,7 +78,10 @@ export function FeePanel({
 
       <p className="mt-3 text-xs text-text-faint">
         {note ??
-          "Your share of the 1% WETH swap fee across all your launches. One claim sweeps the full balance to your wallet."}
+          `Your share of the ${split ? `${split.feePct}%` : ""} WETH swap fee across all your launches. One claim sweeps the full balance to your wallet.`.replace(
+            "  ",
+            " ",
+          )}
       </p>
       {f.claimSpansHooks && f.phase !== "success" && (
         <p className="mt-1 text-xs text-text-faint">
