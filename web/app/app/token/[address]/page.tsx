@@ -46,7 +46,12 @@ import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
 import { activeChain } from "@/lib/chain";
 import { ipfsToGateway } from "@/lib/ipfs";
-import { shortAddress, formatUsd } from "@/lib/format";
+import { shortAddress, formatUsd, formatSmallUsd } from "@/lib/format";
+import { marketCapUsd, marketCapSupply } from "@/lib/market";
+import { Card } from "@/components/ui/Card";
+import { AddressPill } from "@/components/ui/AddressPill";
+import { Tag } from "@/components/ui/Tag";
+import { DeltaText } from "@/components/ui/DeltaText";
 
 type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
 type TabId = "trades" | "holders" | "about";
@@ -155,6 +160,9 @@ export default function TokenDetailPage() {
     return <Notice title="Nothing here" body="No BALLAST token found at this address on the active chain." />;
   }
 
+  const headerMcap = marketCapUsd(marketPriceUsd, marketCapSupply(backing?.totalSupply));
+  const headerPriceUsd = marketPriceUsd !== undefined ? Number(marketPriceUsd) / 1e18 : market?.priceUsd;
+
   return (
     <div className="space-y-4">
       {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
@@ -165,25 +173,43 @@ export default function TokenDetailPage() {
         <ResumeLaunchPanel token={token!} symbol={symbol} factory={ownerFactory} />
       )}
 
-      {/* ── Header — avatar, $TICKER, name, CA + copy, backing chip, state pill. ── */}
+      {/* ── Header — logo tile, $TICKER + name, tag row, right-aligned market cap. ── */}
       <MotionSection>
-        <header className="card p-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <AssetDisc src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={48} />
+        <Card className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="h-[76px] w-[76px] shrink-0 overflow-hidden rounded-card-lg border border-hairline bg-bg">
+              <AssetDisc src={ipfsToGateway(shownMeta?.logo)} symbol={symbol} size={76} />
+            </div>
             <div className="min-w-0">
-              <h1 className="truncate font-serif text-2xl font-semibold text-bone">{symbol ?? shortAddress(token!)}</h1>
-              <p className="truncate text-sm text-text-muted">{metaDenied ? "Metadata withheld" : (name ?? shortAddress(token!))}</p>
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <h1 className="truncate font-serif text-display-sm text-text-primary">{symbol ?? shortAddress(token!)}</h1>
+                {!metaDenied && name ? <span className="truncate text-ui-md text-text-muted">{name}</span> : null}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {creator ? <AddressPill address={creator} prefix="by" /> : null}
+                <Tag tone={hasPool ? "green" : "neutral"}>{hasPool ? "Graduated" : "Live"}</Tag>
+                <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
+                <PoolChips quoteAssets={quoteAssets ?? []} registry={registry} registryLoaded={!registryLoading} />
+                <AddressPill address={token!} />
+                <ProjectLinks meta={shownMeta} variant="row" />
+                <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} />
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <CopyAddress address={token!} label="Token contract" />
-            <BackedByChip backingAsset={backingAsset?.asset} registry={registry} registryLoaded={!registryLoading} />
-            <PoolChips quoteAssets={quoteAssets ?? []} registry={registry} registryLoaded={!registryLoading} />
-            <span className={cn("chip", hasPool ? "chip-accent" : "chip-neutral")}>{hasPool ? "Graduated" : "On curve"}</span>
-            <LiquidityDepthNote depthToDoubleUsd={depthToDoubleUsd} />
+          <div className="shrink-0 sm:text-right">
+            <div className="text-ui-xs text-text-muted">Market cap</div>
+            <div className="text-display-sm font-semibold tabular-nums text-text-primary">
+              {headerMcap !== undefined ? formatUsd(headerMcap, { compact: true }) : "—"}
+            </div>
+            <div className="mt-1 flex items-center gap-2 tabular-nums sm:justify-end">
+              <span className="text-ui-sm text-text-secondary">
+                {headerPriceUsd !== undefined ? formatSmallUsd(headerPriceUsd) : "—"}
+              </span>
+              <DeltaText value={market?.change24hPct} suffix="% 24h" className="text-ui-sm" />
+            </div>
           </div>
-        </header>
+        </Card>
       </MotionSection>
 
       {/* ── Stat strip: price · backing/token · 24h · volume · liquidity · holders. ── */}
@@ -315,31 +341,6 @@ export default function TokenDetailPage() {
         )}
       </MotionSection>
     </div>
-  );
-}
-
-function CopyAddress({ address, label }: { address: Address; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        void navigator.clipboard?.writeText(address).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
-      }}
-      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-text-secondary transition-colors hover:border-text-faint md:min-h-0"
-      title={`Copy ${label ? label.toLowerCase() : "contract"} address ${address}`}
-    >
-      {label && <span className="text-text-faint">{label}</span>}
-      <span className="font-mono">{copied ? "Copied ✓" : shortAddress(address)}</span>
-      {!copied && (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className="text-text-faint">
-          <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="2" />
-          <path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      )}
-    </button>
   );
 }
 

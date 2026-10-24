@@ -56,7 +56,6 @@ describe("formatTokenExact — tap/hover reveal", () => {
   });
 });
 
-
 describe("formatSmallUsd — never renders a real value as zero", () => {
   it("a 5e-7 value renders in scientific notation, not $0.00", () => {
     const s = formatSmallUsd(5e-7);
