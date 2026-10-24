@@ -32,7 +32,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Ambient depth behind everything — a fixed, faint light source so the app
           never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
       <Ambience variant="page" />
-      <EventToasts />
+      {/* Live-activity toasts mount fixed at the top of the viewport. Inside the
+          chrome-free Telegram Mini App they cover the launch form, so suppress
+          them there (the Mini App is a single-purpose launch surface). */}
+      {!isMiniApp && <EventToasts />}
       {/* One shared "More" sheet, opened by both the header hamburger (TopBar)
           and the bottom bar's More tab (BottomNav) — both live inside here. */}
       <MoreMenuProvider>

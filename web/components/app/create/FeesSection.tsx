@@ -1,12 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import { cn } from "@/lib/cn";
 import type { FeeSplitBps } from "@/hooks/useFeeRouterLaunchRunner";
 import { useProjects } from "@/hooks/useProjects";
+import { useProjectsMeta } from "@/hooks/useProjectMeta";
+import { AssetDisc } from "@/components/app/AssetDisc";
 import { WETH_ADDRESS, isHiddenToken, isRetiredToken } from "@/lib/contracts";
+import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
+
+type ParentOption = { token: Address; symbol?: string; name?: string; metadataURI?: string; label: string };
 
 const BPS = 10000;
 
@@ -56,18 +61,28 @@ export function FeesSection({
 
   // Candidate parents: Ballast-launched tokens with a live WETH pool. The contract
   // re-validates (NotBallastParent / ParentPoolNotReady), so this is UX-only.
-  const parentOptions = useMemo(() => {
+  // Deduped by token address (case-insensitive) so a token can never appear twice
+  // in the picker (e.g. the same address surfaced once with mixed casing).
+  const parentOptions = useMemo<ParentOption[]>(() => {
     if (!allowParent) return [];
     const weth = WETH_ADDRESS?.toLowerCase();
-    return projects
-      .filter(
-        (p) =>
-          !isHiddenToken(p.token) &&
-          !isRetiredToken(p.token) &&
-          p.hasPool &&
-          (!weth || p.quoteAssets.some((q) => q.toLowerCase() === weth)),
-      )
-      .map((p) => ({ token: p.token, label: p.symbol ? `$${p.symbol}` : shortAddress(p.token) }));
+    const seen = new Set<string>();
+    const out: ParentOption[] = [];
+    for (const p of projects) {
+      if (isHiddenToken(p.token) || isRetiredToken(p.token) || !p.hasPool) continue;
+      if (weth && !p.quoteAssets.some((q) => q.toLowerCase() === weth)) continue;
+      const key = p.token.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        token: p.token,
+        symbol: p.symbol,
+        name: p.name,
+        metadataURI: p.metadataURI,
+        label: p.symbol ? `$${p.symbol}` : shortAddress(p.token),
+      });
+    }
+    return out;
   }, [projects, allowParent]);
 
   const visibleBuckets = BUCKETS.filter((b) => !b.requiresParent || (allowParent && Boolean(split.parent)));
@@ -144,18 +159,11 @@ export function FeesSection({
             <span className="section-label">Parent token</span>
             <span className="text-xs text-text-faint">optional · for token families</span>
           </div>
-          <select
-            value={split.parent ?? ""}
-            onChange={(e) => setParent((e.target.value || undefined) as Address | undefined)}
-            className="input w-full"
-          >
-            <option value="">None</option>
-            {parentOptions.map((o) => (
-              <option key={o.token} value={o.token}>
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <ParentTokenCombobox
+            options={parentOptions}
+            value={split.parent}
+            onChange={setParent}
+          />
           {split.parent && (
             <p className="text-xs text-text-faint">
               A share of this token&apos;s creator fees buys {parentOptions.find((o) => o.token === split.parent)?.label ?? "$PARENT"} and
@@ -199,5 +207,142 @@ export function FeesSection({
         </p>
       )}
     </section>
+  );
+}
+
+// Searchable parent-token picker with logos — replaces a bare <select> so a long
+// token list is filterable by ticker / name / address and each row shows the
+// token's own pinned logo (reuses AssetDisc + the same substring-match pattern as
+// CommandSearch). Options arrive already deduped by address from parentOptions.
+function ParentTokenCombobox({
+  options,
+  value,
+  onChange,
+}: {
+  options: ParentOption[];
+  value?: Address;
+  onChange: (token: Address | undefined) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Resolve each candidate's pinned logo (token address → gateway URL).
+  const metaByToken = useProjectsMeta(options);
+  const logoFor = (token: Address) => ipfsToGateway(metaByToken.get(token.toLowerCase())?.logo);
+
+  const selected = value ? options.find((o) => o.token.toLowerCase() === value.toLowerCase()) : undefined;
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return options;
+    return options.filter(
+      (o) =>
+        o.token.toLowerCase().includes(s) ||
+        (o.symbol ?? "").toLowerCase().includes(s) ||
+        (o.name ?? "").toLowerCase().includes(s),
+    );
+  }, [options, q]);
+
+  // Close on outside click / Escape; focus the search field on open.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    inputRef.current?.focus();
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function pick(token: Address | undefined) {
+    onChange(token);
+    setOpen(false);
+    setQ("");
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="input flex min-h-[44px] w-full items-center justify-between gap-2 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {selected ? (
+            <>
+              <AssetDisc src={logoFor(selected.token)} symbol={selected.symbol} size={22} />
+              <span className="truncate text-text-primary">{selected.label}</span>
+            </>
+          ) : (
+            <span className="text-text-faint">None</span>
+          )}
+        </span>
+        <span aria-hidden className="shrink-0 text-text-faint">
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-input border border-border bg-card shadow-lg">
+          <div className="border-b border-border p-2">
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search ticker, name, or address"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full bg-transparent px-1 py-1.5 text-sm text-text-primary placeholder:text-text-faint focus:outline-none"
+            />
+          </div>
+          <ul role="listbox" className="max-h-64 overflow-y-auto p-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => pick(undefined)}
+                className={cn(
+                  "flex min-h-[44px] w-full items-center gap-2 rounded-input px-2 text-left text-sm transition-colors hover:bg-surface-raised",
+                  !value && "bg-surface-raised",
+                )}
+              >
+                <span className="text-text-secondary">None</span>
+              </button>
+            </li>
+            {filtered.map((o) => (
+              <li key={o.token}>
+                <button
+                  type="button"
+                  onClick={() => pick(o.token)}
+                  className={cn(
+                    "flex min-h-[44px] w-full items-center gap-2 rounded-input px-2 text-left transition-colors hover:bg-surface-raised",
+                    value?.toLowerCase() === o.token.toLowerCase() && "bg-surface-raised",
+                  )}
+                >
+                  <AssetDisc src={logoFor(o.token)} symbol={o.symbol} size={24} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-text-primary">{o.label}</span>
+                    {o.name && <span className="block truncate text-xs text-text-muted">{o.name}</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 && (
+              <li className="px-2 py-3 text-center text-sm text-text-muted">No tokens match.</li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
