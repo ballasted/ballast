@@ -2,6 +2,7 @@
 
 import type { Project } from "@/hooks/useProjects";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
+import { useIndexedStats } from "@/hooks/useIndexedStats";
 import { useBuybackV2 } from "@/hooks/useBuybackV2";
 import { useNow } from "@/hooks/useNow";
 import { formatUsd, timeAgo } from "@/lib/format";
@@ -33,6 +34,7 @@ export function DiscoverStats({
 }) {
   const now = useNow();
   const series = useAnalyticsSeries();
+  const indexed = useIndexedStats();
   const buyback = useBuybackV2();
 
   // Total = every treasury's full value; locked = the portion that can never
@@ -56,7 +58,11 @@ export function DiscoverStats({
   // like the sibling cards, never a green "Live · $0.00" that looks real.
   const reserveUnavailable = !isLoading && projects.length > 0 && resolvedBackings === 0;
 
-  const volumeOk = series.available && series.volume24hUsd !== undefined;
+  // 24h volume: prefer our own indexer (full-window aggregate across all factory
+  // generations) once backfilled; fall back to GeckoTerminal until then.
+  const idxVol = indexed.available && indexed.stats?.volume24hUsd !== undefined;
+  const volumeOk = idxVol || (series.available && series.volume24hUsd !== undefined);
+  const volume24h = idxVol ? indexed.stats!.volume24hUsd : series.volume24hUsd;
   const burnedOk = buyback.configured && buyback.burnedBalance !== undefined;
 
   return (
@@ -71,9 +77,15 @@ export function DiscoverStats({
       />
       <StatCard
         label="24h volume"
-        value={volumeOk ? usdCompact(series.volume24hUsd!) : null}
-        sub={volumeOk ? freshLabel("GeckoTerminal", series.fetchedAt, now) : "GeckoTerminal · unavailable"}
-        loading={Boolean(series.isLoading) && !series.fetchedAt}
+        value={volumeOk ? usdCompact(volume24h!) : null}
+        sub={
+          volumeOk
+            ? idxVol
+              ? "Live · on-chain"
+              : freshLabel("GeckoTerminal", series.fetchedAt, now)
+            : "GeckoTerminal · unavailable"
+        }
+        loading={!idxVol && Boolean(series.isLoading) && !series.fetchedAt}
       />
       <StatCard
         label="Tokens launched"

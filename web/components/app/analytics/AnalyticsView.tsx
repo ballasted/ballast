@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
+import { useIndexedAnalytics, useIndexedStats } from "@/hooks/useIndexedStats";
 import { useProjects } from "@/hooks/useProjects";
 import { useBuybackV2 } from "@/hooks/useBuybackV2";
 import { WETH_ADDRESS, isHiddenToken } from "@/lib/contracts";
@@ -26,6 +27,11 @@ function usdCompact(n?: number): string | undefined {
 export function AnalyticsView() {
   const [range, setRange] = useState<Range>("7d");
   const series = useAnalyticsSeries();
+  // Prefer our own indexer for the volume series + headline once backfilled; fall
+  // back to GeckoTerminal until then (available=false while the DB is empty).
+  const idxAnalytics = useIndexedAnalytics(365);
+  const idxStats = useIndexedStats();
+  const vol24 = idxStats.available && idxStats.stats ? idxStats.stats.volume24hUsd : series.volume24hUsd;
   const { projects, count, isLoading: projLoading } = useProjects();
   const buyback = useBuybackV2();
 
@@ -58,9 +64,10 @@ export function AnalyticsView() {
 
   // Volume bars for the selected range.
   const bars = useMemo(() => {
-    const d = [...series.daily].sort((a, b) => a.day.localeCompare(b.day));
+    const src = idxAnalytics.available ? idxAnalytics.days : series.daily;
+    const d = [...src].sort((a, b) => a.day.localeCompare(b.day));
     return d.slice(-RANGE_DAYS[range]);
-  }, [series.daily, range]);
+  }, [idxAnalytics.available, idxAnalytics.days, series.daily, range]);
   const maxVol = useMemo(() => Math.max(1, ...bars.map((b) => b.volumeUsd)), [bars]);
 
   const volDelta =
@@ -93,7 +100,7 @@ export function AnalyticsView() {
         <Card>
           <Stat
             label="Volume · 24h"
-            value={series.isLoading ? <Skeleton height={24} width="70%" /> : (usdCompact(series.volume24hUsd) ?? "—")}
+            value={series.isLoading ? <Skeleton height={24} width="70%" /> : (usdCompact(vol24) ?? "—")}
             sub={volDelta !== undefined ? <DeltaText value={volDelta} suffix="% vs prev" /> : undefined}
           />
         </Card>
@@ -153,7 +160,7 @@ export function AnalyticsView() {
             <div>
               <div className="text-ui-xs text-text-muted">Volume · {range}</div>
               <div className="mt-1 text-ui-xl font-semibold tabular-nums text-text-primary">
-                {series.isLoading ? <Skeleton height={28} width={120} /> : (usdCompact(series.volume24hUsd) ?? "—")}
+                {series.isLoading ? <Skeleton height={28} width={120} /> : (usdCompact(vol24) ?? "—")}
               </div>
             </div>
           </div>
