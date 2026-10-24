@@ -22,10 +22,10 @@ export type RoundupSelection = {
   skipped: boolean;
 };
 
-/** Stock round-up control for the swap panel. Preview + selection only: it
- *  reports the trader's choice up via onChange; wiring the choice into a
- *  RoundupRouter call is done once the router is deployed (its exact calldata
- *  format is fixed by the deployed adapter). Hidden unless the router env is set. */
+/** Stock round-up control for the swap panel. Reports the trader's choice up via
+ *  onChange; SwapPanel feeds it into useRoundup, which batches a stock-only buy
+ *  (BasketStockBuyer.buyStockWithETH) with the main ETH buy. Hidden unless the
+ *  round-up router env is set. */
 export function RoundupToggle({
   token,
   baseEth,

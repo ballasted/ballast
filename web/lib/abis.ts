@@ -1999,6 +1999,9 @@ export const roundupRouterAbi = [
     outputs: [{ name: "ethOut", type: "uint256" }],
   },
   { type: "function", name: "MAX_ROUNDUP_BPS", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "stockBuyer", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "mainRouter", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "registry", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
   {
     type: "event",
     name: "RoundupExecuted",
@@ -2122,6 +2125,37 @@ export const creatorSplitterAbi = [
       { name: "token", type: "address", indexed: true },
       { name: "recipient", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+] as const;
+
+// ── BasketStockBuyer (Phase 3, round-ups) — the IStockBuyer adapter ──────────
+// buyStockWithETH delivers one AssetRegistry-listed stock to `recipient` and
+// refunds ETH dust. route = abi.encode(uint256[] fablesHopIdx, uint256[]
+// ramsesHopIdx, bool preferFables, uint256 deadline). Address read on-chain from
+// RoundupRouter.stockBuyer() (no separate env var).
+export const basketStockBuyerAbi = [
+  {
+    type: "function",
+    name: "buyStockWithETH",
+    stateMutability: "payable",
+    inputs: [
+      { name: "stock", type: "address" },
+      { name: "recipient", type: "address" },
+      { name: "minStockOut", type: "uint256" },
+      { name: "route", type: "bytes" },
+    ],
+    outputs: [{ name: "stockOut", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "StockBought",
+    inputs: [
+      { name: "stock", type: "address", indexed: true },
+      { name: "recipient", type: "address", indexed: true },
+      { name: "ethIn", type: "uint256", indexed: false },
+      { name: "stockOut", type: "uint256", indexed: false },
+      { name: "usedFables", type: "bool", indexed: false },
     ],
   },
 ] as const;
