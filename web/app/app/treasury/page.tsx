@@ -17,6 +17,7 @@ import { liveQuery } from "@/lib/refresh";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { MotionSection } from "@/components/app/MotionSection";
 import { shortAddress } from "@/lib/format";
+import { Skeleton } from "@/components/ui";
 
 const CHAIN_ID = activeChain.id;
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -101,7 +102,7 @@ function SkeletonGrid() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" aria-hidden>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="card h-20 animate-pulse p-4" />
+        <Skeleton key={i} height={80} rounded="rounded-card-lg" />
       ))}
     </div>
   );

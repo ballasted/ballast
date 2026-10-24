@@ -19,6 +19,7 @@ import { projectTreasuryAbi } from "@/lib/abis";
 import { activeChain } from "@/lib/chain";
 import { liveQuery } from "@/lib/refresh";
 import { cn } from "@/lib/cn";
+import { Card, Stat, Skeleton, Segmented } from "@/components/ui";
 
 const CHAIN_ID = activeChain.id;
 
@@ -140,28 +141,21 @@ export default function BackingIndexPage() {
         onChange={(e) => setQuery(e.target.value)}
       />
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        {SORTS.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setSort(s.id)}
-            aria-pressed={sort === s.id}
-            className={cn("transition-colors", sort === s.id ? "font-semibold text-text-primary" : "text-text-muted hover:text-text-secondary")}
-          >
-            {s.label}
-          </button>
-        ))}
-        <span className="hidden h-4 w-px bg-border sm:inline-block" aria-hidden />
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => setFilter(f.id)}
-            aria-pressed={filter === f.id}
-            className={cn("transition-colors", filter === f.id ? "font-semibold text-green" : "text-text-muted hover:text-text-secondary")}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Segmented
+          ariaLabel="Sort treasuries"
+          options={SORTS.map((s) => ({ value: s.id, label: s.label }))}
+          value={sort}
+          onChange={setSort}
+          size="sm"
+        />
+        <Segmented
+          ariaLabel="Filter treasuries"
+          options={FILTERS.map((f) => ({ value: f.id, label: f.label }))}
+          value={filter}
+          onChange={setFilter}
+          size="sm"
+        />
       </div>
 
       {!isConfigured ? (
@@ -204,14 +198,13 @@ export default function BackingIndexPage() {
 
 function SummaryStat({ label, value, accent, loading }: { label: string; value: string; accent?: boolean; loading?: boolean }) {
   return (
-    <div className="card p-4">
-      <div className="eyebrow">{label}</div>
-      {loading ? (
-        <div className="mt-2 h-6 w-20 animate-pulse rounded bg-surface-raised" />
-      ) : (
-        <div className={cn("figure-primary mt-1 text-xl tabular-nums", accent && "text-green")}>{value}</div>
-      )}
-    </div>
+    <Card padded={false} className="p-4">
+      <Stat
+        label={label}
+        value={loading ? <Skeleton width={80} height={22} /> : value}
+        valueClassName={cn("text-ui-lg", accent && !loading && "text-green")}
+      />
+    </Card>
   );
 }
 
@@ -290,7 +283,7 @@ function SkeletonGrid() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-hidden>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="card h-48 animate-pulse p-4" />
+        <Skeleton key={i} height={192} rounded="rounded-card-lg" />
       ))}
     </div>
   );

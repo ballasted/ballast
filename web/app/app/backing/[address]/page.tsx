@@ -19,6 +19,7 @@ import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
 import { FACTORY_ADDRESS, isRetiredToken, RETIRED_NOTICES } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
+import { Skeleton } from "@/components/ui";
 
 type BackingAssetView = { asset: `0x${string}`; withdrawableBalance: bigint; assetDecimals: number };
 
