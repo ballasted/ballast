@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { parseUnits, formatUnits, type Address } from "viem";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useConnect, useReadContract } from "wagmi";
+import { appKitEnabled } from "@/lib/wagmi";
+import { useTelegramMainButton, useTelegramBackButton } from "@/lib/tg/miniapp";
 import { useAssets, type AllowedAsset } from "@/hooks/useAssets";
 import { useQuoteAssets } from "@/hooks/useQuoteAssets";
 import { useLaunchRunner, type LaunchParams } from "@/hooks/useLaunchRunner";
@@ -57,6 +59,17 @@ import {
 } from "@/lib/ipfs";
 
 const CHAIN_ID = activeChain.id;
+
+// Open the reown AppKit wallet picker — dynamically imported so the modal chunk
+// stays out of the initial bundle. Same path ConnectButton uses. In the Telegram
+// webview this opens WalletConnect, which deep-links out to the user's external
+// wallet app and back; it needs NEXT_PUBLIC_REOWN_PROJECT_ID set (read by name in
+// lib/wagmi.ts). When no project id is configured, appKitEnabled is false and the
+// caller falls back to an injected connector instead.
+async function openWalletModal() {
+  const { modal } = await import("@/lib/appkit");
+  modal?.open();
+}
 
 const NOTICE_OPTIONS = [
   { days: 7, label: "7 days" },
@@ -161,7 +174,7 @@ function isValidWebsite(v: string): boolean {
 // The single-page create flow (spec Phase 2). The three-step wizard is gone: the
 // live backing-per-token figure must move as the user types a treasury amount, and
 // that only works with the form and its preview on one screen at once.
-export function CreateFlow() {
+export function CreateFlow({ miniApp = false }: { miniApp?: boolean } = {}) {
   // Project
   const [name, setName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -205,6 +218,7 @@ export function CreateFlow() {
 
   const now = useNow();
   const { address: account } = useAccount();
+  const { connect, connectors } = useConnect();
   const { wrongNetwork, switchToRobinhood, isSwitching } = useNetworkGuard();
   const { assets, isConfigured: registryReady, isLoading: assetsLoading, isError: assetsError, hasAssets } = useAssets();
   const {
@@ -715,8 +729,31 @@ export function CreateFlow() {
             )}
           </section>
 
-          {/* Primary action */}
-          {!account ? (
+          {/* Primary action. Inside the Telegram Mini App the CTA is Telegram's
+              native MainButton (pinned below the webview safe area, so it can't be
+              covered by the in-page preview bar); the in-page block then shows only
+              context (acting wallet + balance), never a competing button. In a
+              normal browser it renders the usual in-page buttons. */}
+          {miniApp ? (
+            <MiniAppPrimaryAction
+              account={account}
+              wrongNetwork={wrongNetwork}
+              isSwitching={isSwitching}
+              switchToRobinhood={switchToRobinhood}
+              formValid={formValid}
+              symbol={symbolClean}
+              confirmOpen={confirmOpen}
+              onReview={openConfirm}
+              connect={() => {
+                if (appKitEnabled) {
+                  void openWalletModal();
+                  return;
+                }
+                const injected = connectors[0];
+                if (injected) connect({ connector: injected });
+              }}
+            />
+          ) : !account ? (
             <div className="card p-4 text-center text-sm text-text-muted">
               <p className="mb-3">Connect a wallet to launch.</p>
               <div className="flex justify-center"><ConnectButton /></div>
@@ -778,6 +815,7 @@ export function CreateFlow() {
         backed={backed}
         preview={preview}
         openFdv={openFdv}
+        miniApp={miniApp}
       >
         <PreviewCard
           name={name.trim()}
@@ -816,11 +854,84 @@ export function CreateFlow() {
           openFdv={openFdv}
           quoteAssetLabels={quoteAssets.map((a) => quoteOptions.find((o) => o.address === a)?.symbol ?? shortAddress(a))}
           account={account}
+          miniApp={miniApp}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={confirmAndLaunch}
         />
       )}
     </>
+  );
+}
+
+// ── Telegram Mini App primary action ────────────────────────────────────────────
+// The real CTA is Telegram's native MainButton (driven by useTelegramMainButton),
+// which lives in the system chrome below the webview safe area and therefore can't
+// be covered by the in-page preview bar — the exact overlap this replaces. The
+// returned JSX is context only: which wallet is launching and its balance. While
+// the confirm modal is open the MainButton is hidden (the modal has its own
+// Confirm/Cancel and the native BackButton closes it). Connect/switch/review are
+// all expressed through the one MainButton by swapping its label + action.
+function MiniAppPrimaryAction(p: {
+  account?: Address;
+  wrongNetwork: boolean;
+  isSwitching: boolean;
+  switchToRobinhood: () => void | Promise<void>;
+  formValid: boolean;
+  symbol: string;
+  confirmOpen: boolean;
+  onReview: () => void;
+  connect: () => void;
+}) {
+  let text: string;
+  let enabled: boolean;
+  let action: () => void;
+  if (!p.account) {
+    text = "Connect wallet";
+    enabled = true;
+    action = p.connect;
+  } else if (p.wrongNetwork) {
+    text = p.isSwitching ? "Switching network…" : "Switch to Robinhood Chain";
+    enabled = !p.isSwitching;
+    action = () => void p.switchToRobinhood();
+  } else {
+    text = `Review & launch $${p.symbol || "TICKER"}`;
+    enabled = p.formValid;
+    action = p.onReview;
+  }
+
+  useTelegramMainButton({
+    text,
+    visible: !p.confirmOpen,
+    enabled,
+    progress: Boolean(p.account) && p.wrongNetwork && p.isSwitching,
+    onClick: action,
+  });
+
+  if (!p.account) {
+    return (
+      <div className="card p-4 text-center text-sm text-text-muted">
+        Connect your wallet below to launch. Your wallet signs the launch; Ballast never holds your keys or funds.
+      </div>
+    );
+  }
+  if (p.wrongNetwork) {
+    return (
+      <div className="card p-4 text-center text-sm text-text-muted">
+        Wrong network. Use the button below to switch to {activeChain.name}.
+      </div>
+    );
+  }
+  return (
+    <div className="card space-y-2 p-4">
+      <ActingAs className="w-full" label="Launching from" />
+      <div className="flex items-center justify-between text-xs text-text-muted">
+        <span>Wallet balance</span>
+        <WalletBalance />
+      </div>
+      {!p.formValid && (
+        <p className="text-xs text-text-faint">Complete the form above to enable the launch button below.</p>
+      )}
+    </div>
   );
 }
 
@@ -900,7 +1011,7 @@ function PreviewCard(p: {
               const v = p.backed
                 ? p.preview
                   ? formatBackingPerToken(p.preview.perToken)
-                  : "$0.00"
+                  : "—"
                 : fmtEthFdv(p.openFdv?.fdvWeth);
               return (
                 <span key={v} className="anim-fade inline-block">
@@ -1017,6 +1128,7 @@ function MobilePreviewSheet({
   backed,
   preview,
   openFdv,
+  miniApp = false,
   children,
 }: {
   symbol: string;
@@ -1024,10 +1136,18 @@ function MobilePreviewSheet({
   backed: boolean;
   preview: { usd: bigint; perToken: bigint } | null;
   openFdv?: OpenFdv;
+  miniApp?: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const figure = backed ? (preview ? formatBackingPerToken(preview.perToken) : "$0.00") : fmtEthFdv(openFdv?.fdvWeth);
+  const figure = backed ? (preview ? formatBackingPerToken(preview.perToken) : "—") : fmtEthFdv(openFdv?.fdvWeth);
+
+  // In the app, this bar sits above the fixed BottomNav (52px) + the device inset.
+  // In the Telegram Mini App there's no BottomNav and the CTA is the native
+  // MainButton below the webview, so the bar only clears the safe-area inset.
+  const barBottom = miniApp ? "env(safe-area-inset-bottom)" : "calc(52px + env(safe-area-inset-bottom))";
+  // Native BackButton closes the expanded sheet (an inner step) in the Mini App.
+  useTelegramBackButton({ visible: miniApp && open, onClick: () => setOpen(false) });
 
   return (
     <div className="lg:hidden">
@@ -1036,7 +1156,7 @@ function MobilePreviewSheet({
         onClick={() => setOpen(true)}
         aria-expanded={open}
         className="fixed inset-x-0 z-40 flex items-center justify-between border-t border-border bg-card px-4 py-3"
-        style={{ bottom: "calc(52px + env(safe-area-inset-bottom))" }}
+        style={{ bottom: barBottom }}
       >
         <span className="flex items-center gap-2.5">
           <AssetDisc src={ipfsToGateway(logoUri)} symbol={symbol} size={28} />
@@ -1080,8 +1200,11 @@ function ConfirmModal(p: {
   feeSplit?: { creatorPct: number; platformPct: number; referrerPct: number };
   feeLoading?: boolean; feeConfigured?: boolean; openFdv?: OpenFdv;
   quoteAssetLabels: string[];
-  account?: Address; onCancel: () => void; onConfirm: () => void;
+  account?: Address; miniApp?: boolean; onCancel: () => void; onConfirm: () => void;
 }) {
+  // In the Mini App the native BackButton dismisses this confirm step; it only
+  // renders while the modal is mounted, so it's shown here and hidden on unmount.
+  useTelegramBackButton({ visible: Boolean(p.miniApp), onClick: p.onCancel });
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" role="dialog" aria-modal="true">
       <div className="card w-full max-w-md p-5">
@@ -1100,7 +1223,7 @@ function ConfirmModal(p: {
               p.backed
                 ? p.preview
                   ? formatBackingPerToken(p.preview.perToken)
-                  : "$0.00"
+                  : "—"
                 : `${fmtEthFdv(p.openFdv?.fdvWeth)}${fmtUsdApprox(p.openFdv?.fdvUsd) ? ` (${fmtUsdApprox(p.openFdv?.fdvUsd)})` : ""}`
             }
           />

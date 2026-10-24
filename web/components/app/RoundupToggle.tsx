@@ -86,14 +86,14 @@ export function RoundupToggle({
     (effectiveStock ? shortAddress(effectiveStock) : "—");
 
   return (
-    <div className="space-y-2 border-t border-white/10 pt-3">
+    <div className="space-y-2 border-t border-border pt-3">
       <label className="flex items-center justify-between text-sm">
         <span>Stock round-up</span>
         <input
           type="checkbox"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 accent-[#00C805]"
+          className="h-4 w-4 accent-green"
         />
       </label>
 
@@ -128,12 +128,12 @@ export function RoundupToggle({
           </select>
 
           {skipped ? (
-            <p className="note text-amber-400/90">
+            <p className="note text-warning">
               Round-up is under {MIN_ROUNDUP_ETH} ETH — too small to route, so it will be skipped.
             </p>
           ) : roundupEth > 0 ? (
-            <p className="text-xs text-white/70">
-              +{roundupEth.toFixed(4)} ETH → {stockSym} purchased to your wallet
+            <p className="text-xs text-text-muted">
+              +{roundupEth.toFixed(4)} ETH of {stockSym}, delivered to your wallet
             </p>
           ) : null}
 

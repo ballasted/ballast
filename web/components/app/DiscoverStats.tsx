@@ -2,6 +2,7 @@
 
 import type { Project } from "@/hooks/useProjects";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
+import { useIndexedStats } from "@/hooks/useIndexedStats";
 import { useBuybackV2 } from "@/hooks/useBuybackV2";
 import { useNow } from "@/hooks/useNow";
 import { formatUsd, timeAgo } from "@/lib/format";
@@ -33,6 +34,7 @@ export function DiscoverStats({
 }) {
   const now = useNow();
   const series = useAnalyticsSeries();
+  const indexed = useIndexedStats();
   const buyback = useBuybackV2();
 
   // Total = every treasury's full value; locked = the portion that can never
@@ -43,30 +45,47 @@ export function DiscoverStats({
   // headline figure is total, with locked underneath, always both.
   let totalUsd = 0n;
   let lockedUsd = 0n;
+  let resolvedBackings = 0;
   for (const p of projects) {
     if (!p.backing) continue;
+    resolvedBackings += 1;
     totalUsd += p.backing.totalValueUsd;
     lockedUsd += p.backing.lockedValueUsd;
   }
+  // Honest zero vs failed read: a genuine $0 (treasuries hold nothing, or no
+  // tokens launched yet) is fine to show, but if tokens exist and NOT ONE backing
+  // read resolved, the figure is unknowable — degrade to an em dash + "unavailable"
+  // like the sibling cards, never a green "Live · $0.00" that looks real.
+  const reserveUnavailable = !isLoading && projects.length > 0 && resolvedBackings === 0;
 
-  const volumeOk = series.available && series.volume24hUsd !== undefined;
+  // 24h volume: prefer our own indexer (full-window aggregate across all factory
+  // generations) once backfilled; fall back to GeckoTerminal until then.
+  const idxVol = indexed.available && indexed.stats?.volume24hUsd !== undefined;
+  const volumeOk = idxVol || (series.available && series.volume24hUsd !== undefined);
+  const volume24h = idxVol ? indexed.stats!.volume24hUsd : series.volume24hUsd;
   const burnedOk = buyback.configured && buyback.burnedBalance !== undefined;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
         label="Reserve value"
-        value={isLoading ? undefined : formatUsd(totalUsd, { compact: true })}
-        subFigure={isLoading ? undefined : `${formatUsd(lockedUsd, { compact: true })} locked`}
-        sub="Live · on-chain"
+        value={isLoading ? undefined : reserveUnavailable ? null : formatUsd(totalUsd, { compact: true })}
+        subFigure={isLoading || reserveUnavailable ? undefined : `${formatUsd(lockedUsd, { compact: true })} locked`}
+        sub={reserveUnavailable ? "On-chain · unavailable" : "Live · on-chain"}
         loading={isLoading}
         accent
       />
       <StatCard
         label="24h volume"
-        value={volumeOk ? usdCompact(series.volume24hUsd!) : null}
-        sub={volumeOk ? freshLabel("GeckoTerminal", series.fetchedAt, now) : "GeckoTerminal · unavailable"}
-        loading={Boolean(series.isLoading) && !series.fetchedAt}
+        value={volumeOk ? usdCompact(volume24h!) : null}
+        sub={
+          volumeOk
+            ? idxVol
+              ? "Live · on-chain"
+              : freshLabel("GeckoTerminal", series.fetchedAt, now)
+            : "GeckoTerminal · unavailable"
+        }
+        loading={!idxVol && Boolean(series.isLoading) && !series.fetchedAt}
       />
       <StatCard
         label="Tokens launched"

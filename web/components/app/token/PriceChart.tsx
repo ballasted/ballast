@@ -183,6 +183,10 @@ function PriceChartInner({
   const seriesRef = useRef<ISeriesApi<"Area"> | ISeriesApi<"Candlestick"> | null>(null);
   const resetKeyRef = useRef<string>("");
   const lastTickRef = useRef<{ t: number; c: number } | null>(null);
+  // One-shot guard: if the default timeframe is empty for a new/low-volume pool,
+  // fall back ONCE to the coarsest ("All" = daily) before showing an empty state,
+  // since a just-graduated pool often has daily candles but no 15m ones yet.
+  const autoFellBackRef = useRef(false);
 
   const [burst, setBurst] = useState<{ nonce: number; up: boolean } | null>(null);
   const [dotPos, setDotPos] = useState<{ x: number; y: number } | null>(null);
@@ -216,7 +220,15 @@ function PriceChartInner({
     setPlotWidth(el.clientWidth);
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
-      if (w) setPlotWidth(w);
+      if (!w) return;
+      setPlotWidth(w);
+      // Re-fit once the container actually has width. The one-shot fitContent()
+      // in the data effect can run while this grid column is still 0px (first
+      // layout / MotionSection enter animation), which leaves the series fitted
+      // to a degenerate range so the chart reads blank until a pill is clicked —
+      // the empty-on-first-load bug. Scroll/scale are disabled, so always fitting
+      // on a resize is correct and never fights a user pan/zoom.
+      chartRef.current?.timeScale().fitContent();
     });
     ro.observe(el);
 
@@ -336,6 +348,24 @@ function PriceChartInner({
     const id = setTimeout(() => setBurst(null), 800);
     return () => clearTimeout(id);
   }, [burst]);
+
+  // Reset the one-shot timeframe fallback whenever the token changes.
+  useEffect(() => {
+    autoFellBackRef.current = false;
+  }, [token]);
+
+  // If the selected timeframe resolved to no candles (not merely loading), fall
+  // back once to "All" (daily) before the empty state renders — a new pool with
+  // only daily data then shows a chart instead of "No trades yet". A manual
+  // timeframe change afterwards is respected (the guard has already fired).
+  useEffect(() => {
+    if (isLoading) return;
+    const empty = !available || candles.length === 0;
+    if (empty && tfKey !== "All" && !autoFellBackRef.current) {
+      autoFellBackRef.current = true;
+      setTfKey("All");
+    }
+  }, [isLoading, available, candles.length, tfKey]);
 
   // ── Headline readout: prefer the caller's faster-refreshed live price, fall
   // back to the last fetched candle's close. Both are real reads, never a guess. ─

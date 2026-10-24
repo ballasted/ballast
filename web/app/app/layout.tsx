@@ -15,32 +15,33 @@ import { cn } from "@/lib/cn";
 // APP LAYOUT — this is the ONLY segment wrapped in web3 providers. The marketing
 // root layout stays free of wallet code (build-spec §8, CLAUDE.md).
 //
-// Responsive shell: primary navigation lives in TopBar's nav row at lg+ (every
-// route except terminal). The fixed left SideNav survives ONLY on
-// /app/terminal, where the density of a persistent rail earns its keep (chart
-// + panels want the vertical space back); TopBar's own nav hides there in
-// turn, so nav never shows twice. Below lg, neither renders — BottomNav's
-// plain 4-item tab bar is the only nav there, regardless of route.
+// Responsive shell: at lg+, the slim left icon rail (SideNav, ~72px) is the
+// primary navigation on EVERY route — there is no desktop top bar. Below lg,
+// SideNav is hidden and the mobile TopBar (logo + wallet) sits above a
+// BottomNav 4-item tab bar. The Mini App drops all chrome.
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hasRail = pathname?.startsWith("/app/terminal") ?? false;
   // The Telegram launch Mini App runs inside the Telegram webview — render it
   // full-screen and chrome-free (no app nav / ticker), keeping only the wallet
   // Providers so the launch still signs in the user's own wallet.
   const isMiniApp = pathname?.startsWith("/app/tg-launch") ?? false;
+  const hasRail = !isMiniApp;
 
   return (
     <Providers>
       {/* Ambient depth behind everything — a fixed, faint light source so the app
           never reads as flat edge-to-edge black (spec §3, "Surface style"). */}
       <Ambience variant="page" />
-      <EventToasts />
+      {/* Live-activity toasts mount fixed at the top of the viewport. Inside the
+          chrome-free Telegram Mini App they cover the launch form, so suppress
+          them there (the Mini App is a single-purpose launch surface). */}
+      {!isMiniApp && <EventToasts />}
       {/* One shared "More" sheet, opened by both the header hamburger (TopBar)
           and the bottom bar's More tab (BottomNav) — both live inside here. */}
       <MoreMenuProvider>
-        {hasRail && !isMiniApp && <SideNav />}
-        <div className={cn("flex min-h-dvh flex-col", hasRail && !isMiniApp && "lg:pl-60")}>
-          {!isMiniApp && <TopBar hasRail={hasRail} />}
+        {hasRail && <SideNav />}
+        <div className={cn("flex min-h-dvh flex-col", hasRail && "lg:pl-[72px]")}>
+          {!isMiniApp && <TopBar />}
           <ConfigGuard />
           <NetworkGuard />
           {/* Content sits in a wide column, centred. Bottom padding below lg clears

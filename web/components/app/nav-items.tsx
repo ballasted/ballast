@@ -12,6 +12,23 @@ import {
 // and is deliberately not wired to this — a time-limited promo entry has no
 // business displacing one of its 3 primary tabs.
 
+/** Hover label that flies out to the right of a rail icon. Pure CSS (group-hover),
+ *  so it needs no state and can't get stuck open. The parent button must be
+ *  `group relative`. Hidden from the a11y tree — each button carries its own
+ *  aria-label — and never shown below lg, where the rail itself is hidden. */
+export function RailTooltip({ label, hint }: { label: string; hint?: string }) {
+  return (
+    <span
+      role="presentation"
+      aria-hidden
+      className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-50 hidden -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-input border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-text-primary opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 lg:group-hover:flex"
+    >
+      {label}
+      {hint && <kbd className="rounded border border-border px-1 py-0.5 font-mono text-[10px] text-text-faint">{hint}</kbd>}
+    </span>
+  );
+}
+
 export type NavItem = {
   href: string;
   label: string;
@@ -23,6 +40,7 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/app/discover", label: "Discover", icon: IconDiscover },
+  { href: "/app/analytics", label: "Analytics", icon: IconAnalytics },
   { href: "/app/backing", label: "Backing", icon: IconBacking },
   { href: "/app/treasury", label: "Treasury", icon: IconTreasury },
   { href: "/app/baskets", label: "Baskets", icon: IconBaskets },
@@ -38,12 +56,44 @@ export const NAV_ITEMS: NavItem[] = [
   // Team-split tool — only shown once the CreatorSplitterFactory is deployed
   // (NEXT_PUBLIC_CREATOR_SPLITTER_FACTORY set), never before.
   ...(isCreatorSplitterConfigured
-    ? [{ href: "/app/team-split", label: "Team split", icon: IconPortfolio }]
+    ? [{ href: "/app/team-split", label: "Team split", icon: IconTeamSplit }]
     : []),
   // Burn-to-vote hub — only shown once BurnVote is deployed (NEXT_PUBLIC_BURN_VOTE
   // set), never before.
-  ...(isBurnVoteConfigured ? [{ href: "/app/vote", label: "Vote", icon: IconBurn }] : []),
+  ...(isBurnVoteConfigured ? [{ href: "/app/vote", label: "Vote", icon: IconVote }] : []),
 ];
+
+// Desktop icon-rail grouping (SideNav). PRIMARY sits at the top; the "Ballast"
+// group (the backing-centric surfaces) sits below a divider. Anything visible but
+// in neither list (e.g. Profile, a live Migrate window) falls through to `extra`.
+// These are href sets, not a second item list, so the single NAV_ITEMS source of
+// truth — and its gating/expiry — still drives what actually renders.
+export const PRIMARY_HREFS = ["/app/discover", "/app/analytics", "/app/create", "/app/portfolio"] as const;
+export const BALLAST_HREFS = [
+  "/app/backing",
+  "/app/treasury",
+  "/app/baskets",
+  "/app/buyback",
+  "/app/vote",
+  "/app/team-split",
+] as const;
+
+/** Split the visible nav into the rail's three clusters, each preserving
+ *  NAV_ITEMS order. `extra` is whatever is visible but ungrouped (Profile, a live
+ *  Migrate window) so a new nav entry never silently vanishes from the rail. */
+export function navGroups(items: NavItem[] = NAV_ITEMS): {
+  primary: NavItem[];
+  ballast: NavItem[];
+  extra: NavItem[];
+} {
+  const visible = visibleNavItems(items);
+  const inList = (hrefs: readonly string[], href: string) => hrefs.includes(href);
+  return {
+    primary: visible.filter((i) => inList(PRIMARY_HREFS, i.href)),
+    ballast: visible.filter((i) => inList(BALLAST_HREFS, i.href)),
+    extra: visible.filter((i) => !inList(PRIMARY_HREFS, i.href) && !inList(BALLAST_HREFS, i.href)),
+  };
+}
 
 // The mobile bottom tab bar's fixed set (see BottomNav). Centralised here so the
 // "More" sheet can derive its contents as "everything NOT a bottom tab" without
@@ -91,6 +141,17 @@ function IconBurn({ active }: { active: boolean }) {
         strokeWidth="1.6"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+function IconAnalytics({ active }: { active: boolean }) {
+  // Bar chart on an axis — analytics. Inline SVG, no icon library or emoji.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 4v16h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="7.5" y="12" width="2.6" height="5" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
+      <rect x="12" y="9" width="2.6" height="8" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
+      <rect x="16.5" y="6" width="2.6" height="11" rx="0.6" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
 }
@@ -147,6 +208,37 @@ function IconTreasury({ active }: { active: boolean }) {
     </svg>
   );
 }
+function IconVote({ active }: { active: boolean }) {
+  // A ballot/check — burn-to-vote. Distinct from the buyback flame so the two
+  // never read the same in an icon-only rail.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.8" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.15 : 0} />
+      <path d="M8.5 12.5l2.5 2.5 4.5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconTeamSplit({ active }: { active: boolean }) {
+  // Two figures — a team split. Distinct from the single-person Profile icon.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.2 : 0} />
+      <circle cx="16.5" cy="9.5" r="2.4" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M3.5 19c0-2.8 2.5-4.8 5.5-4.8s5.5 2 5.5 4.8M15 14.6c2.3.2 4 2 4 4.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconSettings({ active }: { active: boolean }) {
+  // A gear — the rail's account/settings entry (links to Profile, where blur
+  // balances + density live).
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" fill={active ? "currentColor" : "none"} fillOpacity={active ? 0.2 : 0} />
+      <path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2L5.6 5.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+export { IconSettings };
 function IconBaskets({ active }: { active: boolean }) {
   // A basket outline — the stock-basket directory.
   return (
