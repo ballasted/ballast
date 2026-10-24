@@ -59,8 +59,13 @@ export function DiscoverStats({
   const reserveUnavailable = !isLoading && projects.length > 0 && resolvedBackings === 0;
 
   // 24h volume: prefer our own indexer (full-window aggregate across all factory
-  // generations) once backfilled; fall back to GeckoTerminal until then.
-  const idxVol = indexed.available && indexed.stats?.volume24hUsd !== undefined;
+  // generations) only once it has actually indexed SWAPS — `available` alone is
+  // true as soon as launches are indexed, so gating on it would show the
+  // indexer's $0 volume over real GeckoTerminal volume. Require tradesTotal > 0.
+  const idxVol =
+    indexed.available &&
+    (indexed.stats?.tradesTotal ?? 0) > 0 &&
+    indexed.stats?.volume24hUsd !== undefined;
   const volumeOk = idxVol || (series.available && series.volume24hUsd !== undefined);
   const volume24h = idxVol ? indexed.stats!.volume24hUsd : series.volume24hUsd;
   const burnedOk = buyback.configured && buyback.burnedBalance !== undefined;

@@ -31,7 +31,11 @@ export function AnalyticsView() {
   // back to GeckoTerminal until then (available=false while the DB is empty).
   const idxAnalytics = useIndexedAnalytics(365);
   const idxStats = useIndexedStats();
-  const vol24 = idxStats.available && idxStats.stats ? idxStats.stats.volume24hUsd : series.volume24hUsd;
+  // Only prefer the indexer for volume once it has actually indexed SWAPS —
+  // `available` is true as soon as launches are indexed, so without this gate the
+  // indexer's $0 volume would mask real GeckoTerminal volume.
+  const indexerHasTrades = idxStats.available && (idxStats.stats?.tradesTotal ?? 0) > 0;
+  const vol24 = indexerHasTrades && idxStats.stats ? idxStats.stats.volume24hUsd : series.volume24hUsd;
   const { projects, count, isLoading: projLoading } = useProjects();
   const buyback = useBuybackV2();
 
@@ -64,10 +68,10 @@ export function AnalyticsView() {
 
   // Volume bars for the selected range.
   const bars = useMemo(() => {
-    const src = idxAnalytics.available ? idxAnalytics.days : series.daily;
+    const src = indexerHasTrades && idxAnalytics.available ? idxAnalytics.days : series.daily;
     const d = [...src].sort((a, b) => a.day.localeCompare(b.day));
     return d.slice(-RANGE_DAYS[range]);
-  }, [idxAnalytics.available, idxAnalytics.days, series.daily, range]);
+  }, [indexerHasTrades, idxAnalytics.available, idxAnalytics.days, series.daily, range]);
   const maxVol = useMemo(() => Math.max(1, ...bars.map((b) => b.volumeUsd)), [bars]);
 
   const volDelta =
