@@ -1,0 +1,173 @@
+// Ordered migrations, embedded as statement arrays so they are ALWAYS present in
+// the Vercel serverless function bundle (a bare .sql file on disk is not
+// guaranteed to be traced into a function). The matching ./0001_init.sql is the
+// human-readable mirror — keep the two in sync.
+//
+// Each statement is idempotent (IF NOT EXISTS); the migrate route also records
+// applied migration names in schema_migrations and skips already-applied ones.
+
+export type Migration = {
+  /** Sort key — the numeric filename prefix, e.g. "0001". */
+  id: string;
+  /** Full migration name, matches the .sql filename sans extension. */
+  name: string;
+  /** Individual SQL statements, run in order (no client-side SQL parsing). */
+  statements: string[];
+};
+
+const init: Migration = {
+  id: "0001",
+  name: "0001_init",
+  statements: [
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+      name       TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS indexer_cursor (
+      name       TEXT PRIMARY KEY,
+      last_block BIGINT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`,
+    `CREATE TABLE IF NOT EXISTS launches (
+      token        TEXT PRIMARY KEY,
+      treasury     TEXT NOT NULL,
+      creator      TEXT NOT NULL,
+      factory      TEXT NOT NULL,
+      launch_id    BIGINT,
+      launch_block BIGINT NOT NULL,
+      launch_ts    TIMESTAMPTZ NOT NULL,
+      name         TEXT,
+      symbol       TEXT,
+      metadata_uri TEXT
+    )`,
+    `CREATE INDEX IF NOT EXISTS launches_creator_idx ON launches (creator)`,
+    `CREATE INDEX IF NOT EXISTS launches_ts_idx ON launches (launch_ts)`,
+    `CREATE TABLE IF NOT EXISTS pools (
+      pool_id        TEXT PRIMARY KEY,
+      token          TEXT NOT NULL,
+      quote_asset    TEXT NOT NULL,
+      quote_decimals INT  NOT NULL DEFAULT 18,
+      open_tick      INT,
+      block          BIGINT,
+      ts             TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS pools_token_idx ON pools (token)`,
+    `CREATE TABLE IF NOT EXISTS swaps (
+      id           BIGSERIAL PRIMARY KEY,
+      pool_id      TEXT NOT NULL,
+      token        TEXT NOT NULL,
+      quote_asset  TEXT NOT NULL,
+      side         TEXT NOT NULL CHECK (side IN ('buy','sell')),
+      amount_token NUMERIC NOT NULL,
+      amount_quote NUMERIC NOT NULL,
+      price        NUMERIC,
+      usd_size     NUMERIC,
+      trader       TEXT NOT NULL,
+      block_number BIGINT NOT NULL,
+      block_ts     TIMESTAMPTZ NOT NULL,
+      tx_hash      TEXT NOT NULL,
+      log_index    INT NOT NULL,
+      UNIQUE (tx_hash, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS swaps_token_ts_idx ON swaps (token, block_ts)`,
+    `CREATE INDEX IF NOT EXISTS swaps_pool_idx ON swaps (pool_id)`,
+    `CREATE INDEX IF NOT EXISTS swaps_ts_idx ON swaps (block_ts)`,
+    `CREATE TABLE IF NOT EXISTS ohlc (
+      token      TEXT NOT NULL,
+      bucket     TEXT NOT NULL CHECK (bucket IN ('1m','5m','1h','4h','1D')),
+      ts         TIMESTAMPTZ NOT NULL,
+      open       NUMERIC NOT NULL,
+      high       NUMERIC NOT NULL,
+      low        NUMERIC NOT NULL,
+      close      NUMERIC NOT NULL,
+      volume_usd NUMERIC NOT NULL DEFAULT 0,
+      PRIMARY KEY (token, bucket, ts)
+    )`,
+    `CREATE TABLE IF NOT EXISTS balances (
+      token      TEXT NOT NULL,
+      holder     TEXT NOT NULL,
+      balance    NUMERIC NOT NULL DEFAULT 0,
+      last_block BIGINT NOT NULL,
+      PRIMARY KEY (token, holder)
+    )`,
+    `CREATE INDEX IF NOT EXISTS balances_token_idx ON balances (token)`,
+    `CREATE TABLE IF NOT EXISTS burns (
+      id        BIGSERIAL PRIMARY KEY,
+      token     TEXT NOT NULL,
+      from_addr TEXT NOT NULL,
+      amount    NUMERIC NOT NULL,
+      block     BIGINT NOT NULL,
+      ts        TIMESTAMPTZ NOT NULL,
+      tx        TEXT NOT NULL,
+      log_index INT NOT NULL,
+      UNIQUE (tx, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS burns_token_ts_idx ON burns (token, ts)`,
+    `CREATE TABLE IF NOT EXISTS fee_distributions (
+      id        BIGSERIAL PRIMARY KEY,
+      token     TEXT,
+      router    TEXT,
+      recipient TEXT,
+      amount    NUMERIC NOT NULL,
+      kind      TEXT NOT NULL,
+      block     BIGINT NOT NULL,
+      ts        TIMESTAMPTZ NOT NULL,
+      tx        TEXT NOT NULL,
+      log_index INT NOT NULL,
+      UNIQUE (tx, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS fee_distributions_token_idx ON fee_distributions (token)`,
+    `CREATE TABLE IF NOT EXISTS split_events (
+      id             BIGSERIAL PRIMARY KEY,
+      router         TEXT NOT NULL,
+      token          TEXT,
+      kind           TEXT NOT NULL CHECK (kind IN ('scheduled','applied','applied_instant')),
+      creator_bps    INT,
+      treasury_bps   INT,
+      buyback_bps    INT,
+      parent_burn_bps INT,
+      rewards_bps    INT,
+      effective_at   TIMESTAMPTZ,
+      block          BIGINT NOT NULL,
+      ts             TIMESTAMPTZ NOT NULL,
+      tx             TEXT NOT NULL,
+      log_index      INT NOT NULL,
+      UNIQUE (tx, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS split_events_router_idx ON split_events (router)`,
+    `CREATE TABLE IF NOT EXISTS buyback_runs (
+      id           BIGSERIAL PRIMARY KEY,
+      burner       TEXT NOT NULL,
+      asset        TEXT,
+      amount_in    NUMERIC NOT NULL,
+      amount_burned NUMERIC NOT NULL,
+      total_burned NUMERIC,
+      block        BIGINT NOT NULL,
+      ts           TIMESTAMPTZ NOT NULL,
+      tx           TEXT NOT NULL,
+      log_index    INT NOT NULL,
+      UNIQUE (tx, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS buyback_runs_ts_idx ON buyback_runs (ts)`,
+    `CREATE TABLE IF NOT EXISTS treasury_snapshots (
+      id               BIGSERIAL PRIMARY KEY,
+      treasury         TEXT NOT NULL,
+      token            TEXT,
+      total_value_usd  NUMERIC,
+      locked_value_usd NUMERIC,
+      block            BIGINT NOT NULL,
+      ts               TIMESTAMPTZ NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS treasury_snapshots_treasury_ts_idx ON treasury_snapshots (treasury, ts)`,
+    `CREATE TABLE IF NOT EXISTS daily_rollups (
+      day           DATE PRIMARY KEY,
+      volume_usd    NUMERIC NOT NULL DEFAULT 0,
+      trades        INT NOT NULL DEFAULT 0,
+      launches      INT NOT NULL DEFAULT 0,
+      burned_tokens NUMERIC NOT NULL DEFAULT 0
+    )`,
+  ],
+};
+
+/** All migrations in apply order. Append new ones; never reorder/mutate past ones. */
+export const MIGRATIONS: Migration[] = [init];
