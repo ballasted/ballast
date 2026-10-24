@@ -6,7 +6,6 @@ import { useProjects } from "@/hooks/useProjects";
 import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { useHolders } from "@/hooks/useHolders";
 import { useTrades } from "@/hooks/useTrades";
-import { useIndexedTrades } from "@/hooks/useIndexedTrades";
 import { formatUsd, shortAddress } from "@/lib/format";
 import { formatCompactUsd, formatSmallUsd, marketCapUsd, type Trade } from "@/lib/market";
 import { activeChain } from "@/lib/chain";
@@ -287,25 +286,16 @@ export function CreatorTrackRecord({ creator, thisToken }: { creator?: Address; 
 // state — never a stale row or a fabricated trade. Backing and price above are
 // chain-read and independent of this.
 export function TradesPanel({ token, symbol, now }: { token: Address; symbol?: string; now: number }) {
-  const fallback = useTrades(token);
-  // Prefer our own indexer once it has backfilled this token; until then (empty /
-  // unconfigured), `available` is false and we keep the GeckoTerminal sample.
-  const idx = useIndexedTrades(token);
-  const available = idx.available || Boolean(fallback.data?.available);
-  const isLoading = idx.available ? false : fallback.isLoading;
-  const sourceLabel = idx.available ? "Ballast indexer" : "GeckoTerminal";
-  const fetchedAt = idx.available ? undefined : fallback.data?.fetchedAt;
-  const trades: Trade[] = idx.available
-    ? idx.trades.map((t) => ({
-        kind: t.side,
-        ts: t.ts,
-        txHash: t.txHash,
-        wallet: t.trader,
-        tokenAmount: t.amountToken,
-        volumeUsd: t.usdSize ?? 0,
-        priceUsd: t.price ?? 0,
-      }))
-    : fallback.data?.trades ?? [];
+  // Trades come from GeckoTerminal, which aggregates across every pool for the
+  // token. Our own indexer is NOT used here: on-chain v4 Swap-log indexing on this
+  // chain only partially covers wide ranges (RPC result caps on the singleton
+  // PoolManager), so it undercounts — exactly why the app sources trades/volume
+  // from GeckoTerminal. The indexer stays available for launches/structure.
+  const { data, isLoading } = useTrades(token);
+  const available = Boolean(data?.available);
+  const sourceLabel = "GeckoTerminal";
+  const fetchedAt = data?.fetchedAt;
+  const trades: Trade[] = data?.trades ?? [];
   const shown = trades.slice(0, 15);
   const buyVol = trades.filter((t) => t.kind === "buy").reduce((s, t) => s + t.volumeUsd, 0);
   const sellVol = trades.filter((t) => t.kind === "sell").reduce((s, t) => s + t.volumeUsd, 0);

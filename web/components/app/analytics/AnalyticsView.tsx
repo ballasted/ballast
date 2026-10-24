@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useAnalyticsSeries } from "@/hooks/useAnalyticsSeries";
-import { useIndexedAnalytics, useIndexedStats } from "@/hooks/useIndexedStats";
 import { useProjects } from "@/hooks/useProjects";
 import { useBuybackV2 } from "@/hooks/useBuybackV2";
 import { WETH_ADDRESS, isHiddenToken } from "@/lib/contracts";
@@ -27,15 +26,10 @@ function usdCompact(n?: number): string | undefined {
 export function AnalyticsView() {
   const [range, setRange] = useState<Range>("7d");
   const series = useAnalyticsSeries();
-  // Prefer our own indexer for the volume series + headline once backfilled; fall
-  // back to GeckoTerminal until then (available=false while the DB is empty).
-  const idxAnalytics = useIndexedAnalytics(365);
-  const idxStats = useIndexedStats();
-  // Only prefer the indexer for volume once it has actually indexed SWAPS —
-  // `available` is true as soon as launches are indexed, so without this gate the
-  // indexer's $0 volume would mask real GeckoTerminal volume.
-  const indexerHasTrades = idxStats.available && (idxStats.stats?.tradesTotal ?? 0) > 0;
-  const vol24 = indexerHasTrades && idxStats.stats ? idxStats.stats.volume24hUsd : series.volume24hUsd;
+  // Volume/series come from GeckoTerminal (complete cross-pool aggregate). The
+  // indexer is not used here: its on-chain Swap-log coverage is partial on this
+  // chain's RPC (result caps over wide ranges), so it would undercount.
+  const vol24 = series.volume24hUsd;
   const { projects, count, isLoading: projLoading } = useProjects();
   const buyback = useBuybackV2();
 
@@ -68,10 +62,9 @@ export function AnalyticsView() {
 
   // Volume bars for the selected range.
   const bars = useMemo(() => {
-    const src = indexerHasTrades && idxAnalytics.available ? idxAnalytics.days : series.daily;
-    const d = [...src].sort((a, b) => a.day.localeCompare(b.day));
+    const d = [...series.daily].sort((a, b) => a.day.localeCompare(b.day));
     return d.slice(-RANGE_DAYS[range]);
-  }, [indexerHasTrades, idxAnalytics.available, idxAnalytics.days, series.daily, range]);
+  }, [series.daily, range]);
   const maxVol = useMemo(() => Math.max(1, ...bars.map((b) => b.volumeUsd)), [bars]);
 
   const volDelta =
