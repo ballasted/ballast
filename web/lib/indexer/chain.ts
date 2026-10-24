@@ -476,6 +476,21 @@ export async function indexRange(
   const touchedSwapTokens = new Set<string>();
   let minSwapTs = Number.POSITIVE_INFINITY;
   let maxSwapTs = 0;
+  // The v4 Swap event's `sender` is the pool caller (the router), NOT the trader.
+  // Resolve the real end-user EOA from each swap's transaction `from`. One
+  // getTransaction per unique tx of a swap in one of OUR pools (bounded fan-out);
+  // falls back to `sender` if the tx read fails.
+  const ourSwaps = swapLogs.filter((l) => poolMap.get((l.args.id as Hex)?.toLowerCase() ?? ""));
+  const uniqSwapTxs = [...new Set(ourSwaps.map((l) => l.txHash))];
+  const fromByTx = new Map<string, string>();
+  await mapLimit(uniqSwapTxs, DENSE_CONCURRENCY, async (h) => {
+    try {
+      const tx = await client.getTransaction({ hash: h });
+      if (tx?.from) fromByTx.set(h.toLowerCase(), (tx.from as string).toLowerCase());
+    } catch {
+      // leave unresolved → falls back to the swap sender below
+    }
+  });
   for (const l of swapLogs) {
     const pid = (l.args.id as Hex)?.toLowerCase();
     const info = pid ? poolMap.get(pid) : undefined;
@@ -501,7 +516,7 @@ export async function indexRange(
       amountQuote,
       price,
       usdSize,
-      (l.args.sender as Address).toLowerCase(),
+      fromByTx.get(l.txHash.toLowerCase()) ?? (l.args.sender as Address).toLowerCase(),
       l.blockNumber.toString(),
       isoFromSec(ts),
       l.txHash,

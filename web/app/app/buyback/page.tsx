@@ -67,7 +67,7 @@ export default function BuybackPage() {
         <Figure
           label="$BALLAST v2 burned"
           value={amt(v2BurnedVal, 2)}
-          sub={v2BurnedPct !== undefined ? `${v2BurnedPct.toFixed(4)}% of supply` : "share of supply —"}
+          sub={v2BurnedPct !== undefined ? `${v2BurnedPct.toFixed(2)}% of supply` : "share of supply —"}
           accent
         />
       </div>
