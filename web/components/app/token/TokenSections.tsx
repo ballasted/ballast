@@ -10,6 +10,7 @@ import { formatUsd, shortAddress } from "@/lib/format";
 import { formatCompactUsd, formatSmallUsd, marketCapUsd, type Trade } from "@/lib/market";
 import { activeChain } from "@/lib/chain";
 import { holderSharePct, BLOCKSCOUT_URL, type Holder } from "@/lib/blockscout";
+import { DEAD_ADDRESS } from "@/lib/contracts";
 import { formatEt } from "@/lib/marketHours";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { cn } from "@/lib/cn";
@@ -56,6 +57,7 @@ export function HoldersPanel({
         </div>
       ) : (
         <>
+          <HolderDistribution holders={holders.holders} totalSupply={holders.totalSupply} creator={creator} treasury={treasury} />
           <ul className="mt-4 space-y-1.5">
             {holders.holders.slice(0, 10).map((h) => (
               <HolderRow
@@ -73,6 +75,55 @@ export function HoldersPanel({
         </>
       )}
     </section>
+  );
+}
+
+// Top-10 distribution bar + concentration. Concentration is reported BOTH raw and
+// excluding the locked liquidity pool and the dead address, because those two hold
+// large, permanent, non-circulating balances — counting them as "concentration"
+// would misread the seeded/locked pool as a whale.
+function HolderDistribution({
+  holders,
+  totalSupply,
+  creator,
+  treasury,
+}: {
+  holders: Holder[];
+  totalSupply?: string;
+  creator?: Address;
+  treasury?: Address;
+}) {
+  const dead = DEAD_ADDRESS.toLowerCase();
+  const top = holders.slice(0, 10);
+  const shareOf = (h: Holder) => holderSharePct(h.value, totalSupply) ?? 0;
+  const excluded = (h: Holder) =>
+    holderLabel(h, creator, treasury)?.kind === "lp" || h.address.toLowerCase() === dead;
+  const top10 = top.reduce((s, h) => s + shareOf(h), 0);
+  const top10ex = top.filter((h) => !excluded(h)).reduce((s, h) => s + shareOf(h), 0);
+  if (top10 <= 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="flex h-2 w-full overflow-hidden rounded-full bg-border" aria-hidden>
+        {top.map((h) => {
+          const w = shareOf(h);
+          if (w <= 0) return null;
+          const kind = holderLabel(h, creator, treasury)?.kind;
+          const tone =
+            kind === "lp"
+              ? "bg-green"
+              : kind === "creator"
+                ? "bg-warning"
+                : h.address.toLowerCase() === dead
+                  ? "bg-text-faint"
+                  : "bg-green-mid/70";
+          return <span key={h.address} className={tone} style={{ width: `${Math.min(100, w)}%` }} />;
+        })}
+      </div>
+      <p className="metric-secondary mt-2">
+        Top 10 hold {top10.toFixed(1)}%
+        {top10ex !== top10 ? ` · ${top10ex.toFixed(1)}% excluding the locked pool and dead address` : ""}
+      </p>
+    </div>
   );
 }
 
