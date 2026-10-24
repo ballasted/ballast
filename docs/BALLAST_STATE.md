@@ -62,6 +62,21 @@ fee claims — everything) since gen-3 launched. **Fixed this session**
 | MetadataDenylist | not deployed | — | env var empty, app degrades to permissive/fail-open (by design) |
 | TimelockController | not deployed | — | Script ready (`contracts/script/DeployTimelock.s.sol`), Safe address now known — see §5 Ownership |
 
+### Phase 3 — round-ups, burn-to-vote, team-split (deployed 2026-10-24)
+
+Broadcast from basket-deployer `0x71048f3796C7679ce2C7af2C13B7436bdF59023d`. Bytecode + immutables verified earlier.
+
+| Contract | Address | Owner | Notes |
+|---|---|---|---|
+| BasketStockBuyer | `0xfD23f74950751e400bb593036492EF59EA944167` | — (no admin surface) | `IStockBuyer` adapter; `buyStockWithETH(stock,recipient,minStockOut,route)` delivers one AssetRegistry stock to the caller's own wallet. Live, verified. |
+| RoundupMainAdapter | `0xC4AF518E4dB5Cf07f0e841a88976F76d63FCb3B9` | — | Main-buy adapter for RoundupRouter. |
+| RoundupRouter | `0x3EE06Fb833dDcB0dF9eC05415c1b95EE2285ec12` | — | On-chain wiring confirmed 2026-10-24: `stockBuyer()` → BasketStockBuyer ✓, `mainRouter()` → RoundupMainAdapter ✓, `registry()` → AssetRegistry (`0x4277…dA81`) ✓. Frontend reads `stockBuyer()` live (no extra env var). |
+| BurnVote | `0xfC47B36d239dA6174d714284634440C24bE66652` | — | Burn-to-vote for a token's community-default round-up stock (`defaultStock(token)`). |
+| CreatorSplitterFactory | `0x0A929356Ca3F9D5f675B495BdFDfAbFC300fa9cf` | — (stateless factory) | Team-split payout targets. |
+
+Env (Preview first, then production — staged):
+`NEXT_PUBLIC_ROUNDUP_ROUTER` = RoundupRouter · `NEXT_PUBLIC_BURN_VOTE` = BurnVote · `NEXT_PUBLIC_CREATOR_SPLITTER_FACTORY` = CreatorSplitterFactory. The round-up Swap toggle + burn-vote UI stay hidden until these are set (`isRoundupConfigured`/`isBurnVoteConfigured`). The round-up **execution** path (batched main buy + `buyStockWithETH` via EIP-5792, two-tx fallback) landed on `feat/roundup-exec` — simulated live for SGOV (0.001 ETH → 0.0230 SGOV) and NVDA (0.001 ETH → 0.0110 NVDA), stock delivered to the trader.
+
 ### UPDATE 2026-09-29 (later session) — verification mostly DONE, via Sourcify
 
 **Root cause of "verify-all.sh failed on my machine" found and fixed**:

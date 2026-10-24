@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useAccount, useBalance, useReadContract, useGasPrice } from "wagmi";
 import { useSwap, type SwapPhase } from "@/hooks/useSwap";
+import { useRoundup } from "@/hooks/useRoundup";
 import { useRouterV2Swap } from "@/hooks/useRouterV2Swap";
 import { useTokenQuotePools } from "@/hooks/useTokenQuotePools";
 import { ConnectButton } from "@/components/app/ConnectButton";
@@ -13,7 +14,7 @@ import { formatTokenAmount } from "@/lib/format";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { activeChain } from "@/lib/chain";
 import { isSwapConfigured, isRouterV2Configured, isRoundupConfigured } from "@/lib/contracts";
-import { RoundupToggle } from "@/components/app/RoundupToggle";
+import { RoundupToggle, type RoundupSelection } from "@/components/app/RoundupToggle";
 import { erc20Abi } from "@/lib/abis";
 import { routerV2RoutesFor } from "@/lib/routerV2";
 import { cn } from "@/lib/cn";
@@ -87,6 +88,28 @@ export function SwapPanel({
   );
   const s = routingViaEth ? viaRouter : direct;
 
+  // Stock round-up (optional): batches a stock-only buy with the main ETH buy via
+  // EIP-5792 (two-tx fallback). Only the native-ETH BUY path supports it — the
+  // direct useSwap call exposes `buildBuyCall`; on a sell / ERC-20-input / router
+  // buy the toggle preview still shows but no round-up leg is executed.
+  const [roundupSel, setRoundupSel] = useState<RoundupSelection | null>(null);
+  const isNativeBuy = side === "buy" && isWethQuote && !routingViaEth;
+  const roundupActive =
+    isRoundupConfigured &&
+    isNativeBuy &&
+    Boolean(roundupSel?.enabled) &&
+    !roundupSel?.skipped &&
+    (roundupSel?.bps ?? 0) > 0 &&
+    Boolean(roundupSel?.stock);
+  const ru = useRoundup({
+    mainAmountIn: direct.amountIn,
+    bps: roundupSel?.bps ?? 0,
+    stock: roundupSel?.stock,
+    enabled: roundupActive,
+    slippageBps,
+    buildBuyCall: direct.buildBuyCall,
+  });
+
   // Balances for the active input leg: native ETH on a WETH buy, the quote
   // asset's ERC-20 on a non-WETH buy (e.g. paying in NVDA), the token on a sell.
   const ethBal = useBalance({
@@ -149,6 +172,18 @@ export function SwapPanel({
   const insufficient = balance !== undefined && s.amountIn > 0n && s.amountIn > balance;
   const slipWarn = slippageBps > WARN_BPS && slippageBps <= BLOCK_BPS;
   const slipBlocked = slippageBps > BLOCK_BPS;
+
+  // The action routes through the round-up executor when a round-up is active,
+  // otherwise the plain swap — these fold both paths' phase/error/handlers so the
+  // button + success block stay single-sourced.
+  const actionBusy = roundupActive ? ru.phase === "confirming" : busy;
+  const actionSuccess = roundupActive ? ru.phase === "success" : s.phase === "success";
+  const actionError = roundupActive ? ru.error : s.error;
+  const roundupNoQuote = roundupActive && ru.preview.minStockOut === undefined;
+  const onAction = roundupActive ? () => void ru.execute() : s.swap;
+  // Label phase: on the round-up path, the main swap's phase is idle (the batch
+  // runs through useRoundup), so map its "confirming" onto "swapping" for copy.
+  const actionPhase: SwapPhase = roundupActive && ru.phase === "confirming" ? "swapping" : s.phase;
 
   // Price impact vs the pool mid: compare the quote's effective price to spot.
   // spotPriceWeth (from useBacking, WETH-only) only applies when trading against
@@ -454,7 +489,18 @@ export function SwapPanel({
                   ? Number(formatUnits(s.quote, 18))
                   : 0
             }
+            onChange={setRoundupSel}
           />
+          {/* Show-before-sign: the simulated stock the round-up will buy. */}
+          {roundupActive && ru.preview.stockOut !== undefined && (
+            <p className="mt-2 text-xs text-text-muted">
+              Round-up buys ≈ {formatTokenAmount(ru.preview.stockOut)} (min {formatTokenAmount(ru.preview.minStockOut ?? 0n)}),
+              delivered to your wallet — {ru.preview.atomic ? "one confirmation" : "two transactions"}.
+            </p>
+          )}
+          {roundupActive && !isNativeBuy && (
+            <p className="mt-2 text-xs text-text-faint">Round-ups apply to ETH buys.</p>
+          )}
         </div>
       )}
 
@@ -482,10 +528,10 @@ export function SwapPanel({
         {account && <ActingAs className="mb-2 justify-end" />}
         {!account ? (
           <div className="flex justify-center"><ConnectButton /></div>
-        ) : s.phase === "success" ? (
+        ) : actionSuccess ? (
           <div className="space-y-2 text-center">
-            <p className="text-sm text-green">Swap confirmed.</p>
-            {s.txHash && (
+            <p className="text-sm text-green">{roundupActive ? "Swap + round-up confirmed." : "Swap confirmed."}</p>
+            {!roundupActive && s.txHash && (
               <a
                 className="text-xs text-text-faint hover:text-text-secondary"
                 href={`${activeChain.blockExplorers.default.url}/tx/${s.txHash}`}
@@ -495,7 +541,7 @@ export function SwapPanel({
                 View on Blockscout ↗
               </a>
             )}
-            <button className="btn-secondary w-full" onClick={() => { setAmount(""); s.reset(); }}>
+            <button className="btn-secondary w-full" onClick={() => { setAmount(""); s.reset(); ru.reset(); }}>
               Trade again
             </button>
           </div>
@@ -503,27 +549,29 @@ export function SwapPanel({
           <button
             className={cn("w-full", side === "buy" ? "btn-primary" : "btn-secondary")}
             disabled={
-              busy || wrongNetwork || slipBlocked || insufficient || s.amountIn === 0n || s.quote === undefined
+              actionBusy || wrongNetwork || slipBlocked || insufficient || s.amountIn === 0n || s.quote === undefined || roundupNoQuote
             }
-            onClick={s.swap}
+            onClick={onAction}
           >
-            <span key={buttonLabel(s.phase, { side, symbol, paySymbol: inSym, wrongNetwork, insufficient, slipBlocked, amountIn: s.amountIn, quoting: s.phase === "quoting", noQuote: s.quote === undefined && s.amountIn > 0n })} className="anim-fade inline-block">
-              {buttonLabel(s.phase, {
-                side,
-                symbol,
-                paySymbol: inSym,
-                wrongNetwork,
-                insufficient,
-                slipBlocked,
-                amountIn: s.amountIn,
-                quoting: s.phase === "quoting",
-                noQuote: s.quote === undefined && s.amountIn > 0n,
-              })}
+            <span key={roundupNoQuote ? "ru-quoting" : buttonLabel(actionPhase, { side, symbol, paySymbol: inSym, wrongNetwork, insufficient, slipBlocked, amountIn: s.amountIn, quoting: s.phase === "quoting", noQuote: s.quote === undefined && s.amountIn > 0n })} className="anim-fade inline-block">
+              {roundupNoQuote
+                ? "Fetching round-up quote…"
+                : buttonLabel(actionPhase, {
+                    side,
+                    symbol,
+                    paySymbol: inSym,
+                    wrongNetwork,
+                    insufficient,
+                    slipBlocked,
+                    amountIn: s.amountIn,
+                    quoting: s.phase === "quoting",
+                    noQuote: s.quote === undefined && s.amountIn > 0n,
+                  })}
             </span>
           </button>
         )}
         {/* Decoded revert reason, inline in the panel — never a toast that vanishes. */}
-        {s.error && <p className="mt-2 text-center text-xs text-negative">{s.error}</p>}
+        {actionError && <p className="mt-2 text-center text-xs text-negative">{actionError}</p>}
       </div>
     </div>
   );

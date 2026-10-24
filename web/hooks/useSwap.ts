@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
-import { parseUnits, maxUint160, type Address } from "viem";
+import { parseUnits, maxUint160, encodeFunctionData, type Address } from "viem";
 import { erc20Abi, permit2Abi, quoterAbi, stateViewAbi } from "@/lib/abis";
 import {
   WETH_ADDRESS,
@@ -319,6 +319,27 @@ export function useSwap(
     isNativeEthBuy,
   ]);
 
+  // The main native-ETH BUY as a single {to,data,value} call, for composing into
+  // an EIP-5792 round-up batch (useRoundup). Returns undefined for a sell or any
+  // ERC-20-input leg (those need Permit2 steps that can't be pre-encoded here) —
+  // round-ups are a buy-side, ETH-funded feature, so that's the only batched case.
+  const buildBuyCall = useCallback(():
+    | { to: Address; data: `0x${string}`; value: bigint }
+    | undefined => {
+    if (!isNativeEthBuy || !token || amountIn === 0n || minOut === 0n || !UNIVERSAL_ROUTER_ADDRESS) return undefined;
+    const built = buildV4SwapInput({ token, side: "buy", amountIn, amountOutMinimum: minOut, hook: hookForKey });
+    if (!built) return undefined;
+    return {
+      to: UNIVERSAL_ROUTER_ADDRESS,
+      data: encodeFunctionData({
+        abi: universalRouterExecuteAbi,
+        functionName: "execute",
+        args: [built.commands, built.inputs, swapDeadline(Math.floor(Date.now() / 1000))],
+      }),
+      value: built.value,
+    };
+  }, [isNativeEthBuy, token, amountIn, minOut, hookForKey]);
+
   return {
     phase,
     quote,
@@ -327,6 +348,8 @@ export function useSwap(
     txHash,
     error,
     amountIn,
+    isNativeEthBuy,
+    buildBuyCall,
     canSwap: isSwapConfigured && Boolean(account) && amountIn > 0n && quote !== undefined,
     swap,
     reset: () => {
