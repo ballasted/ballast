@@ -55,8 +55,8 @@ Ballast is a token launchpad on Robinhood Chain where a project can hold a verif
 
 ### 2.9 $BALLAST buyback and burn — **LIVE**
 - **What it does:** the platform's 20% fee share funds a buyback of $BALLAST; bought tokens are sent to the dead address `0x…dEaD` (burned, irrecoverable). Anyone can trigger it once the accrued balance clears the threshold. Burns can be zero.
-- **Contracts:** BuybackBurner v1 `0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be` (immutable target = v1 token); BuybackBurnerV2 — address set in production (`NEXT_PUBLIC_BUYBACK_V2_ADDRESS`), manual-funded, ownerless. Per-run limits/threshold are enforced on-chain.
-- **Live number:** **$BALLAST at the dead address = 34,391,620 tokens = 3.439% of the 1,000,000,000 supply** (all burns combined, read 2026-10-24 20:04 UTC). Per-run buyback counters (count, WETH/NVDA spent) were not read in this pass.
+- **Contracts:** BuybackBurner v1 `0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be` (immutable target = v1 token); **BuybackBurnerV2 `0xDA9ef87A6146f435d34237a9B3a81689603Fa503`** (= the gen-4 FeeConfig `platformVault`, auto-funded, ownerless; per-call WETH/NVDA caps enforced on-chain).
+- **Live numbers (read 2026-10-24 20:22 UTC):** BuybackBurnerV2 has run **84 buybacks**, burning **18,682,912 $BALLAST**, spending **0.1604 WETH + 1.834 NVDA**; pending `accruedWeth` ≈ 0.0001. Across *all* burn mechanisms (buyback v2 + v1 + burn-to-vote), **$BALLAST at the dead address = 34,391,620 tokens = 3.439% of the 1,000,000,000 supply** (read 20:04 UTC) — so ~18.68M of that is buyback-v2 and ~15.7M is from other burns.
 - **URL:** `/app/buyback`.
 
 ### 2.10 Burn-to-vote — **LIVE**
@@ -96,13 +96,14 @@ Ballast is a token launchpad on Robinhood Chain where a project can hold a verif
 | Metric | Value |
 |---|---|
 | $BALLAST total supply | 1,000,000,000 |
-| $BALLAST at the dead address | 34,391,620.47 (**3.439%** of supply) |
-| Buyback count / WETH / NVDA spent | not read this pass (needs BuybackBurnerV2 counters) |
+| $BALLAST at the dead address (all burns) | 34,391,620.47 (**3.439%** of supply) |
+| — of which BuybackBurnerV2 | 18,682,912 over **84 buybacks** |
+| Buyback v2 spend | 0.1604 WETH + 1.834 NVDA |
 | Launches (non-hidden, all generations) | 18 (indexer `launchesTotal`) |
 | Treasuries funded with real backing value | ~0 today (Analytics "Stock backing" ≈ $0.00 across treasuries) |
 | Open Treasury deposits | not read this pass |
 | Round-up transactions | 0 |
-| $BALLAST holders | not read this pass (Blockscout) |
+| $BALLAST holders | not read — Blockscout unreachable at report time (retry later) |
 
 *Note: "backing ≈ $0" means no treasury currently holds meaningful allow-listed stock value, not that treasuries don't exist.*
 
@@ -126,7 +127,7 @@ Ballast is a token launchpad on Robinhood Chain where a project can hold a verif
 | BallastFactory (gen-3) | `0x3eb5532e982931cad40d0416adbd7930a57965ae` | 3 | none | — |
 | BallastHook (gen-3) | `0x4915f612c89100bEbE9279355fab27022D0940cc` | 3 | none | — |
 | BuybackBurner v1 | `0x36198DaeFDCeF476cF8e77b0961A4D79aE7852Be` | — | EOA `0xA277…837D1` | not read |
-| BuybackBurnerV2 | set in prod env (`NEXT_PUBLIC_BUYBACK_V2_ADDRESS`) | — | ownerless (manual-funded) | not read |
+| BuybackBurnerV2 | `0xDA9ef87A6146f435d34237a9B3a81689603Fa503` | — | ownerless (auto-funded; = gen-4 FeeConfig platformVault) | not read |
 | RoundupRouter | `0x3EE06Fb833dDcB0dF9eC05415c1b95EE2285ec12` | — | none | verified (state doc) |
 | RoundupMainAdapter | `0xC4AF518E4dB5Cf07f0e841a88976F76d63FCb3B9` | — | none | verified |
 | BasketStockBuyer | `0xfD23f74950751e400bb593036492EF59EA944167` | — | none | verified |
@@ -150,8 +151,8 @@ Ballast is a token launchpad on Robinhood Chain where a project can hold a verif
 
 ## 5. Control and trust model
 
-- **Protocol Safe:** `0xEFC97e16a24d2434C7138a2634E554a0631aC079` (the gen-4 FeeConfig platform vault / owner target). Its signer threshold was not read on-chain in this pass — confirm before publishing.
-- **FeeConfig:** can change the swap fee and split. Current values are 3% and 80/20/0. The on-chain maximum-fee cap and whether a timelock gates changes were **not read this pass** — verify directly before making any "max fee" claim. There is no timelock contract deployed (the DeployTimelock script exists but is unused per the state doc).
+- **Protocol Safe:** `0xEFC97e16a24d2434C7138a2634E554a0631aC079` — confirmed on-chain as the **owner of the gen-4 FeeConfig** (`owner()` read 2026-10-24). Its signer threshold was not read on-chain in this pass — confirm before publishing.
+- **FeeConfig `0xE09F…E5AD`:** owned by the Safe; can change the swap fee and split (current 3% and 80/20/0, read live). The on-chain maximum-fee cap was **not read this pass** — verify directly before making any "max fee" claim. There is no timelock contract deployed (the DeployTimelock script exists but is unused per the state doc), so FeeConfig changes are not time-delayed.
 - **AssetRegistry:** owner is the original EOA `0xA2774e53dCb666799dBA7d00dC11d10d7Ff837D1` (allow-list control). Moving it to the Safe is a known open item.
 - **Immutable by design:** `ProjectTreasury.noticePeriod`; a pool's hook (fixed in the PoolKey at graduation); creators can withdraw only their own deposits; `asset != projectToken`.
 - **Ownerless (no admin surface):** BallastFactory, BallastHook, BallastSeeder, BallastRouterV2, BackingLens, BasketStockBuyer, RoundupRouter/Adapter, BurnVote, CreatorSplitterFactory, BuybackBurnerV2.
@@ -207,6 +208,7 @@ Ballast is a token launchpad on Robinhood Chain where a project can hold a verif
 4. Holding a Ballast token gives no claim, redemption right, or entitlement to the treasury assets. The backing number is transparency, not a redemption.
 5. 34,391,620 $BALLAST — 3.44% of supply — has been sent to the dead address (as of 2026-10-24).
 6. The $BALLAST buyback is funded by the platform's fee share and sends tokens to the dead address. Anyone can trigger it. Burns can be zero.
+6b. The buyback has run 84 times, sending 18,682,912 $BALLAST to the dead address (as of 2026-10-24).
 7. The current swap fee is 3%, read live on-chain, split 80% creator / 20% platform. Fees can be zero.
 8. Creators can withdraw only what they deposited, only after an immutable notice period, and every withdrawal is announced on-chain first.
 9. Liquidity on every launch is permanently locked.
