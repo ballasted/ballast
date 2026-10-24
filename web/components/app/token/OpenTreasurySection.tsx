@@ -23,7 +23,7 @@ const CONFIRM_TEXT =
   "You can withdraw your deposit after the minimum holding time. Rewards depend on what is sent to this vault, not automatic trading fees, and can be zero. The value of deposited assets can go down.";
 
 function fmt(v: bigint, decimals: number, opts?: Intl.NumberFormatOptions): string {
-  return Number(formatUnits(v, decimals)).toLocaleString("en", { maximumFractionDigits: 6, ...opts });
+  return Number(formatUnits(v, decimals)).toLocaleString("en", { maximumFractionDigits: 4, ...opts });
 }
 
 /**

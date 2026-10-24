@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Address, isAddress, formatUnits, zeroAddress } from "viem";
+import { type Address, isAddress, zeroAddress } from "viem";
 import { useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { creatorSplitterFactoryAbi, creatorSplitterAbi } from "@/lib/abis";
 import {
@@ -10,7 +10,7 @@ import {
   WETH_ADDRESS,
 } from "@/lib/contracts";
 import { activeChain } from "@/lib/chain";
-import { shortAddress } from "@/lib/format";
+import { shortAddress, formatTokenAmount } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const CHAIN_ID = activeChain.id;
@@ -130,7 +130,7 @@ export function TeamSplitPanel() {
       </div>
 
       {/* manage */}
-      <div className="space-y-2 border-t border-white/10 pt-3">
+      <div className="space-y-2 border-t border-border pt-3">
         <div className="eyebrow">Manage an existing splitter</div>
         <input
           className="input w-full"
@@ -177,9 +177,9 @@ function SplitterManager({ splitter }: { splitter: Address }) {
         return (
           <div key={r} className="flex items-center justify-between text-sm">
             <span>{shortAddress(r)}</span>
-            <span className="flex items-center gap-2 tabular-nums text-white/70">
-              <span>{Number(formatUnits(wethOwed, 18)).toFixed(5)} WETH</span>
-              <span>{Number(formatUnits(ethOwed, 18)).toFixed(5)} ETH</span>
+            <span className="flex items-center gap-2 tabular-nums text-text-muted">
+              <span>{formatTokenAmount(wethOwed)} WETH</span>
+              <span>{formatTokenAmount(ethOwed)} ETH</span>
             </span>
           </div>
         );

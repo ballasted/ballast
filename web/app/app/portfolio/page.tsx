@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Address } from "viem";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { usePortfolio, type Holding } from "@/hooks/usePortfolio";
@@ -10,9 +11,11 @@ import { BackedByChip, PoolChips } from "@/components/app/LaunchChips";
 import { AssetDisc } from "@/components/app/AssetDisc";
 import { TokenAmount } from "@/components/app/TokenAmount";
 import { useAssets } from "@/hooks/useAssets";
+import { useMyRoundups } from "@/hooks/useMyRoundups";
 import { isRetiredToken } from "@/lib/contracts";
+import { activeChain } from "@/lib/chain";
 import { CopyAddress } from "@/components/app/CopyAddress";
-import { formatUsd, formatBackingPerToken, shortAddress } from "@/lib/format";
+import { formatUsd, formatBackingPerToken, formatTokenAmount, shortAddress } from "@/lib/format";
 import type { Project } from "@/hooks/useProjects";
 import { cn } from "@/lib/cn";
 
@@ -163,6 +166,8 @@ export default function PortfolioPage() {
           <div className="space-y-2">{myLaunches.map((p) => <LaunchRow key={p.token} p={p} />)}</div>
         )}
       </div>
+
+      <RoundupsSection />
     </div>
   );
 }
@@ -255,5 +260,54 @@ function Notice({ title, body, action }: { title: string; body?: string; action?
       {body && <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">{body}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
+  );
+}
+
+// Round-ups the connected wallet made (stock delivered to it by BasketStockBuyer).
+// Only rendered when the round-up feature is configured; an honest empty state
+// until the wallet makes one. Ballast takes nothing on a round-up.
+function RoundupsSection() {
+  const { configured, roundups, isLoading } = useMyRoundups();
+  const { assets } = useAssets();
+  if (!configured) return null;
+  const symbolOf = (a: Address) =>
+    assets.find((x) => x.address.toLowerCase() === a.toLowerCase())?.symbol ?? shortAddress(a);
+  return (
+    <section className="space-y-3">
+      <h2 className="section-label">Round-ups</h2>
+      {isLoading ? (
+        <div className="card h-16 animate-pulse bg-surface-raised/40" aria-hidden />
+      ) : roundups.length === 0 ? (
+        <div className="card p-6 text-center text-sm text-text-muted">
+          No round-ups yet. Stock you buy with the round-up toggle on a swap is delivered to your
+          wallet and shows up here.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {roundups.map((r) => (
+            <div key={r.txHash} className="card flex items-center justify-between p-4">
+              <div className="flex items-center gap-3">
+                <AssetDisc symbol={symbolOf(r.stock)} size={32} />
+                <div>
+                  <div className="font-semibold text-text-primary">{symbolOf(r.stock)}</div>
+                  <a
+                    href={`${activeChain.blockExplorers.default.url}/tx/${r.txHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-text-faint hover:text-text-secondary"
+                  >
+                    View tx ↗
+                  </a>
+                </div>
+              </div>
+              <div className="text-right">
+                <TokenAmount value={r.stockOut} decimals={18} className="text-text-primary" />
+                <div className="metric-secondary">{formatTokenAmount(r.ethIn)} ETH</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
