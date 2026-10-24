@@ -151,8 +151,8 @@ export function AllocationSlot() {
       <h2 className="section-label">Supply &amp; allocation</h2>
       <dl className="mt-3 grid grid-cols-3 gap-3 text-center">
         <Stat label="Seeded to pool" value="100%" />
-        <Stat label="Creator allocation" value="None" />
-        <Stat label="Presale" value="None" />
+        <Stat label="Creator allocation" value="0%" />
+        <Stat label="Presale" value="0%" />
       </dl>
     </section>
   );
