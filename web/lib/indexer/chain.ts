@@ -10,6 +10,7 @@ import {
 } from "@/lib/abis";
 import { buybackBurnedAbi } from "@/lib/tg/decode";
 import { classifySwap } from "@/lib/tg/swapDirection";
+import { candidatePoolKeys } from "@/lib/pool";
 import {
   FACTORY_ADDRESSES,
   POOL_MANAGER_ADDRESS,
@@ -217,6 +218,16 @@ export async function getCursor(name: string): Promise<bigint | null> {
   return BigInt(row.last_block);
 }
 
+/** Reset a cursor so the next backfill starts from genesis again. Used after an
+ *  indexing-logic fix (e.g. widening pool resolution) to re-scan history — swap
+ *  rows are idempotent (ON CONFLICT DO NOTHING), so a re-scan only fills gaps. */
+export async function resetCursor(name: string): Promise<boolean> {
+  const sql = getReadDb();
+  if (!sql) return false;
+  await sql(`DELETE FROM indexer_cursor WHERE name = $1`, [name]);
+  return true;
+}
+
 async function setCursor(sql: SqlClient, name: string, block: bigint): Promise<void> {
   await sql(
     `INSERT INTO indexer_cursor (name, last_block, updated_at) VALUES ($1, $2, now())
@@ -319,6 +330,24 @@ export async function indexRange(
 
   const ethUsd = await ethUsdNow(client);
   const wethLc = WETH_ADDRESS?.toLowerCase();
+
+  // Also map the WETH poolId of EVERY known token, computed deterministically
+  // across all generation hooks — the same way the app resolves pools. PoolSeeded
+  // is only emitted by the multi-quote (gen-4) factory, so prior generations
+  // (which emit Graduated, with no poolId) would otherwise never map their pool
+  // and every one of their swaps would be dropped. Cheap (keccak only) and
+  // idempotent (don't clobber an exact PoolSeeded row).
+  if (WETH_ADDRESS && wethLc) {
+    const known = (await sql(`SELECT token FROM launches`)) as Array<{ token: string }>;
+    const tokens = new Set<string>(known.map((k) => k.token.toLowerCase()));
+    for (const r of launchRows) tokens.add((r[0] as string).toLowerCase());
+    for (const t of tokens) {
+      for (const c of candidatePoolKeys(t as Address, WETH_ADDRESS)) {
+        const pid = c.id.toLowerCase();
+        if (!poolMap.has(pid)) poolMap.set(pid, { token: t, quote: wethLc, dec: 18 });
+      }
+    }
+  }
 
   // 6. Swaps — only those whose poolId is one of ours.
   const swapRows: unknown[][] = [];

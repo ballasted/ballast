@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthed } from "@/lib/indexer/auth";
 import { isIndexerConfigured } from "@/lib/indexer/db";
 import { serverClient } from "@/lib/serverChain";
-import { DEFAULT_CURSOR, genesisBlock, getCursor, indexRange, indexerChainReady } from "@/lib/indexer/chain";
+import { DEFAULT_CURSOR, genesisBlock, getCursor, indexRange, indexerChainReady, resetCursor } from "@/lib/indexer/chain";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -48,6 +48,10 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "rpc unreachable" }, { status: 502 });
   }
+
+  // reset=1 restarts the backfill from genesis (after an indexing-logic fix).
+  // Row inserts are idempotent, so a re-scan only fills gaps.
+  if (url.searchParams.get("reset") === "1") await resetCursor(DEFAULT_CURSOR);
 
   const cursor = await getCursor(DEFAULT_CURSOR);
   let from = cursor === null ? genesisBlock() : cursor + 1n;
