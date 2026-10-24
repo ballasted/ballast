@@ -13,6 +13,7 @@ import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress } from "@/lib/format";
 import { marketCapUsd, marketCapSupply, formatCompactUsd } from "@/lib/market";
 import { cn } from "@/lib/cn";
+import { RailTooltip } from "@/components/app/nav-items";
 
 const MAX_RESULTS = 8;
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -23,7 +24,7 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 // or handle directory anywhere in this app (no indexer), so unlike the spec's
 // mock-up this does not attempt a "traders" result group — inventing one
 // would mean fabricating a search index that doesn't exist.
-export function CommandSearch() {
+export function CommandSearch({ variant = "bar" }: { variant?: "bar" | "icon" }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -116,17 +117,28 @@ export function CommandSearch() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-pill border border-border bg-card px-3 py-1.5 text-sm text-text-muted transition-colors hover:border-border-strong hover:text-text-secondary"
-        aria-label="Search tokens (Cmd+K)"
-      >
-        <IconSearch />
-        <span className="hidden sm:inline">Search tokens…</span>
-        <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-text-faint sm:inline">
-          ⌘K
-        </kbd>
-      </button>
+      {variant === "icon" ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="group relative flex h-11 w-11 items-center justify-center rounded-input text-text-muted transition-colors hover:bg-surface-raised hover:text-text-secondary"
+          aria-label="Search tokens (Cmd+K)"
+        >
+          <IconSearch className="h-[22px] w-[22px]" />
+          <RailTooltip label="Search" hint="⌘K" />
+        </button>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 rounded-pill border border-border bg-card px-3 py-1.5 text-sm text-text-muted transition-colors hover:border-border-strong hover:text-text-secondary"
+          aria-label="Search tokens (Cmd+K)"
+        >
+          <IconSearch />
+          <span className="hidden sm:inline">Search tokens…</span>
+          <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-text-faint sm:inline">
+            ⌘K
+          </kbd>
+        </button>
+      )}
 
       {open && (
         <div

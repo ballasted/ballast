@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 // item that goes nowhere is worse than one that doesn't exist. "Settings" is
 // folded into this menu directly (blur balances, density) rather than a link
 // to a settings page that would otherwise be empty.
-export function AvatarMenu() {
+export function AvatarMenu({ placement = "top-right" }: { placement?: "top-right" | "rail" }) {
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
   const { blurred, toggle: toggleBlur } = useBlurBalances();
@@ -45,18 +45,33 @@ export function AvatarMenu() {
     <div ref={rootRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-pill border border-border bg-card px-2 py-1.5 pr-3 text-sm text-text-secondary transition-colors hover:border-border-strong"
+        className={cn(
+          "transition-colors",
+          placement === "rail"
+            ? "flex h-11 w-11 items-center justify-center rounded-input hover:bg-surface-raised"
+            : "flex items-center gap-2 rounded-pill border border-border bg-card px-2 py-1.5 pr-3 text-sm text-text-secondary hover:border-border-strong",
+        )}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={placement === "rail" ? shortAddress(address) : undefined}
+        title={placement === "rail" ? shortAddress(address) : undefined}
       >
-        <AssetDisc symbol={address.slice(2, 4)} size={24} />
-        {shortAddress(address)}
+        <AssetDisc symbol={address.slice(2, 4)} size={placement === "rail" ? 28 : 24} />
+        {placement !== "rail" && shortAddress(address)}
       </button>
 
       {open && (
         <div
           role="menu"
-          className="card-raised absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden p-1.5"
+          className={cn(
+            "card-raised absolute z-50 w-64 overflow-hidden p-1.5",
+            // Top bar (mobile): drop down from the right edge. Rail (desktop
+            // bottom cluster): fly out to the right, bottom-aligned, so the panel
+            // never clips off the bottom of a left rail.
+            placement === "rail"
+              ? "bottom-0 left-[calc(100%+10px)]"
+              : "right-0 top-[calc(100%+8px)]",
+          )}
         >
           <MenuLink href="/app/profile" onClick={() => setOpen(false)}>
             Your profile
