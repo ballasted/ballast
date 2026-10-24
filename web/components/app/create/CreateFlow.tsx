@@ -900,7 +900,7 @@ function PreviewCard(p: {
               const v = p.backed
                 ? p.preview
                   ? formatBackingPerToken(p.preview.perToken)
-                  : "$0.00"
+                  : "—"
                 : fmtEthFdv(p.openFdv?.fdvWeth);
               return (
                 <span key={v} className="anim-fade inline-block">
@@ -1027,7 +1027,7 @@ function MobilePreviewSheet({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const figure = backed ? (preview ? formatBackingPerToken(preview.perToken) : "$0.00") : fmtEthFdv(openFdv?.fdvWeth);
+  const figure = backed ? (preview ? formatBackingPerToken(preview.perToken) : "—") : fmtEthFdv(openFdv?.fdvWeth);
 
   return (
     <div className="lg:hidden">
@@ -1100,7 +1100,7 @@ function ConfirmModal(p: {
               p.backed
                 ? p.preview
                   ? formatBackingPerToken(p.preview.perToken)
-                  : "$0.00"
+                  : "—"
                 : `${fmtEthFdv(p.openFdv?.fdvWeth)}${fmtUsdApprox(p.openFdv?.fdvUsd) ? ` (${fmtUsdApprox(p.openFdv?.fdvUsd)})` : ""}`
             }
           />

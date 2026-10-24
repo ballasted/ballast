@@ -316,7 +316,7 @@ function AnnounceForm({
       <label className="mt-4 flex items-start gap-2 text-sm text-text-secondary">
         <input type="checkbox" className="mt-0.5" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
         <span>
-          This is announced publicly now and can be executed after {days ?? "N"} days. Everyone viewing ${symbol || "this token"}{" "}
+          This is announced publicly now and can be executed after {days !== undefined ? `${days} days` : "the on-chain notice period"}. Everyone viewing ${symbol || "this token"}{" "}
           will see it.
         </span>
       </label>

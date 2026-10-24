@@ -43,11 +43,18 @@ export function DiscoverStats({
   // headline figure is total, with locked underneath, always both.
   let totalUsd = 0n;
   let lockedUsd = 0n;
+  let resolvedBackings = 0;
   for (const p of projects) {
     if (!p.backing) continue;
+    resolvedBackings += 1;
     totalUsd += p.backing.totalValueUsd;
     lockedUsd += p.backing.lockedValueUsd;
   }
+  // Honest zero vs failed read: a genuine $0 (treasuries hold nothing, or no
+  // tokens launched yet) is fine to show, but if tokens exist and NOT ONE backing
+  // read resolved, the figure is unknowable — degrade to an em dash + "unavailable"
+  // like the sibling cards, never a green "Live · $0.00" that looks real.
+  const reserveUnavailable = !isLoading && projects.length > 0 && resolvedBackings === 0;
 
   const volumeOk = series.available && series.volume24hUsd !== undefined;
   const burnedOk = buyback.configured && buyback.burnedBalance !== undefined;
@@ -56,9 +63,9 @@ export function DiscoverStats({
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatCard
         label="Reserve value"
-        value={isLoading ? undefined : formatUsd(totalUsd, { compact: true })}
-        subFigure={isLoading ? undefined : `${formatUsd(lockedUsd, { compact: true })} locked`}
-        sub="Live · on-chain"
+        value={isLoading ? undefined : reserveUnavailable ? null : formatUsd(totalUsd, { compact: true })}
+        subFigure={isLoading || reserveUnavailable ? undefined : `${formatUsd(lockedUsd, { compact: true })} locked`}
+        sub={reserveUnavailable ? "On-chain · unavailable" : "Live · on-chain"}
         loading={isLoading}
         accent
       />
