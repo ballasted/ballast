@@ -181,7 +181,7 @@ function HoldingRow({ h }: { h: Holding }) {
       ? Number((h.marketValueUsd * 10n ** 18n) / h.backingValueUsd) / 1e18
       : null;
   return (
-    <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
+    <Link href={`/app/token/${p.token}`} className="card card-hover flex items-center justify-between gap-3 p-4">
       <div className="flex min-w-0 items-center gap-3">
         <AssetDisc symbol={p.symbol} size={32} />
         <div className="min-w-0">
@@ -215,7 +215,7 @@ function LaunchRow({ p }: { p: Project }) {
   const { assets: registry, isLoading: registryLoading } = useAssets();
   const backingAsset = (p.backing?.assets as unknown as { asset: `0x${string}` }[] | undefined)?.[0];
   return (
-    <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
+    <Link href={`/app/token/${p.token}`} className="card card-hover flex items-center justify-between gap-3 p-4">
       <div className="flex min-w-0 items-center gap-3">
         <AssetDisc symbol={p.symbol} size={32} />
         <div className="min-w-0">
