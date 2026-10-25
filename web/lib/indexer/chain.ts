@@ -7,6 +7,7 @@ import {
   erc20Abi,
   feeRouterV2Abi,
   aggregatorV3Abi,
+  roundupRouterAbi,
 } from "@/lib/abis";
 import { buybackBurnedAbi } from "@/lib/tg/decode";
 import { classifySwap } from "@/lib/tg/swapDirection";
@@ -18,6 +19,8 @@ import {
   BUYBACK_V2_ADDRESS,
   WETH_ADDRESS,
   ETH_USD_FEED_ADDRESS,
+  ASSET_REGISTRY_ADDRESS,
+  ROUNDUP_ROUTER_ADDRESS,
   DEAD_ADDRESS,
   hookForFactory,
 } from "@/lib/contracts";
@@ -203,27 +206,102 @@ function isoFromSec(sec: number): string {
   return new Date((sec > 0 ? sec : 0) * 1000).toISOString();
 }
 
-/** Current ETH/USD from the Chainlink feed, or undefined. Applied to WETH-quoted
- *  trades to derive usd_size — an approximation for historical trades (the feed is
- *  read at indexing time, not per-block); see README. */
-async function ethUsdNow(client: Client): Promise<number | undefined> {
-  if (!ETH_USD_FEED_ADDRESS) return undefined;
-  try {
-    const reads = await client.multicall({
-      allowFailure: true,
-      contracts: [
-        { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "latestRoundData" },
-        { address: ETH_USD_FEED_ADDRESS, abi: aggregatorV3Abi, functionName: "decimals" },
-      ],
-    });
-    if (reads[0]?.status !== "success" || reads[1]?.status !== "success") return undefined;
-    const answer = (reads[0].result as unknown as [bigint, bigint, bigint, bigint, bigint])[1];
-    if (answer <= 0n) return undefined;
-    const dec = reads[1].result as number;
-    return Number(formatUnits(answer, dec));
-  } catch {
-    return undefined;
+// Minimal AssetRegistry view: the canonical quote-asset → Chainlink feed map.
+const registryFeedAbi = [
+  { type: "function", name: "feedOf", stateMutability: "view", inputs: [{ name: "asset", type: "address" }], outputs: [{ type: "address" }] },
+] as const;
+
+type QuoteFeed = { feed: string; dec: number };
+
+/**
+ * Resolve each DISTINCT quote asset to its Chainlink USD feed + feed decimals.
+ * WETH → the ETH/USD feed; every other (stock) quote → AssetRegistry.feedOf(asset).
+ * A quote with no feed is simply absent from the map (its trades get a NULL
+ * usd_size — honest, never a fake zero). All reads are batched multicalls.
+ */
+async function resolveQuoteFeeds(client: Client, quotes: string[]): Promise<Map<string, QuoteFeed>> {
+  const out = new Map<string, QuoteFeed>();
+  if (quotes.length === 0) return out;
+  const wethLc = WETH_ADDRESS?.toLowerCase();
+  const feedByQuote = new Map<string, string>();
+  if (wethLc && quotes.includes(wethLc) && ETH_USD_FEED_ADDRESS) {
+    feedByQuote.set(wethLc, ETH_USD_FEED_ADDRESS.toLowerCase());
   }
+  const stockQuotes = quotes.filter((q) => q !== wethLc);
+  if (ASSET_REGISTRY_ADDRESS && stockQuotes.length > 0) {
+    try {
+      const res = (await client.multicall({
+        allowFailure: true,
+        contracts: stockQuotes.map((q) => ({ address: ASSET_REGISTRY_ADDRESS as Address, abi: registryFeedAbi, functionName: "feedOf" as const, args: [q as Address] })),
+      })) as Array<{ status: "success" | "failure"; result?: unknown }>;
+      stockQuotes.forEach((q, i) => {
+        const r = res[i];
+        if (r?.status === "success") {
+          const f = (r.result as string)?.toLowerCase();
+          if (f && f !== ZERO) feedByQuote.set(q, f);
+        }
+      });
+    } catch {
+      // registry unreachable → stock quotes get no feed → NULL usd_size (honest)
+    }
+  }
+  const feeds = [...new Set(feedByQuote.values())];
+  const decByFeed = new Map<string, number>();
+  if (feeds.length > 0) {
+    try {
+      const res = (await client.multicall({
+        allowFailure: true,
+        contracts: feeds.map((f) => ({ address: f as Address, abi: aggregatorV3Abi, functionName: "decimals" as const })),
+      })) as Array<{ status: "success" | "failure"; result?: unknown }>;
+      feeds.forEach((f, i) => decByFeed.set(f, res[i]?.status === "success" ? Number(res[i]!.result) : 8));
+    } catch {
+      for (const f of feeds) decByFeed.set(f, 8);
+    }
+  }
+  for (const [q, f] of feedByQuote) out.set(q, { feed: f, dec: decByFeed.get(f) ?? 8 });
+  return out;
+}
+
+/**
+ * Chainlink USD price for each needed (feed, block) pair, read AT THAT BLOCK so
+ * historical trades are valued with the price Chainlink reported then — matching
+ * how GeckoTerminal values historical volume, not a current-price approximation.
+ * Keyed `${feedLc}|${block}`. Reads are grouped one multicall per block (archive
+ * state), bounded-concurrency; any block where the read fails is simply omitted.
+ */
+async function feedPricesAtBlocks(
+  client: Client,
+  needs: Array<{ feed: string; dec: number; block: bigint }>,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (needs.length === 0) return out;
+  const byBlock = new Map<string, QuoteFeed[]>();
+  for (const n of needs) {
+    const k = n.block.toString();
+    const arr = byBlock.get(k) ?? [];
+    if (!arr.some((x) => x.feed === n.feed)) arr.push({ feed: n.feed, dec: n.dec });
+    byBlock.set(k, arr);
+  }
+  await mapLimit([...byBlock.keys()], DENSE_CONCURRENCY, async (bk) => {
+    const feeds = byBlock.get(bk) ?? [];
+    try {
+      const res = (await client.multicall({
+        allowFailure: true,
+        blockNumber: BigInt(bk),
+        contracts: feeds.map((f) => ({ address: f.feed as Address, abi: aggregatorV3Abi, functionName: "latestRoundData" as const })),
+      })) as Array<{ status: "success" | "failure"; result?: unknown }>;
+      feeds.forEach((f, i) => {
+        const r = res[i];
+        if (r?.status === "success") {
+          const answer = (r.result as unknown as [bigint, bigint, bigint, bigint, bigint])[1];
+          if (answer > 0n) out.set(`${f.feed}|${bk}`, Number(formatUnits(answer, f.dec)));
+        }
+      });
+    } catch {
+      // archive read failed for this block (e.g. before the feed existed) → skip
+    }
+  });
+  return out;
 }
 
 async function erc20Field(
@@ -345,6 +423,17 @@ export async function indexRange(
       indexBuybacks(client, fromBlock, toBlock),
     ]);
 
+  // Stock round-ups (RoundupRouter.RoundupExecuted) — sparse, one address.
+  const roundupLogs = ROUNDUP_ROUTER_ADDRESS
+    ? await getLogsChunked(client, {
+        address: ROUNDUP_ROUTER_ADDRESS,
+        abi: roundupRouterAbi as unknown as Abi,
+        eventName: "RoundupExecuted",
+        from: fromBlock,
+        to: toBlock,
+      })
+    : [];
+
   // 2. Resolve quote-asset decimals for any newly-seeded pools, then build pool rows.
   const newQuoteAssets = poolSeededLogs.map((l) => l.args.quoteAsset as Address).filter(Boolean);
   const quoteDecimals = await erc20Field(client, newQuoteAssets, "decimals");
@@ -439,8 +528,6 @@ export async function indexRange(
     }
   }
 
-  const ethUsd = await ethUsdNow(client);
-
   // 6b. SWAPS — the core fix. Query the singleton PoolManager FILTERED by each
   //    pool's indexed poolId (first topic) in SMALL block chunks, so every query
   //    returns a small, complete result set well under the RPC cap. The prior code
@@ -460,7 +547,7 @@ export async function indexRange(
 
   // 7. Timestamps for every block that carries an event we store (incl. swaps).
   const tsBlocks = new Set<bigint>();
-  for (const l of [...launchLogs, ...swapLogs, ...splitSched, ...splitApplied, ...splitInstant, ...parentBurned, ...buybackLogs]) {
+  for (const l of [...launchLogs, ...swapLogs, ...splitSched, ...splitApplied, ...splitInstant, ...parentBurned, ...buybackLogs, ...roundupLogs]) {
     tsBlocks.add(l.blockNumber);
   }
   for (const l of poolSeededLogs) tsBlocks.add(l.blockNumber);
@@ -491,6 +578,25 @@ export async function indexRange(
       // leave unresolved → falls back to the swap sender below
     }
   });
+
+  // Multi-quote USD pricing: resolve each quote asset's Chainlink feed, then read
+  // its price AT EACH SWAP'S BLOCK so volume/price are valued with the historical
+  // feed (WETH via ETH/USD, stock legs via their own feeds) — not a flat current
+  // price. Quotes without a feed get NULL usd_size (honest, no fake zero).
+  const swapQuotes = new Set<string>();
+  for (const l of ourSwaps) {
+    const info = poolMap.get((l.args.id as Hex)?.toLowerCase() ?? "");
+    if (info) swapQuotes.add(info.quote);
+  }
+  const quoteFeeds = await resolveQuoteFeeds(client, [...swapQuotes]);
+  const priceNeeds: Array<{ feed: string; dec: number; block: bigint }> = [];
+  for (const l of ourSwaps) {
+    const info = poolMap.get((l.args.id as Hex)?.toLowerCase() ?? "");
+    const qf = info ? quoteFeeds.get(info.quote) : undefined;
+    if (qf) priceNeeds.push({ feed: qf.feed, dec: qf.dec, block: l.blockNumber });
+  }
+  const feedPrices = await feedPricesAtBlocks(client, priceNeeds);
+
   for (const l of swapLogs) {
     const pid = (l.args.id as Hex)?.toLowerCase();
     const info = pid ? poolMap.get(pid) : undefined;
@@ -505,7 +611,9 @@ export async function indexRange(
     const nTok = Number(amountToken);
     const nQuote = Number(amountQuote);
     const price = nTok > 0 ? nQuote / nTok : null;
-    const usdSize = wethLc && quote.toLowerCase() === wethLc && ethUsd !== undefined ? nQuote * ethUsd : null;
+    const qf = quoteFeeds.get(quote.toLowerCase());
+    const qUsd = qf ? feedPrices.get(`${qf.feed}|${l.blockNumber.toString()}`) : undefined;
+    const usdSize = qUsd !== undefined ? nQuote * qUsd : null;
     const ts = tsOf(l.blockNumber);
     swapRows.push([
       pid,
@@ -584,6 +692,22 @@ export async function indexRange(
     ]);
   }
 
+  const roundupRows: unknown[][] = [];
+  for (const l of roundupLogs) {
+    roundupRows.push([
+      (l.args.trader as Address).toLowerCase(),
+      (l.args.token as Address)?.toLowerCase() ?? null,
+      (l.args.stock as Address).toLowerCase(),
+      formatUnits((l.args.ethIn as bigint) ?? 0n, 18),
+      formatUnits((l.args.stockOut as bigint) ?? 0n, TOKEN_DECIMALS),
+      Boolean(l.args.isBuy),
+      l.blockNumber.toString(),
+      isoFromSec(tsOf(l.blockNumber)),
+      l.txHash,
+      l.logIndex,
+    ]);
+  }
+
   // 10. Transfers → balances (net deltas) + burns (to dead address). Per-token +
   //    small-chunk (same RPC-cap discipline as swaps), so a busy token's holder
   //    set is captured completely rather than silently truncated at the cap.
@@ -601,11 +725,14 @@ export async function indexRange(
   // 11. Persist everything. Natural-key conflicts → DO NOTHING (idempotent).
   await bulkInsert(sql, "pools", ["pool_id", "token", "quote_asset", "quote_decimals", "open_tick", "block", "ts"], poolRows.map((r) => [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]), "ON CONFLICT (pool_id) DO NOTHING");
   await bulkInsert(sql, "launches", ["token", "treasury", "creator", "factory", "launch_id", "launch_block", "launch_ts", "name", "symbol", "metadata_uri"], launchRows, "ON CONFLICT (token) DO NOTHING");
-  await bulkInsert(sql, "swaps", ["pool_id", "token", "quote_asset", "side", "amount_token", "amount_quote", "price", "usd_size", "trader", "block_number", "block_ts", "tx_hash", "log_index"], swapRows, "ON CONFLICT (tx_hash, log_index) DO NOTHING");
+  // DO UPDATE (not DO NOTHING) on re-scan so a pricing-logic fix backfills
+  // usd_size/price onto rows a prior run inserted — idempotent on the same row.
+  await bulkInsert(sql, "swaps", ["pool_id", "token", "quote_asset", "side", "amount_token", "amount_quote", "price", "usd_size", "trader", "block_number", "block_ts", "tx_hash", "log_index"], swapRows, "ON CONFLICT (tx_hash, log_index) DO UPDATE SET usd_size = EXCLUDED.usd_size, price = EXCLUDED.price");
   await bulkInsert(sql, "split_events", ["router", "token", "kind", "creator_bps", "treasury_bps", "buyback_bps", "parent_burn_bps", "rewards_bps", "effective_at", "block", "ts", "tx", "log_index"], splitRows, "ON CONFLICT (tx, log_index) DO NOTHING");
   await bulkInsert(sql, "fee_distributions", ["token", "router", "recipient", "amount", "kind", "block", "ts", "tx", "log_index"], feeRows, "ON CONFLICT (tx, log_index) DO NOTHING");
   await bulkInsert(sql, "buyback_runs", ["burner", "asset", "amount_in", "amount_burned", "total_burned", "block", "ts", "tx", "log_index"], buybackRows, "ON CONFLICT (tx, log_index) DO NOTHING");
   await bulkInsert(sql, "burns", ["token", "from_addr", "amount", "block", "ts", "tx", "log_index"], burnRows, "ON CONFLICT (tx, log_index) DO NOTHING");
+  await bulkInsert(sql, "roundups", ["trader", "token", "stock", "eth_in", "stock_out", "is_buy", "block", "ts", "tx", "log_index"], roundupRows, "ON CONFLICT (tx, log_index) DO NOTHING");
 
   // Balances: upsert with increment (deltas may be negative).
   await upsertBalances(sql, balanceRows);
@@ -626,6 +753,7 @@ export async function indexRange(
   counts.feeDistributions = feeRows.length;
   counts.buybacks = buybackRows.length;
   counts.burns = burnRows.length;
+  counts.roundups = roundupRows.length;
   counts.balanceDeltas = balanceRows.length;
 
   return { fromBlock: fromBlock.toString(), toBlock: toBlock.toString(), counts };
@@ -802,17 +930,21 @@ async function rollupOhlc(sql: SqlClient, tokens: string[], minTs: number, maxTs
   for (const b of BUCKETS) {
     const lower = Math.floor(minTs / b.secs) * b.secs;
     await sql(
+      // Candles are USD-per-token (usd_size / amount_token), so a token with
+      // pools in more than one quote asset (e.g. WETH + NVDA) still produces one
+      // coherent, GeckoTerminal-comparable series instead of mixing quote units.
       `INSERT INTO ohlc (token, bucket, ts, open, high, low, close, volume_usd)
        SELECT token, $1 AS bucket,
          to_timestamp(floor(extract(epoch FROM block_ts) / $2) * $2) AS ts,
-         (array_agg(price ORDER BY block_number, log_index))[1] AS open,
-         max(price) AS high,
-         min(price) AS low,
-         (array_agg(price ORDER BY block_number DESC, log_index DESC))[1] AS close,
+         (array_agg(usd_size / NULLIF(amount_token, 0) ORDER BY block_number, log_index))[1] AS open,
+         max(usd_size / NULLIF(amount_token, 0)) AS high,
+         min(usd_size / NULLIF(amount_token, 0)) AS low,
+         (array_agg(usd_size / NULLIF(amount_token, 0) ORDER BY block_number DESC, log_index DESC))[1] AS close,
          coalesce(sum(usd_size), 0) AS volume_usd
        FROM swaps
        WHERE token = ANY($3)
-         AND price IS NOT NULL
+         AND usd_size IS NOT NULL
+         AND amount_token > 0
          AND block_ts >= to_timestamp($4)
          AND block_ts <= to_timestamp($5)
        GROUP BY token, ts

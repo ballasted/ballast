@@ -169,5 +169,31 @@ const init: Migration = {
   ],
 };
 
+// 0002 — stock round-ups (RoundupRouter.RoundupExecuted). One row per executed
+// round-up: a trader buying a tokenized stock alongside a main swap. Empty until
+// the first on-chain round-up happens (0 is a real, honest number).
+const roundups: Migration = {
+  id: "0002",
+  name: "0002_roundups",
+  statements: [
+    `CREATE TABLE IF NOT EXISTS roundups (
+      id         BIGSERIAL PRIMARY KEY,
+      trader     TEXT NOT NULL,
+      token      TEXT,
+      stock      TEXT NOT NULL,
+      eth_in     NUMERIC NOT NULL,
+      stock_out  NUMERIC NOT NULL,
+      is_buy     BOOLEAN NOT NULL,
+      block      BIGINT NOT NULL,
+      ts         TIMESTAMPTZ NOT NULL,
+      tx         TEXT NOT NULL,
+      log_index  INT NOT NULL,
+      UNIQUE (tx, log_index)
+    )`,
+    `CREATE INDEX IF NOT EXISTS roundups_stock_idx ON roundups (stock)`,
+    `CREATE INDEX IF NOT EXISTS roundups_ts_idx ON roundups (ts)`,
+  ],
+};
+
 /** All migrations in apply order. Append new ones; never reorder/mutate past ones. */
-export const MIGRATIONS: Migration[] = [init];
+export const MIGRATIONS: Migration[] = [init, roundups];
