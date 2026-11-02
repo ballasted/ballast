@@ -4,6 +4,7 @@ import {
   isCreatorSplitterConfigured,
   isBurnVoteConfigured,
 } from "@/lib/contracts";
+import { isCreatorFundEnabled } from "@/lib/creatorFund";
 
 // Single source of truth for the app's primary navigation. Both the desktop
 // SideNav and the mobile TopBar render from this list via `visibleNavItems`,
@@ -61,6 +62,9 @@ export const NAV_ITEMS: NavItem[] = [
   // Burn-to-vote hub — only shown once BurnVote is deployed (NEXT_PUBLIC_BURN_VOTE
   // set), never before.
   ...(isBurnVoteConfigured ? [{ href: "/app/vote", label: "Vote", icon: IconVote }] : []),
+  // Creator Fund campaign — only shown while the campaign is live
+  // (NEXT_PUBLIC_CREATOR_FUND_ENABLED=true), never before.
+  ...(isCreatorFundEnabled ? [{ href: "/app/creator-fund", label: "Creator Fund", icon: IconCreatorFund }] : []),
 ];
 
 // Desktop icon-rail grouping (SideNav). PRIMARY sits at the top; the "Ballast"
@@ -239,6 +243,23 @@ function IconSettings({ active }: { active: boolean }) {
   );
 }
 export { IconSettings };
+function IconCreatorFund({ active }: { active: boolean }) {
+  // A trophy — the Creator Fund campaign. Distinct from every other rail glyph.
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M7 4h10v3a5 5 0 01-10 0V4z"
+        fill={active ? "currentColor" : "none"}
+        fillOpacity={active ? 0.2 : 0}
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path d="M7 5H4.5v1.5A3 3 0 007 9.4M17 5h2.5v1.5A3 3 0 0117 9.4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M12 12v3m-2.5 4h5m-4-4h3l.5 4h-4l.5-4z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function IconBaskets({ active }: { active: boolean }) {
   // A basket outline — the stock-basket directory.
   return (

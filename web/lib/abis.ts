@@ -127,6 +127,59 @@ export const projectTreasuryAbi = [
     inputs: [{ name: "id", type: "uint256" }],
     outputs: [],
   },
+  // ── Third-party deposit queue (proposeDeposit → creator accepts/declines) ──
+  // A third party (e.g. the Creator Fund Safe) escrows funds via proposeDeposit;
+  // the CREATOR then accepts (funds become permanently locked) or declines, within
+  // ACCEPT_WINDOW, else anyone may reclaimExpired back to the depositor.
+  {
+    type: "function",
+    name: "ACCEPT_WINDOW",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "pendingCount",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    // Public getter for the pendingDeposits mapping. The struct has no dynamic
+    // members, so all fields are returned. status: 0 None 1 Pending 2 Accepted
+    // 3 Declined 4 Reclaimed.
+    type: "function",
+    name: "pendingDeposits",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [
+      { name: "depositor", type: "address" },
+      { name: "asset", type: "address" },
+      { name: "amount", type: "uint256" },
+      { name: "proposedAt", type: "uint64" },
+      { name: "status", type: "uint8" },
+      { name: "disclosureVersion", type: "bytes32" },
+    ],
+  },
+  {
+    // onlyCreator. Within ACCEPT_WINDOW, accepts a pending proposal — the funds
+    // become PERMANENTLY LOCKED (lockedBalance), never withdrawable by anyone.
+    type: "function",
+    name: "acceptDeposit",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    // onlyCreator. Declines a pending proposal, returning the escrowed funds to
+    // the depositor.
+    type: "function",
+    name: "declineDeposit",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [],
+  },
 ] as const;
 
 export const erc20Abi = [
