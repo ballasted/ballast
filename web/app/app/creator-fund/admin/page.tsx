@@ -6,9 +6,12 @@ import { confirmedWinners } from "@/lib/creator-fund/confirmedWinners";
 import {
   FLAG_REASON_LABEL,
   MAX_WINNERS,
+  PAYOUT_STATE_LABEL,
   STATUS_LABEL,
   type AdminTokenEntry,
 } from "@/lib/creatorFund";
+
+const BLOCKSCOUT = "https://robinhoodchain.blockscout.com";
 
 export const metadata: Metadata = {
   title: "Creator Fund — Admin",
@@ -81,7 +84,11 @@ function AdminRow({
         </a>
         <span className={`chip ${statusTone[entry.status] ?? "chip-neutral"}`}>{STATUS_LABEL[entry.status]}</span>
         {confirmed ? <span className="chip chip-accent">Confirmed</span> : null}
-        {entry.funded ? <span className="chip chip-accent">Funded</span> : null}
+        {entry.payout && entry.payout.state !== "none" ? (
+          <span className={`chip ${entry.payout.state === "accepted" ? "chip-accent" : "chip-warning"}`}>
+            {PAYOUT_STATE_LABEL[entry.payout.state]}
+          </span>
+        ) : null}
         <span className="ml-auto text-xs text-text-faint">
           creator {shortAddress(entry.creator)} · treasury {shortAddress(entry.treasury)}
         </span>
@@ -104,6 +111,31 @@ function AdminRow({
             <li key={i}>⚠ {n}</li>
           ))}
         </ul>
+      ) : null}
+
+      {entry.payout && entry.payout.state !== "none" ? (
+        <div className="mt-3 rounded-input bg-bg p-3 text-xs text-text-muted">
+          <div className="section-label">Prize deposit</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>{PAYOUT_STATE_LABEL[entry.payout.state]}</span>
+            {entry.payout.acceptWindowEnds ? <span>accept by {when(entry.payout.acceptWindowEnds)}</span> : null}
+            {entry.payout.proposedTx ? (
+              <a href={`${BLOCKSCOUT}/tx/${entry.payout.proposedTx}`} target="_blank" rel="noreferrer" className="text-green underline">
+                proposed tx
+              </a>
+            ) : null}
+            {entry.payout.resolvedTx ? (
+              <a href={`${BLOCKSCOUT}/tx/${entry.payout.resolvedTx}`} target="_blank" rel="noreferrer" className="text-green underline">
+                {entry.payout.state} tx
+              </a>
+            ) : null}
+            {entry.payout.state === "proposed" || entry.payout.state === "expired" ? (
+              <a href={`/app/backing/${entry.token}`} className="text-green underline">
+                how to accept ↗
+              </a>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
       {shownSwaps.length > 0 ? (

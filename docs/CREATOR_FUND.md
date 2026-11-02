@@ -22,6 +22,10 @@ volume bug). Nothing in this system signs or broadcasts anything.
   first (earliest second-milestone time) counts; later ones become review candidates.
 - **Prize:** $1,000 of stock tokens (default **SGOV**) deposited into the token's
   treasury — not the creator wallet.
+- **Claiming:** winners receive the deposit as a **proposal** to their token's
+  treasury and must **accept it from the creator wallet within 7 days** (on the
+  token's Backing page), else it returns to the Safe. Once accepted it is locked
+  forever and never withdrawable.
 
 ---
 
@@ -144,6 +148,62 @@ A token that only clears $50k *with* flagged volume is marked **needs review**
 The spots countdown on the public page is `10 − confirmed.length`.
 
 ---
+
+## Prize lifecycle — exact contract behaviour
+
+Answers below are from `contracts/src/ProjectTreasury.sol`.
+
+**After `acceptDeposit()`, can the creator ever withdraw those assets?** **No — never**, not through the notice period, not ever. `acceptDeposit` credits `lockedBalance`, and the withdrawal path draws *only* from `creatorWithdrawable`:
+
+```solidity
+function acceptDeposit(uint256 id) external onlyCreator nonReentrant {
+    ...
+    p.status = PendingStatus.Accepted;
+    lockedBalance[p.asset] += p.amount;          // ← locked, not withdrawable
+    deposited[p.depositor][p.asset] += p.amount;
+    ...
+}
+function announceWithdrawal(address asset, uint256 amount) external onlyCreator ... {
+    uint256 available = creatorWithdrawable[asset];          // ← only this
+    if (amount > available) revert ExceedsWithdrawable(amount, available);
+    ...
+}
+function executeWithdrawal(uint256 id) external onlyCreator nonReentrant {
+    uint256 available = creatorWithdrawable[w.asset];        // ← only this
+    ...
+    creatorWithdrawable[w.asset] = available - w.amount;
+    IERC20(w.asset).safeTransfer(creator, w.amount);
+}
+```
+
+No function anywhere moves `lockedBalance` out (the contract's own doc: *"Third-party deposits are permanently locked. No function — not even onlyCreator — can move them out."*). `heldBalance = lockedBalance + creatorWithdrawable`, so the prize shows as backing but is unwithdrawable.
+
+**If the creator doesn't accept within 7 days, what happens to the SGOV?** It is **refundable to the Safe**, by **anyone** (permissionless), via `reclaimExpired` once `ACCEPT_WINDOW` (7 days) has passed — not stuck:
+
+```solidity
+uint256 public constant ACCEPT_WINDOW = 7 days;
+
+function reclaimExpired(uint256 id) external nonReentrant {
+    PendingDeposit storage p = pendingDeposits[id];
+    if (p.status != PendingStatus.Pending) revert BadState();
+    if (block.timestamp <= uint256(p.proposedAt) + ACCEPT_WINDOW) revert WindowOpen();
+    p.status = PendingStatus.Reclaimed;
+    emit DepositReclaimed(id, p.depositor, p.asset, p.amount);
+    IERC20(p.asset).safeTransfer(p.depositor, p.amount);   // ← back to the Safe (the depositor)
+}
+```
+
+**Can the proposer (the Safe) cancel its own pending proposal?** **No** — there is no proposer-initiated cancel before the window ends. The only exits for a `Pending` proposal are: the **creator** `acceptDeposit` or `declineDeposit` (both `onlyCreator`), or — after 7 days — anyone calling `reclaimExpired`. So the Safe either waits for the creator to act, or waits out the 7 days and reclaims (or has the creator decline for an immediate refund):
+
+```solidity
+function declineDeposit(uint256 id) external onlyCreator nonReentrant {
+    ...
+    p.status = PendingStatus.Declined;
+    IERC20(p.asset).safeTransfer(p.depositor, p.amount);   // ← immediate refund to the Safe
+}
+```
+
+The scanner tracks this live from the treasury's `DepositProposed/Accepted/Declined/Reclaimed` events (depositor = the Safe) and surfaces **proposed / accepted / expired / reclaimed / declined** per winner (public "Funded" badge + admin detail with tx links). The Backing page (`/app/backing/<token>`) shows any pending proposal to everyone and gives the connected **creator** an Accept/Decline button (`acceptDeposit`/`declineDeposit`).
 
 ## Payout (Safe) — important
 

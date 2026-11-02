@@ -99,8 +99,9 @@ async function main(): Promise<void> {
   // Persist state before building (so a crash mid-build doesn't lose scan work).
   writeJson(PATHS.state, state);
 
-  // 3. build leaderboards.
-  const boards = scan.buildLeaderboards(state, now, confirmed, Number(latest));
+  // 3. resolve on-chain prize-deposit status for confirmed winners, then build.
+  const payoutByToken = await scan.resolvePayoutStatuses(client, confirmed, state, latest, now);
+  const boards = scan.buildLeaderboards(state, now, confirmed, Number(latest), payoutByToken);
   writeJson(PATHS.publicOut, boards.public);
   writeJson(PATHS.adminOut, boards.admin);
 

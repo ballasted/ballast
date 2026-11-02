@@ -119,9 +119,42 @@ function Rules() {
         <li>• First {MAX_WINNERS} tokens to reach both, ordered by when the second milestone was met.</li>
         <li>• One entry per creator.</li>
         <li>• Prize: {usd(PRIZE_USD)} in stock tokens deposited into the token&apos;s treasury.</li>
+        <li>
+          • Winners receive the deposit as a proposal to their token&apos;s treasury and must accept it from the
+          creator wallet within 7 days.
+        </li>
       </ul>
     </section>
   );
+}
+
+function PayoutBadge({ entry }: { entry: PublicTokenEntry }) {
+  const p = entry.payout;
+  if (p?.state === "accepted") {
+    const href = p.resolvedTx ? `${BLOCKSCOUT}/tx/${p.resolvedTx}` : `${BLOCKSCOUT}/address/${entry.treasury}`;
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="chip chip-accent" title="Prize locked in treasury">
+        Funded
+      </a>
+    );
+  }
+  if (p?.state === "proposed") {
+    return (
+      <a href={`/app/backing/${entry.token}`} className="chip chip-warning" title="Creator must accept within 7 days">
+        Prize proposed · accept
+      </a>
+    );
+  }
+  if (p?.state === "expired") return <span className="chip chip-warning">Prize expired</span>;
+  // Fallback to a manually-recorded funded tx if no on-chain payout was resolved.
+  if (entry.funded) {
+    return (
+      <a href={`${BLOCKSCOUT}/tx/${entry.funded.txHash}`} target="_blank" rel="noopener noreferrer" className="chip chip-accent">
+        Funded
+      </a>
+    );
+  }
+  return null;
 }
 
 function Bar({ value, target, tone }: { value: number; target: number; tone: "green" | "muted" }) {
@@ -158,17 +191,7 @@ function LeaderboardRow({ entry, now }: { entry: PublicTokenEntry; now: number }
           ) : (
             <span className="chip chip-neutral tabular-nums">{daysLeft}d left</span>
           )}
-          {entry.funded ? (
-            <a
-              href={`${BLOCKSCOUT}/tx/${entry.funded.txHash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="chip chip-accent"
-              title="Prize deposited to treasury"
-            >
-              Funded
-            </a>
-          ) : null}
+          <PayoutBadge entry={entry} />
         </div>
         <div className="text-right text-xs text-text-faint">
           by {shortAddress(entry.creator)}

@@ -1,0 +1,92 @@
+# Creator Fund — scheduled leaderboard scan.
+#
+# Why commit JSON (not an API route with `revalidate`): the eligibility scan is a
+# heavy, stateful eth_getLogs sweep over each token's 14-day window. Running it inside
+# a serverless route risks the Vercel execution-time limit and still needs durable
+# storage to stay incremental. Running it here (a) decouples the scan from the request
+# path, (b) keeps an auditable git history of every leaderboard snapshot, (c) needs no
+# database — the page just static-imports the committed JSON, and (d) each commit
+# triggers Vercel's normal deploy (no [skip ci]). Fully hands-off once the secret +
+# variable below are set; nothing to run by hand.
+#
+# REQUIRED (add in GitHub → Settings):
+#   • Secret   RH_RPC_URL_PAID       the paid RPC endpoint (same value as local .env)
+#   • Variable CREATOR_FUND_START    unix seconds the campaign started (NEXT_PUBLIC_CREATOR_FUND_START)
+# OPTIONAL (Telegram "<TOKEN> qualified" alerts — reuses the existing bot):
+#   • Variable CREATOR_FUND_TG_ENABLED  set to "true"
+#   • Secret   TELEGRAM_BOT_TOKEN
+#   • Secret   TELEGRAM_CHAT_ID
+#
+# NOTE: scheduled runs execute on the DEFAULT branch only, so the auto-scan starts
+# once this branch is merged to main. Use "Run workflow" (workflow_dispatch) to test
+# it on this branch before merging.
+name: Creator Fund scan
+
+on:
+  schedule:
+    - cron: "*/20 * * * *" # every 20 minutes
+  workflow_dispatch: {}
+
+concurrency:
+  group: creator-fund-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      # Incremental state cache (data/creator-fund/state.json is gitignored). Best-
+      # effort: if the cache is evicted the next run just does a full rescan.
+      - name: Restore scan state
+        uses: actions/cache@v4
+        with:
+          path: data/creator-fund
+          key: creator-fund-state-${{ github.run_id }}
+          restore-keys: |
+            creator-fund-state-
+
+      - name: Run scan
+        env:
+          RH_RPC_URL_PAID: ${{ secrets.RH_RPC_URL_PAID }}
+          NEXT_PUBLIC_CREATOR_FUND_START: ${{ vars.CREATOR_FUND_START }}
+          # Public, canonical gen-4 addresses (same as docs/.env.example).
+          NEXT_PUBLIC_FACTORY_ADDRESS: "0xa32b9870A1B77544Eb4e044Cae9f3e62A1F71f67"
+          NEXT_PUBLIC_V4_HOOK_ADDRESS: "0x4eB2dD759F4d6524E66057D1ADc10c26E40142Cc"
+          NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS: "0x427764d0d19aB765c35A41A5aa4771580307dA81"
+          NEXT_PUBLIC_ETH_USD_FEED_ADDRESS: "0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9"
+          NEXT_PUBLIC_WETH_ADDRESS: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+          NEXT_PUBLIC_POOL_MANAGER_ADDRESS: "0x8366a39CC670B4001A1121B8F6A443A643e40951"
+          # Optional Telegram alerts.
+          CREATOR_FUND_TG_ENABLED: ${{ vars.CREATOR_FUND_TG_ENABLED }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: ./web/node_modules/.bin/tsx scripts/creator-fund/scan.ts
+
+      - name: Commit leaderboard if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/lib/creator-fund/data/leaderboard.json \
+                  web/lib/creator-fund/data/admin.json \
+                  web/lib/creator-fund/data/confirmed.json
+          if git diff --cached --quiet; then
+            echo "No leaderboard changes."
+          else
+            git commit -m "chore(creator-fund): refresh leaderboard [auto]"
+            git push
+          fi

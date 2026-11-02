@@ -164,6 +164,40 @@ export type PublicTokenEntry = {
   rank: number | null;
   reviewNotes: string[]; // short, non-sensitive reasons (shown on admin; a subset is safe publicly)
   funded: FundedInfo | null;
+  /** On-chain prize-deposit status (confirmed winners only); null otherwise. */
+  payout?: PayoutStatus | null;
+};
+
+/**
+ * On-chain status of a prize deposit the Safe proposed to a winner's treasury.
+ * Derived from the treasury's DepositProposed/Accepted/Declined/Reclaimed events
+ * (depositor = the Safe), so the UI reflects reality, not a hand-edited flag.
+ *   proposed  — proposeDeposit landed, awaiting the creator's acceptDeposit
+ *   accepted  — creator accepted; funds permanently locked (the "Funded" state)
+ *   expired   — 7-day window passed with no acceptance (reclaimable by the depositor)
+ *   reclaimed — funds returned to the Safe after expiry
+ *   declined  — creator declined; funds returned to the Safe
+ */
+export type PayoutState = "none" | "proposed" | "accepted" | "expired" | "reclaimed" | "declined";
+
+export type PayoutStatus = {
+  state: PayoutState;
+  proposalId?: number;
+  asset?: Address;
+  amount?: string; // raw units
+  proposedAt?: number; // unix secs
+  acceptWindowEnds?: number; // proposedAt + 7d
+  proposedTx?: string;
+  resolvedTx?: string; // accepted/declined/reclaimed tx
+};
+
+export const PAYOUT_STATE_LABEL: Record<PayoutState, string> = {
+  none: "—",
+  proposed: "Proposed · awaiting creator",
+  accepted: "Accepted · funded",
+  expired: "Expired · reclaimable",
+  reclaimed: "Reclaimed to Safe",
+  declined: "Declined",
 };
 
 export type FundedInfo = {

@@ -30,7 +30,7 @@ import {
   isHiddenToken,
   isRetiredToken,
 } from "../contracts";
-import { ballastFactoryAbi, erc20Abi, poolManagerAbi } from "../abis";
+import { ballastFactoryAbi, ballastTokenAbi, erc20Abi, poolManagerAbi } from "../abis";
 import { poolId, poolKeyForToken } from "../pool";
 import {
   CAMPAIGN_START,
@@ -41,6 +41,7 @@ import {
   type AdminLeaderboard,
   type AdminTokenEntry,
   type ConfirmedWinner,
+  type PayoutStatus,
   type PublicLeaderboard,
   type PublicTokenEntry,
   type QuoteAssetRef,
@@ -57,6 +58,25 @@ const transferEvent = parseAbiItem(
 const launchedEvent = parseAbiItem(
   "event Launched(uint256 indexed id, address indexed creator, address indexed token, address treasury, uint256 noticePeriod, string metadataURI)",
 );
+// ProjectTreasury third-party deposit lifecycle events (depositor indexed → filter
+// by the Safe). Used to derive each confirmed winner's on-chain prize status.
+const depositProposedEvent = parseAbiItem(
+  "event DepositProposed(uint256 indexed id, address indexed depositor, address indexed asset, uint256 amount, bytes32 disclosureVersion)",
+);
+const depositAcceptedEvent = parseAbiItem(
+  "event DepositAccepted(uint256 indexed id, address indexed depositor, address indexed asset, uint256 amount)",
+);
+const depositDeclinedEvent = parseAbiItem(
+  "event DepositDeclined(uint256 indexed id, address indexed depositor, address indexed asset, uint256 amount)",
+);
+const depositReclaimedEvent = parseAbiItem(
+  "event DepositReclaimed(uint256 indexed id, address indexed depositor, address indexed asset, uint256 amount)",
+);
+
+// The protocol Safe that proposes Creator Fund prizes. ACCEPT_WINDOW is a contract
+// constant (7 days), so we don't read it per treasury.
+export const CREATOR_FUND_SAFE = "0xEFC97e16a24d2434C7138a2634E554a0631aC079" as Address;
+const ACCEPT_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 // ── Persisted state shapes (JSON-safe; bigints as strings) ───────────────────
 export type StoredSwap = {
@@ -482,14 +502,97 @@ function creatorFundedWallets(ts: TokenState): Set<string> {
 }
 
 /**
+ * Resolve the on-chain prize-deposit status for each confirmed winner from its
+ * treasury's deposit events (depositor = the Safe). Read-only. Returns a map keyed
+ * by lowercased token address. Treasuries are taken from scan state when present,
+ * else read from the token on-chain.
+ */
+export async function resolvePayoutStatuses(
+  client: PublicClient,
+  confirmed: ConfirmedWinner[],
+  state: ScanState,
+  latest: bigint,
+  now: number,
+): Promise<Map<string, PayoutStatus>> {
+  const out = new Map<string, PayoutStatus>();
+  for (const w of confirmed) {
+    const key = w.token.toLowerCase();
+    let treasury = state.tokens[key]?.treasury as Address | undefined;
+    if (!treasury) {
+      try {
+        treasury = (await client.readContract({
+          address: w.token,
+          abi: ballastTokenAbi,
+          functionName: "treasury",
+        })) as Address;
+      } catch {
+        out.set(key, { state: "none" });
+        continue;
+      }
+    }
+    if (!treasury || /^0x0{40}$/.test(treasury)) {
+      out.set(key, { state: "none" });
+      continue;
+    }
+
+    try {
+      const common = { depositor: CREATOR_FUND_SAFE } as const;
+      const [proposed, accepted, declined, reclaimed] = await Promise.all([
+        getLogsChunked(client, { address: treasury, event: depositProposedEvent, args: common }, 0n, latest),
+        getLogsChunked(client, { address: treasury, event: depositAcceptedEvent, args: common }, 0n, latest),
+        getLogsChunked(client, { address: treasury, event: depositDeclinedEvent, args: common }, 0n, latest),
+        getLogsChunked(client, { address: treasury, event: depositReclaimedEvent, args: common }, 0n, latest),
+      ]);
+      type L = { args: { id: bigint; asset: Address; amount: bigint }; blockNumber: bigint; transactionHash: string };
+      const props = proposed as L[];
+      if (props.length === 0) {
+        out.set(key, { state: "none" });
+        continue;
+      }
+      // Latest proposal by this Safe (highest id).
+      const latestProp = props.reduce((a, b) => (b.args.id > a.args.id ? b : a));
+      const id = latestProp.args.id;
+      const resolvedOf = (logs: unknown[]) => (logs as L[]).find((l) => l.args.id === id);
+      const acc = resolvedOf(accepted);
+      const dec = resolvedOf(declined);
+      const rec = resolvedOf(reclaimed);
+
+      const blocksNeeded = [Number(latestProp.blockNumber)];
+      for (const r of [acc, dec, rec]) if (r) blocksNeeded.push(Number(r.blockNumber));
+      const tsMap = await blockTimestamps(client, blocksNeeded);
+      const proposedAt = tsMap.get(Number(latestProp.blockNumber)) ?? 0;
+      const acceptWindowEnds = proposedAt + ACCEPT_WINDOW_SECONDS;
+
+      const base: PayoutStatus = {
+        state: "proposed",
+        proposalId: Number(id),
+        asset: latestProp.args.asset,
+        amount: latestProp.args.amount.toString(),
+        proposedAt,
+        acceptWindowEnds,
+        proposedTx: latestProp.transactionHash,
+      };
+      if (acc) out.set(key, { ...base, state: "accepted", resolvedTx: acc.transactionHash });
+      else if (dec) out.set(key, { ...base, state: "declined", resolvedTx: dec.transactionHash });
+      else if (rec) out.set(key, { ...base, state: "reclaimed", resolvedTx: rec.transactionHash });
+      else out.set(key, { ...base, state: now > acceptWindowEnds ? "expired" : "proposed" });
+    } catch {
+      out.set(key, { state: "none" });
+    }
+  }
+  return out;
+}
+
+/**
  * Build the public + admin leaderboards from state. Pure given `now` + confirmed
- * winners (no IO), so it's deterministic and testable.
+ * winners + payout statuses (no IO), so it's deterministic and testable.
  */
 export function buildLeaderboards(
   state: ScanState,
   now: number,
   confirmed: ConfirmedWinner[],
   lastScannedBlock: number,
+  payoutByToken: Map<string, PayoutStatus> = new Map(),
 ): { public: PublicLeaderboard; admin: AdminLeaderboard } {
   const confirmedByToken = new Map(confirmed.map((c) => [c.token.toLowerCase(), c] as const));
 
@@ -546,6 +649,7 @@ export function buildLeaderboards(
       rank: null,
       reviewNotes: vol.unpricedCount > 0 ? [`${vol.unpricedCount} unpriced swap(s) excluded from USD`] : [],
       funded: confirmedByToken.get(key)?.funded ?? null,
+      payout: payoutByToken.get(key) ?? null,
       flaggedSwaps,
       flaggedHolders: hold.flaggedHolders,
     };
