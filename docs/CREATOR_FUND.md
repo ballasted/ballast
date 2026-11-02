@@ -266,6 +266,38 @@ RH_RPC_URL_PAID=https://… npx vitest run lib/creator-fund/fork
 
 ---
 
+## Go-live checklist
+
+**1. GitHub (for the auto-scan):**
+- Secret `RH_RPC_URL_PAID` = the paid RPC URL.
+- Variable `CREATOR_FUND_START` = the announce time in unix seconds.
+- Optional: variable `CREATOR_FUND_TG_ENABLED=true` + secrets `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+- The scheduled scan runs on the **default branch**, so it begins after merge to `main`. Test early with **Actions → Creator Fund scan → Run workflow** on the branch.
+
+**2. Vercel env vars** (Project → Settings → Environment Variables):
+
+| Variable | Value | Environments |
+|---|---|---|
+| `NEXT_PUBLIC_CREATOR_FUND_START` | unix seconds (same as GH var) | Production (+ Preview to test) |
+| `NEXT_PUBLIC_CREATOR_FUND_ENABLED` | `true` | Production (+ Preview to test) |
+| `CREATOR_FUND_ADMIN` | `true` | **Production only** (server-only; gates the admin page). Add to Preview only while reviewing. |
+| `CREATOR_FUND_TG_ENABLED` | `true` (optional) | not needed on Vercel (alerts fire from GitHub Actions) |
+
+`NEXT_PUBLIC_*` are build-time inlined, so **redeploy after setting them**. The app's contract addresses (factory/registry/feeds) are already set on Vercel.
+
+**3. Merge order:**
+1. Set the Vercel **Production** env vars above (safe while `main` has no page).
+2. Add the GitHub secret + variable.
+3. Merge `feat/creator-fund` → `main`.
+4. The push to `main` triggers a Vercel production deploy; the scheduled scan starts on its next 20-min tick (or run it once manually to seed data immediately).
+
+**4. Verify on production:**
+- `https://www.ballasted.fun/app/creator-fund` renders the rules, spots countdown, and leaderboard (not the "not live yet" note).
+- After the first scan commits data, the leaderboard lists eligible tokens with live progress bars.
+- `https://www.ballasted.fun/app/creator-fund/admin` loads **only** with `CREATOR_FUND_ADMIN=true` (else 404).
+- On a token's Backing page, a connected non-creator sees a pending proposal as read-only; the creator sees Accept/Decline.
+- Confirm the `og`/title renders and no "returns/floor/guaranteed" copy slipped in.
+
 ## Limitations (honest)
 
 - **"Funded by creator"** uses token-transfer funding only; native-ETH funding is not
