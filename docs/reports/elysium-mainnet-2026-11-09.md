@@ -91,7 +91,7 @@ method documented → **BLOCKER 3**.
   (`getOwners`): `0xBfD4F1E8…c488`, `0x3810a51b…5adb`, `0x594527d8…5527`.
   ⚠️ The RH Safe is currently **1-of-3** (`getThreshold` = 1). Per the brief, the Elysium Safe
   uses threshold **2** (a deliberate upgrade).
-- **Computed & fork-proven Safe address:** `0x6bd13411a54e48e8f7e0620f6aad28e4782194dc`
+- **Computed & fork-proven Safe address:** `0xa4dCbAd7A34da4473040d9f0fE35990c458A727C`
   - Created on an anvil fork of 99901 via `createProxyWithNonce(singleton, initializer, saltNonce)`.
   - `saltNonce` = `0x42414c4c4153540001` (fixed; "BALLAST"+0001).
   - `initializer` = `setup([owner1,owner2,owner3], 2, 0, 0x, 0xf48f2B2d…, 0, 0, 0)`.
@@ -238,34 +238,86 @@ config, simulation, fork rehearsal, audit, sync script) is complete.
 
 ---
 
+## 9. Post-decision verification (round 3 — supersedes §3 Safe + Handoff)
+
+- **Safe singleton → GnosisSafeL2 `0x3E5c63644E683549055b9Be8653de26E0B4CD36E`** (per Rizky; L2
+  variant, Safe{Wallet}-compatible if Elysium is added). Code present on 99901 (23800b). **New
+  deterministic Safe (recomputed on fork): `0xa4dCbAd7A34da4473040d9f0fE35990c458A727C`** — same
+  owners, threshold 2, fallback handler, saltNonce `0x42414c4c4153540001`. On fork: `getOwners`
+  = 3 owners, `getThreshold` = 2, `VERSION` = 1.3.0, slot0 (singleton) = the L2 singleton.
+  init-code-hash `0xcaf2dc2f…`, CREATE2 salt `0x3d01732d…`.
+- **Hook address unchanged = `0x3F5b07E06A16E0A1da416D29B64C1f9DC48A12Cc`** — re-simulated the
+  full deploy with the new config; the Safe address feeds only the vault/factory constructors,
+  not the hook initcode, so mining is identical. Fork rehearsal re-run after the change: **20/20
+  still green.**
+- **Batch-3 accept flow simulated on fork** (see Handoff): `approveHash` (owner `0x3810a51b…`,
+  ~53k gas) + `execTransaction` (owner `0x594527d8…`, ~87k gas) → `factory.owner()` = Safe,
+  `pendingOwner()` = `0x0`. Both signer wallets need a little HYPE for gas (≈0.01 HYPE each is
+  ample; actual cost < 0.00002 HYPE each at 0.175 gwei).
+- **PoolManager owner `0xA9aE0c5e…Da8D`** is a **contract** (7310b, nonce 1), **not an EOA**, and
+  is **not** the same as the 4663 PoolManager owner (`0x2BAD8182C09F50c8318d769245beA52C32Be46CD`).
+  Report-only, non-blocking.
+
+---
+
 ## Handoff — exact broadcast order (run from `contracts/`, interactive password)
 
 > Never `--private-key` / `--password-file` on mainnet. Use `--account <keystore-name>`.
+> Re-check `cast balance 0x1bd72E88…391bc` is funded right before batch 2.
 
-**Batch 1 — the Safe (must exist before the vault can receive).** Create the v1.3.0 proxy via
-the canonical factory `0xa6B71E26…` with singleton `0xd9Db270c…`, the initializer in §3, and
-saltNonce `0x42414c4c4153540001`. Expected proxy: **`0x6bd13411a54e48e8f7e0620f6aad28e4782194dc`**.
-(Easiest via the Safe UI/CLI pointed at these canonical addresses, or a one-shot `cast send` to
-`createProxyWithNonce`.) **Check:** `cast call <safe> "getOwners()(address[])"` = the 3 owners;
-`getThreshold` = 2; `VERSION` = 1.3.0.
+**Batch 1 — the Safe (GnosisSafeL2; must exist before the vault can receive).** `createProxyWithNonce`
+on factory `0xa6B71E26…` with **L2 singleton `0x3E5c6364…`**, the §9 initializer, saltNonce
+`0x42414c4c4153540001`. Expected proxy: **`0xa4dCbAd7A34da4473040d9f0fE35990c458A727C`**.
+**Check:** `getOwners` = the 3 owners; `getThreshold` = 2; `VERSION` = 1.3.0; storage slot 0 =
+the L2 singleton.
 
-**Batch 2 — gen-5 core** (only after BLOCKER 1 & 2 resolved and the config reflects the chosen
-poolManager + the Safe):
+**Batch 2 — gen-5 core** (`--slow` + 2× gas multiplier for L2 safety):
 ```
 ELYSIUM_CONFIG=deployments/elysium-mainnet.json \
 forge script script/DeployElysium.s.sol:DeployElysium \
   --rpc-url $ELY_MAINNET_RPC --account <KEYSTORE_NAME> --sender $ELY_MAINNET_DEPLOYER \
-  --broadcast
+  --broadcast --slow --gas-estimate-multiplier 200
 ```
-Deploys hook (expected **`0x3F5b07E0…A12Cc`** if poolManager unchanged) + vault + seeder +
-factory, and `transferOwnership(Safe)`. **Check:** log shows `hook flags OK`; `factory.pendingOwner()`
-= the Safe. Record addresses with `node script/sync-elysium-mainnet.cjs`.
+Deploys hook (expected **`0x3F5b07E06A16E0A1da416D29B64C1f9DC48A12Cc`** — if different, STOP) +
+vault + seeder + factory, and `transferOwnership(Safe)`. **Check:** `hook flags OK`;
+`factory.pendingOwner()` = the Safe. Then `node script/sync-elysium-mainnet.cjs`.
+**If it stops halfway, resume (same command + `--resume`):**
+```
+ELYSIUM_CONFIG=deployments/elysium-mainnet.json \
+forge script script/DeployElysium.s.sol:DeployElysium \
+  --rpc-url $ELY_MAINNET_RPC --account <KEYSTORE_NAME> --sender $ELY_MAINNET_DEPLOYER \
+  --broadcast --slow --gas-estimate-multiplier 200 --resume
+```
 
-**Batch 3 — hand factory to the Safe.** From the Safe: `factory.acceptOwnership()`.
-**Check:** `factory.owner()` = Safe, `factory.pendingOwner()` = `0x0`.
+**Batch 3 — hand the factory to the Safe (no Safe UI on Elysium → raw cast flow).**
+After batch 2, with `FACTORY` = the deployed factory and `SAFE` = `0xa4dCbAd7…727C`:
+```
+# 1. compute the safeTxHash (nonce 0) — factory-specific, so compute AFTER batch 2
+DATA=$(cast calldata "acceptOwnership()")           # 0x79ba5097
+Z=0x0000000000000000000000000000000000000000
+STH=$(cast call $SAFE \
+  "getTransactionHash(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,uint256)(bytes32)" \
+  $FACTORY 0 $DATA 0 0 0 0 $Z $Z 0 --rpc-url $ELY_MAINNET_RPC)
+
+# 2. owner A = 0x3810a51b… (lower address) pre-approves
+cast send $SAFE "approveHash(bytes32)" $STH \
+  --rpc-url $ELY_MAINNET_RPC --account <OWNER_A_KEYSTORE> --sender 0x3810a51bb35be1e6876fFFbA32A39ce054bC5adb
+
+# 3. owner B = 0x594527d8… executes with the two pre-approved/contract signatures, sorted by
+#    signer address ascending (A then B), each v=1 (A via approveHash, B as msg.sender):
+SIGS=0x0000000000000000000000003810a51bb35be1e6876fffba32a39ce054bc5adb000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000594527d8656d917ddfd32fcd5729dab349c75527000000000000000000000000000000000000000000000000000000000000000001
+cast send $SAFE \
+  "execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)" \
+  $FACTORY 0 $DATA 0 0 0 0 $Z $Z $SIGS \
+  --rpc-url $ELY_MAINNET_RPC --account <OWNER_B_KEYSTORE> --sender 0x594527d8656D917DdfD32fcD5729DAb349C75527
+```
+**Gas wallets:** owner `0x3810a51b…` and owner `0x594527d8…` each need a little HYPE (≈0.01 is
+ample). **Check:** `factory.owner()` = `0xa4dCbAd7…727C`; `factory.pendingOwner()` = `0x0`.
+(You may swap which two of the three owners sign; keep the signature blocks sorted by signer
+address ascending and set each `--sender` to match.)
 
 **Then (Part B):** verify contracts on the explorer (Blockscout), run the sync script, wire the
-apps, and do one controlled smoke launch+graduate+swap+limit order before announcing.
+apps, do one controlled smoke launch+graduate+swap+limit order before announcing.
 
 ---
 

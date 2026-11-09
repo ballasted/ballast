@@ -10,7 +10,8 @@
     "create2Deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
     "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
     "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
-    "safeSingleton_1_3_0": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+    "safeSingleton_1_3_0": "0x3E5c63644E683549055b9Be8653de26E0B4CD36E",
+    "_safeSingletonNote": "GnosisSafeL2 v1.3.0 (per Rizky — L2 variant, stays Safe{Wallet}-compatible if Elysium is added). Code present on 99901 (23800b). The L1 GnosisSafe singleton 0xd9Db270c... is also present if ever needed.",
     "safeProxyFactory_1_3_0": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
     "safeFallbackHandler_1_3_0": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
   },
@@ -33,7 +34,7 @@
   },
 
   "params": {
-    "_comment": "protocolBurnDestination = the Ballast Safe (2-of-2 min of 3 owners) — burn-design option 1: WHYPE accrues to the Safe for $BALLAST buyback & burn once a bridge is live. IMMUTABLE in the vault at construction.",
+    "_comment": "protocolBurnDestination = the Ballast Safe (2-of-3) — burn-design option 1: WHYPE accrues to the Safe for $BALLAST buyback & burn once a bridge is live. IMMUTABLE in the vault at construction.",
     "openingValuationHype": "27000000000000000000",
     "openingTickWhype": -174300,
     "tickSpacing": 60,
@@ -41,7 +42,7 @@
     "minSwapFeeBps": 100,
     "maxSwapFeeBps": 1000,
     "treasuryEnabled": false,
-    "protocolBurnDestination": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+    "protocolBurnDestination": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
 
   "router": {
@@ -52,12 +53,15 @@
   },
 
   "owner": {
-    "_comment": "protocolOwner = the Ballast Safe (v1.3.0, 2-of-3). DETERMINISTIC address, proven on an anvil fork of 99901 via createProxyWithNonce(singleton=0xd9Db270c..., initializer=setup([0xBfD4F1E8,0x3810a51b,0x594527d8], threshold=2, 0, 0x, fallbackHandler=0xf48f2B2d..., 0,0,0), saltNonce=0x42414c4c4153540001). getOwners/getThreshold/VERSION all confirmed. Must be deployed (batch 1) BEFORE the gen-5 core (batch 2). The factory is handed over via Ownable2Step; the Safe calls acceptOwnership().",
-    "protocolOwner": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+    "_comment": "protocolOwner = the Ballast Safe (GnosisSafeL2 v1.3.0, 2-of-3). DETERMINISTIC address, proven on an anvil fork of 99901 via createProxyWithNonce(singleton=0x3E5c6364... (GnosisSafeL2), initializer=setup([0xBfD4F1E8,0x3810a51b,0x594527d8], threshold=2, 0, 0x, fallbackHandler=0xf48f2B2d..., 0,0,0), saltNonce=0x42414c4c4153540001). getOwners/getThreshold/VERSION/slot0-singleton all confirmed. Must be deployed (batch 1) BEFORE the gen-5 core (batch 2). The factory is handed over via Ownable2Step; the Safe calls acceptOwnership() (batch 3, approveHash+execTransaction flow).",
+    "protocolOwner": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
 
   "safe": {
-    "_comment": "Record of the Safe deployment params so Rizky can reproduce the exact deterministic address. Owners copied from the Robinhood-Chain Safe (0xEFC97e16...) getOwners; threshold RAISED to 2 (the RH Safe is currently 1-of-3 — flag).",
+    "_comment": "Record of the Safe deployment params so Rizky can reproduce the exact deterministic address. Owners copied from the Robinhood-Chain Safe (0xEFC97e16...) getOwners; threshold RAISED to 2 (the RH Safe was 1-of-3 at read time — Rizky raising it separately). Uses GnosisSafeL2 singleton.",
+    "singleton": "0x3E5c63644E683549055b9Be8653de26E0B4CD36E",
+    "proxyFactory": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+    "fallbackHandler": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4",
     "owners": [
       "0xBfD4F1E813A0287918517e2f8F2B57884bD7c488",
       "0x3810a51bb35be1e6876fFFbA32A39ce054bC5adb",
@@ -65,7 +69,9 @@
     ],
     "threshold": 2,
     "saltNonce": "0x42414c4c4153540001",
-    "expectedAddress": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+    "initCodeHash": "0xcaf2dc2f91b804b2fcf1ed3a965a1ff4404b840b80c124277b00a43b4634b2ce",
+    "salt": "0x3d01732d8bd93718040daeef785ba73f910538b9f22aa4ce81e829a0e17326b3",
+    "expectedAddress": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
 
   "ballast": {
