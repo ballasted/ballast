@@ -1,0 +1,83 @@
+{
+  "_comment": "Gen-5 Elysium MAINNET config (99901). Filled 2026-11-09 during mainnet prep. Every address bytecode-/identity-verified on 99901 — see docs/reports/elysium-mainnet-2026-11-09.md for how each was verified. Mainnet is a pure config swap: same scripts as testnet, this file. DEPLOY ORDER: (batch 1) create the Safe via the canonical v1.3.0 proxy factory at the DETERMINISTIC address below, THEN (batch 2) run DeployElysium.",
+  "chainId": 99901,
+  "rpcEnv": "ELYSIUM_MAINNET_RPC_URL",
+  "explorer": "https://elysium.kinetiq.xyz/explorer",
+  "isProduction": true,
+
+  "infra": {
+    "_comment": "All verified present on 99901 (cast codesize). create2Deployer is exactly 69 bytes = canonical Arachnid deployer. Safe v1.3.0 canonical contracts ALREADY have code on 99901 — no Safe infra deploy needed.",
+    "create2Deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+    "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "safeSingleton_1_3_0": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+    "safeProxyFactory_1_3_0": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+    "safeFallbackHandler_1_3_0": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
+  },
+
+  "tokens": {
+    "_comment": "whype: name/symbol WHYPE, decimals 18 (verified on 99901). usdc: symbol USDC, decimals 6 (USDC.e). USDC is NOT a green quote asset on launch (WHYPE only); recorded for reference.",
+    "whype": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+    "usdc": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65"
+  },
+
+  "v4": {
+    "_comment": "poolManager: genuine Uniswap v4 PoolManager bytecode — byte-identical to the official Robinhood-Chain (4663) v4 PoolManager except for the 20-byte embedded self-address (same solc 0.8.26, same metadata CBOR). NOT on Uniswap's official deployments list (99901 absent). HUMAN SIGN-OFF REQUIRED before mainnet: confirm this is the canonical Elysium v4 (not the Elyspump fork). The DeployElysium script only reads .v4.poolManager; the periphery below is frontend/SDK-only and must be independently verified before swaps are wired.",
+    "poolManager": "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1",
+    "positionManager": "",
+    "stateView": "",
+    "v4Quoter": "",
+    "universalRouter": ""
+  },
+
+  "params": {
+    "_comment": "protocolBurnDestination = the Ballast Safe (2-of-2 min of 3 owners) — burn-design option 1: WHYPE accrues to the Safe for $BALLAST buyback & burn once a bridge is live. IMMUTABLE in the vault at construction.",
+    "openingValuationHype": "27000000000000000000",
+    "openingTickWhype": -174300,
+    "tickSpacing": 60,
+    "protocolFeeBps": 2000,
+    "minSwapFeeBps": 100,
+    "maxSwapFeeBps": 1000,
+    "treasuryEnabled": false,
+    "protocolBurnDestination": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+  },
+
+  "router": {
+    "_comment": "FeeRouterV5 construction params, shared across every launch.",
+    "maxSlippageBps": 2000,
+    "maxRoutePerCall": "0",
+    "routeCooldownSecs": 3600
+  },
+
+  "owner": {
+    "_comment": "protocolOwner = the Ballast Safe (v1.3.0, 2-of-3). DETERMINISTIC address, proven on an anvil fork of 99901 via createProxyWithNonce(singleton=0xd9Db270c..., initializer=setup([0xBfD4F1E8,0x3810a51b,0x594527d8], threshold=2, 0, 0x, fallbackHandler=0xf48f2B2d..., 0,0,0), saltNonce=0x42414c4c4153540001). getOwners/getThreshold/VERSION all confirmed. Must be deployed (batch 1) BEFORE the gen-5 core (batch 2). The factory is handed over via Ownable2Step; the Safe calls acceptOwnership().",
+    "protocolOwner": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+  },
+
+  "safe": {
+    "_comment": "Record of the Safe deployment params so Rizky can reproduce the exact deterministic address. Owners copied from the Robinhood-Chain Safe (0xEFC97e16...) getOwners; threshold RAISED to 2 (the RH Safe is currently 1-of-3 — flag).",
+    "owners": [
+      "0xBfD4F1E813A0287918517e2f8F2B57884bD7c488",
+      "0x3810a51bb35be1e6876fFFbA32A39ce054bC5adb",
+      "0x594527d8656D917DdfD32fcD5729DAb349C75527"
+    ],
+    "threshold": 2,
+    "saltNonce": "0x42414c4c4153540001",
+    "expectedAddress": "0x6bd13411a54e48e8f7e0620f6aad28e4782194dc"
+  },
+
+  "ballast": {
+    "_comment": "Filled after batch-2 broadcast from broadcast/DeployElysium.s.sol/99901/run-latest.json.",
+    "protocolFeeVault": "",
+    "hook": "",
+    "seeder": "",
+    "factory": "",
+    "assetRegistry": ""
+  },
+
+  "mocks": {
+    "_comment": "No mocks on mainnet.",
+    "tNVDA": null,
+    "tSPY": null
+  }
+}

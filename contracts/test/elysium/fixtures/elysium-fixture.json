@@ -1,0 +1,47 @@
+{
+  "_comment": "TEST FIXTURE ONLY — a fully-populated gen-5 chain config used by DeployElysiumConfig.t.sol to prove script/DeployElysium.s.sol reads every path/type correctly. chainId is 31337 (the forge default) so validate()'s chainId check passes in-test. Never deployed.",
+  "chainId": 31337,
+  "rpcEnv": "FIXTURE_RPC_URL",
+  "explorer": "https://example.invalid",
+  "isProduction": false,
+
+  "infra": {
+    "create2Deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+    "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+  },
+
+  "tokens": {
+    "whype": "0xCD57F65c2B0e5881CFC2E609F7CD53b746E1F234",
+    "usdc": "0x7D29d8047B905000459c0E80c34a26CeedcB47b2"
+  },
+
+  "v4": {
+    "poolManager": "0x1111111111111111111111111111111111111111",
+    "positionManager": "0x2222222222222222222222222222222222222222",
+    "stateView": "0x3333333333333333333333333333333333333333",
+    "v4Quoter": "0x4444444444444444444444444444444444444444",
+    "universalRouter": "0x5555555555555555555555555555555555555555"
+  },
+
+  "params": {
+    "openingValuationHype": "27000000000000000000",
+    "openingTickWhype": -174300,
+    "tickSpacing": 60,
+    "protocolFeeBps": 2000,
+    "minSwapFeeBps": 100,
+    "maxSwapFeeBps": 1000,
+    "treasuryEnabled": false,
+    "protocolBurnDestination": "0x000000000000000000000000000000000000bEEF"
+  },
+
+  "router": {
+    "maxSlippageBps": 2000,
+    "maxRoutePerCall": "0",
+    "routeCooldownSecs": 3600
+  },
+
+  "owner": {
+    "protocolOwner": "0x00000000000000000000000000000000000050fe"
+  }
+}
