@@ -4,7 +4,6 @@
   "rpcEnv": "ELYSIUM_MAINNET_RPC_URL",
   "explorer": "https://elysium.kinetiq.xyz/explorer",
   "isProduction": true,
-
   "infra": {
     "_comment": "All verified present on 99901 (cast codesize). create2Deployer is exactly 69 bytes = canonical Arachnid deployer. Safe v1.3.0 canonical contracts ALREADY have code on 99901 — no Safe infra deploy needed.",
     "create2Deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
@@ -15,13 +14,11 @@
     "safeProxyFactory_1_3_0": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
     "safeFallbackHandler_1_3_0": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
   },
-
   "tokens": {
     "_comment": "whype: name/symbol WHYPE, decimals 18 (verified on 99901). usdc: symbol USDC, decimals 6 (USDC.e). USDC is NOT a green quote asset on launch (WHYPE only); recorded for reference.",
     "whype": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
     "usdc": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65"
   },
-
   "v4": {
     "_comment": "poolManager: genuine Uniswap v4 PoolManager — byte-identical to the official 4663 v4 PoolManager except its 20-byte self-address (solc 0.8.26). CONFIRMED by Rizky as Elysium's canonical v4 (also used by 0x Settler PR #701, merged Nov 3). On-chain: owner()=0xA9aE0c5eb238a519b7f5Af27415eb6Dd0744Da8D, protocolFeeController()=0x0 (no Uniswap protocol fee set). universalRouter: Uniswap UR v2.2.0 — code present, poolManager()==0xE2e105..., WHYPE+Permit2 embedded as immutables; from Uniswap/universal-router PR #534 (verified, PR pending merge). Chose v2.2.0 over v2.1.2 (0xA13f7611...4b45) because neither matches our 4663 minHopPriceX36 fork encoding, so the tiebreak (v2.2.0) applies. The DeployElysium script reads ONLY .v4.poolManager; the rest is frontend/SDK-only. FRONTEND NOTE: Elysium swaps need STANDARD v4 UR encoding (NO minHopPriceX36) — do not reuse the 4663 calldata path. positionManager/stateView/v4Quoter still to source (reads/LP only).",
     "poolManager": "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1",
@@ -32,7 +29,6 @@
     "universalRouter_alt_v2_1_2": "0xA13f7611115752DEB2B13813BDDE16A5073e4b45",
     "_universalRouterNote": "v2.2.0 selected; verified, Uniswap PR #534 pending merge"
   },
-
   "params": {
     "_comment": "protocolBurnDestination = the Ballast Safe (2-of-3) — burn-design option 1: WHYPE accrues to the Safe for $BALLAST buyback & burn once a bridge is live. IMMUTABLE in the vault at construction.",
     "openingValuationHype": "27000000000000000000",
@@ -44,19 +40,16 @@
     "treasuryEnabled": false,
     "protocolBurnDestination": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
-
   "router": {
     "_comment": "FeeRouterV5 construction params, shared across every launch.",
     "maxSlippageBps": 2000,
     "maxRoutePerCall": "0",
     "routeCooldownSecs": 3600
   },
-
   "owner": {
     "_comment": "protocolOwner = the Ballast Safe (GnosisSafeL2 v1.3.0, 2-of-3). DETERMINISTIC address, proven on an anvil fork of 99901 via createProxyWithNonce(singleton=0x3E5c6364... (GnosisSafeL2), initializer=setup([0xBfD4F1E8,0x3810a51b,0x594527d8], threshold=2, 0, 0x, fallbackHandler=0xf48f2B2d..., 0,0,0), saltNonce=0x42414c4c4153540001). getOwners/getThreshold/VERSION/slot0-singleton all confirmed. Must be deployed (batch 1) BEFORE the gen-5 core (batch 2). The factory is handed over via Ownable2Step; the Safe calls acceptOwnership() (batch 3, approveHash+execTransaction flow).",
     "protocolOwner": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
-
   "safe": {
     "_comment": "Record of the Safe deployment params so Rizky can reproduce the exact deterministic address. Owners copied from the Robinhood-Chain Safe (0xEFC97e16...) getOwners; threshold RAISED to 2 (the RH Safe was 1-of-3 at read time — Rizky raising it separately). Uses GnosisSafeL2 singleton.",
     "singleton": "0x3E5c63644E683549055b9Be8653de26E0B4CD36E",
@@ -73,16 +66,14 @@
     "salt": "0x3d01732d8bd93718040daeef785ba73f910538b9f22aa4ce81e829a0e17326b3",
     "expectedAddress": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C"
   },
-
   "ballast": {
     "_comment": "Filled after batch-2 broadcast from broadcast/DeployElysium.s.sol/99901/run-latest.json.",
-    "protocolFeeVault": "",
-    "hook": "",
-    "seeder": "",
-    "factory": "",
+    "protocolFeeVault": "0xa8fad48376572075288ad60ee199b36bc445d1b0",
+    "hook": "0x3f5b07e06a16e0a1da416d29b64c1f9dc48a12cc",
+    "seeder": "0x1a2b1e5361a5f1cc0c8fe48b983d8191f0fa4444",
+    "factory": "0x24c9582c31a7b890dc51d51e99e1283880bc4bee",
     "assetRegistry": ""
   },
-
   "mocks": {
     "_comment": "No mocks on mainnet.",
     "tNVDA": null,
