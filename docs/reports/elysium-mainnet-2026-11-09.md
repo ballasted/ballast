@@ -198,26 +198,43 @@ No proxies, no upgradeability, no pause, no rescue anywhere in gen-5.
 
 ---
 
-## BLOCKERS (need a human — in priority order)
+## 8. Post-decision verification (round 2)
 
-1. **Sign off the v4 PoolManager.** `0xE2e105…` is genuine v4 bytecode (not a fork) but is not
-   on Uniswap's official list, and an Elyspump fork exists. Confirm `0xE2e105…` is the canonical
-   Elysium v4 you want (deepest liquidity, the one your router/periphery pair with). If you want a
-   different one, change `.v4.poolManager` and re-mine (hook address will change).
-2. **Fund the deployer.** Deployer confirmed: **`0x1bd72E880C2222C756F1eAD9E40A14f7220391bc`**
-   (fresh EOA, nonce 0, not the compromised `0xA2774e53…`). ⚠️ **Its HYPE balance is 0** — it
-   cannot pay gas. Fund it with ≥ **~0.005 HYPE** (deploy needs ~0.00214) before batch 2, and
-   deploy with its keystore via `--account <name>` (never `--private-key` on mainnet). Recorded
-   as `ELY_MAINNET_DEPLOYER` in gitignored `.env`. (Only the hook address is predictable ahead
-   of broadcast — CREATE2 `0x3F5b…A12Cc`; vault/seeder/factory derive from the deployer nonce
-   and are captured post-broadcast by the sync script.)
-3. **v4 periphery addresses** (UniversalRouter especially) for the frontend swap path + smoke
-   swap. Verify the UniversalRouter independently (Elysium may ship a modified router — if its
-   v4 swap struct differs, the frontend calldata must match). Not needed to deploy the contracts.
-4. **Broadcasts** (§ Handoff) — mainnet signing is yours only.
+- **v4 PoolManager `0xE2e105…` — CONFIRMED** by Rizky as Elysium's canonical v4 (also the one
+  0x Settler PR #701 uses, merged Nov 3). On-chain roles read before deploy:
+  - `owner()` = **`0xA9aE0c5eb238a519b7f5Af27415eb6Dd0744Da8D`** (the PoolManager admin; can set
+    a `protocolFeeController` and protocol fees up to the v4 cap — a standard residual trust in
+    any v4 deployment, not specific to us).
+  - `protocolFeeController()` = **`0x0000…0000`** (unset) — **no Uniswap protocol fee** is skimmed
+    on top of our hook fee today.
+- **UniversalRouter — v2.2.0 `0x1B341FDD55d56F8E08409A2C25DDFad93Eb03C1a` selected** (from
+  Uniswap/universal-router PR #534, open/not merged). Verified on 99901:
+  - code present (23233b); `poolManager()` == `0xE2e105…`; WHYPE + Permit2 present as embedded
+    immutables in the runtime bytecode (the UR exposes no `WETH9()`/`permit2()` getter).
+  - v2.1.2 (`0xA13f7611…4b45`) also verifies the same way (24380b) — kept in config as the alt.
+  - **Why v2.2.0:** the rule was "match the 4663 frontend encoding, else v2.2.0." Our 4663
+    frontend encodes v4 swaps with the **modified-fork `minHopPriceX36`** struct
+    (`web/lib/swap.ts`, `web/lib/robinhoodRouter.ts`, `web/hooks/useRouterV2Swap.ts`,
+    `web/lib/abis.ts`, `web/app/(marketing)/integrate/page.tsx`). Both Elysium URs are **standard**
+    Uniswap URs (no `minHopPriceX36`), so neither matches → tiebreak → **v2.2.0**. Marked in
+    config as *"verified, Uniswap PR #534 pending merge."*
+  - ⚠️ **Frontend (Part B):** the Elysium swap path must use **standard v4 UR encoding** — it
+    **cannot** reuse the 4663 `minHopPriceX36` calldata. New encoding path required for 99901.
+  - Not done: a byte-for-byte diff against the same UR version on another chain (needs a second
+    chain's v2.2.0 UR + RPC). The immutable-presence + working `poolManager()` getter already
+    prove it's a genuine v4 UR wired to our PoolManager; offer to run the cross-chain diff on request.
+- **Deployer funded:** `0x1bd72E88…391bc` balance now **0.593 HYPE** (deploy needs ~0.00214). ✅
+- **RH Safe (4663) threshold:** re-read = **1** (Rizky's raise to 2-of-3 not yet applied at read
+  time). The Elysium Safe is 2-of-3 regardless (set in its own `setup`).
 
-Everything else (RPC, external addresses, Safe, config, simulation, fork rehearsal, audit, sync
-script) is complete.
+## BLOCKERS (remaining)
+
+1. **Broadcasts** (§ Handoff) — mainnet signing is yours only. Everything they depend on is ready.
+2. *(Optional, Part B)* source `positionManager` / `stateView` / `v4Quoter` for frontend reads/LP
+   (not needed for the deploy or basic swaps).
+
+All Part-A verification (RPC, external addresses incl. PoolManager roles + UniversalRouter, Safe,
+config, simulation, fork rehearsal, audit, sync script) is complete.
 
 ---
 

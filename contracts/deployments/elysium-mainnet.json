@@ -22,12 +22,14 @@
   },
 
   "v4": {
-    "_comment": "poolManager: genuine Uniswap v4 PoolManager bytecode — byte-identical to the official Robinhood-Chain (4663) v4 PoolManager except for the 20-byte embedded self-address (same solc 0.8.26, same metadata CBOR). NOT on Uniswap's official deployments list (99901 absent). HUMAN SIGN-OFF REQUIRED before mainnet: confirm this is the canonical Elysium v4 (not the Elyspump fork). The DeployElysium script only reads .v4.poolManager; the periphery below is frontend/SDK-only and must be independently verified before swaps are wired.",
+    "_comment": "poolManager: genuine Uniswap v4 PoolManager — byte-identical to the official 4663 v4 PoolManager except its 20-byte self-address (solc 0.8.26). CONFIRMED by Rizky as Elysium's canonical v4 (also used by 0x Settler PR #701, merged Nov 3). On-chain: owner()=0xA9aE0c5eb238a519b7f5Af27415eb6Dd0744Da8D, protocolFeeController()=0x0 (no Uniswap protocol fee set). universalRouter: Uniswap UR v2.2.0 — code present, poolManager()==0xE2e105..., WHYPE+Permit2 embedded as immutables; from Uniswap/universal-router PR #534 (verified, PR pending merge). Chose v2.2.0 over v2.1.2 (0xA13f7611...4b45) because neither matches our 4663 minHopPriceX36 fork encoding, so the tiebreak (v2.2.0) applies. The DeployElysium script reads ONLY .v4.poolManager; the rest is frontend/SDK-only. FRONTEND NOTE: Elysium swaps need STANDARD v4 UR encoding (NO minHopPriceX36) — do not reuse the 4663 calldata path. positionManager/stateView/v4Quoter still to source (reads/LP only).",
     "poolManager": "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1",
     "positionManager": "",
     "stateView": "",
     "v4Quoter": "",
-    "universalRouter": ""
+    "universalRouter": "0x1B341FDD55d56F8E08409A2C25DDFad93Eb03C1a",
+    "universalRouter_alt_v2_1_2": "0xA13f7611115752DEB2B13813BDDE16A5073e4b45",
+    "_universalRouterNote": "v2.2.0 selected; verified, Uniswap PR #534 pending merge"
   },
 
   "params": {
