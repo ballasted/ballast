@@ -204,9 +204,13 @@ No proxies, no upgradeability, no pause, no rescue anywhere in gen-5.
    on Uniswap's official list, and an Elyspump fork exists. Confirm `0xE2e105…` is the canonical
    Elysium v4 you want (deepest liquidity, the one your router/periphery pair with). If you want a
    different one, change `.v4.poolManager` and re-mine (hook address will change).
-2. **Deployer address + funded key.** `ELY_MAINNET_DEPLOYER` is unset. Provide the **address**
-   (for the balance check + `--sender`) and have its **keystore** (`--account`) funded with
-   ≥ ~0.005 HYPE. ⚠️ The old deployer `0xA2774e53…` is compromised — must not be used.
+2. **Fund the deployer.** Deployer confirmed: **`0x1bd72E880C2222C756F1eAD9E40A14f7220391bc`**
+   (fresh EOA, nonce 0, not the compromised `0xA2774e53…`). ⚠️ **Its HYPE balance is 0** — it
+   cannot pay gas. Fund it with ≥ **~0.005 HYPE** (deploy needs ~0.00214) before batch 2, and
+   deploy with its keystore via `--account <name>` (never `--private-key` on mainnet). Recorded
+   as `ELY_MAINNET_DEPLOYER` in gitignored `.env`. (Only the hook address is predictable ahead
+   of broadcast — CREATE2 `0x3F5b…A12Cc`; vault/seeder/factory derive from the deployer nonce
+   and are captured post-broadcast by the sync script.)
 3. **v4 periphery addresses** (UniversalRouter especially) for the frontend swap path + smoke
    swap. Verify the UniversalRouter independently (Elysium may ship a modified router — if its
    v4 swap struct differs, the frontend calldata must match). Not needed to deploy the contracts.
