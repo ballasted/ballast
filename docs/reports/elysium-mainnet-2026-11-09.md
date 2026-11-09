@@ -3,14 +3,15 @@
 **Date:** 2026-11-09 · **Branch:** `feat/gen5-elysium` · **Label:** Gen 5 · beta
 **Author:** Claude Code (prep, verification, fork rehearsal). **Broadcasts: Rizky only.**
 
-> **Bottom line:** Everything that can be done without signing on mainnet is **done and
-> green** — RPCs cross-verified, external addresses verified, the Safe computed & fork-proven,
-> the mainnet config filled, the deploy simulated against real 99901 state, and the **full
-> 20-test rehearsal passes against the real forked 99901 PoolManager**. Four items need a
-> human and are called out under **BLOCKERS**: (1) sign off that the v4 PoolManager we picked
-> is the one you want, (2) the mainnet deployer address + funded key, (3) the v4 *periphery*
-> addresses for the frontend swap path, (4) the actual broadcasts. No mainnet transaction was
-> sent. The Gen-5 contracts were **never deployed to testnet (99801)** either — see note.
+> **Bottom line:** Parts A and B are complete. The gen-5 contracts are **DEPLOYED and verified
+> on Elysium mainnet 99901** (Rizky broadcast; batches 1–3 done, Safe owns the factory) — see
+> **PART B** at the end for deployed addresses, on-chain verification, the real-address fork
+> rehearsal, and the live smoke test. The SDK is wired (dry-run OK, Rizky publishes). Still
+> owed, all Rizky-side: publish the SDK, build the Elysium **frontend** (needs the standard v4
+> UR swap encoding + an architecture decision), extend the **Ponder indexer** to gen-5, verify
+> source once the Blockscout explorer launches, and run the smoke test before announcing.
+> Sections 0–9 below are the pre-broadcast prep (kept as the record of how each address/choice
+> was verified).
 
 ---
 
@@ -329,3 +330,114 @@ apps, do one controlled smoke launch+graduate+swap+limit order before announcing
 > each swap fee accrues to the Ballast Safe (2-of-3) and is earmarked for $BALLAST buyback &
 > burn once the bridge is live; the rest goes to the creator side. No treasury on Elysium. Gen 5
 > is beta software — use at your own risk.
+
+---
+
+# PART B — post-broadcast (deployed 2026-11-09)
+
+## Deployed addresses (99901)
+
+| Contract | Address | tx |
+|---|---|---|
+| Ballast Safe (2-of-3, GnosisSafeL2) | `0xa4dCbAd7A34da4473040d9f0fE35990c458A727C` | `0x6fb02bbb…90c6e` |
+| ProtocolFeeVault | `0xA8fAd48376572075288ad60eE199b36bc445D1b0` | batch 2 |
+| BallastHookV5 | `0x3F5b07E06A16E0A1da416D29B64C1f9DC48A12Cc` | batch 2 |
+| BallastSeederV5 | `0x1A2b1e5361a5f1cc0c8fe48b983D8191F0fA4444` | batch 2 |
+| BallastFactoryV5 | `0x24c9582C31a7B890dC51D51e99E1283880Bc4bEE` | batch 2 |
+| acceptOwnership (approveHash / execTransaction) | — | `0xc586bb44…3bdd` / `0x92f3c3cc…37a9` |
+
+Deployer `0x1bd72E880C2222C756F1eAD9E40A14f7220391bc`. Ponder startBlock (L2) **3085053**.
+Explorer: official mainnet explorer is "coming soon"; community `elyscan.live` is live.
+
+## B1 — read-only verification (all ✓)
+
+- Code present on all four; **runtime bytecode matches the local build** (masked immutables)
+  via `script/verify-runtime-match.cjs`; the hook is additionally proven by its CREATE2 address.
+- Hook flags `addr & 0x3fff = 0x12cc` (AFTER_INITIALIZE | BEFORE_SWAP | BEFORE_SWAP_RETURNS_DELTA
+  | AFTER_SWAP | AFTER_SWAP_RETURNS_DELTA | BEFORE_REMOVE_LIQUIDITY). ✓
+- Wiring: `hook.seeder`=seeder, `hook.protocolVault`=vault, `hook.poolManager`=PM, fee 2000/100/1000;
+  `vault.hook`=hook, `vault.destination`=**Safe**; `seeder.hook`=hook, `seeder.poolManager`=PM.
+- Factory: `owner`=**Safe**, `pendingOwner`=0x0, hook/seeder/whype/poolManager correct,
+  `treasuryEnabled`=false, fee bounds 100/1000, openingTick −174300, WHYPE green.
+- Safe: owners = the 3, threshold 2, VERSION 1.3.0, slot0 = GnosisSafeL2 singleton.
+
+### Privileged roles on 99901 (who can do what)
+| Contract | Role | Holder |
+|---|---|---|
+| BallastFactoryV5 | `owner` (only `setGreenQuoteAsset`) | **Safe** `0xa4dCbAd7…727C` (2-of-3) |
+| BallastHookV5 | one-time `setSeeder`/`setProtocolVault` (already consumed) | deployer `0x1bd72E88…` — no ongoing power |
+| ProtocolFeeVault | none | — (funds can only go to the Safe) |
+| BallastSeederV5 | none | — (immutable, LP locked) |
+| FeeRouterV5 (per launch) | `onlyRealCreator` | the launching creator EOA |
+
+No proxies / pause / upgrade / rescue anywhere. PoolManager owner `0xA9aE0c5e…Da8D` is a
+contract (not our role; `protocolFeeController`=0x0, so no Uniswap protocol fee today).
+
+## B3 — rehearsal on a fresh fork against the REAL addresses (2/2 ✓)
+
+`test/elysium/Gen5RealFork.t.sol` forks 99901 and drives the live factory/hook/seeder/vault:
+launch → graduate → swap → **80/20 fee split** → `vault.sweep` to the **real Safe**, plus a
+limit order place/fill/withdraw. Both pass.
+
+## B2 — explorer source verification — BLOCKED (documented)
+
+The official mainnet explorer is "coming soon"; the kinetiq `/explorer` endpoint is a
+Vercel-gated frontend (no reachable Blockscout API), and Sourcify does not list 99901. So
+automated verification isn't possible yet. When the Blockscout explorer launches, verify with
+(constructor args from `broadcast/DeployElysium.s.sol/99901/run-latest.json`):
+```
+forge verify-contract <addr> <Contract> --verifier blockscout \
+  --verifier-url <explorer>/api/ --chain-id 99901 --watch
+```
+for BallastHookV5 / ProtocolFeeVault / BallastSeederV5 / BallastFactoryV5, plus one
+FeeRouterV5 + one BallastToken after the first launch. (No API key needed for Blockscout.)
+
+## B4 — apps wired for 99901
+
+- **SDK (`packages/sdk`): DONE** — additive `elysiumChain` + `ELYSIUM_ADDRESSES` + `ELYSIUM_START_BLOCK`
+  (gen-4/4663 paths untouched). Builds green; version 0.1.0; `npm publish --dry-run` OK — **Rizky publishes**.
+- **Single source of truth:** `deployments/elysium-mainnet.addresses.json` (written by
+  `contracts/script/sync-elysium-mainnet.cjs` from the broadcast artifact).
+- **Frontend / Indexer / Telegram bot: SCOPED, NOT shipped.** These are built for **gen-4 on
+  Robinhood Chain (4663)** and supporting gen-5/Elysium is a *feature build*, not a config add:
+  - Frontend (`web`) is **deliberately single-chain** (hard-wired to 4663; the code comments
+    record that a multi-chain wagmi config caused the launch bug they fixed). Serving 99901 needs
+    an architecture decision (separate env-selected deployment vs multi-chain) **and** the
+    **standard v4 UR swap encoding** (this repo's v4-periphery is the RH fork with `minHopPriceX36`;
+    the Elysium UR rejects it — confirmed at the struct level), **and** treasury-OFF UI. Plus the
+    "preview → prod" validation is Rizky's (no Vercel access here).
+  - Indexer (`indexer`, Ponder) is single-chain 4663 with gen-4 ABIs/events (the `Launched` event
+    carries a `treasury` param gen-5 doesn't have) and a treasury-centric schema. 99901 needs the
+    gen-5 ABIs, a second chain (startBlock 3085053), new handlers, and schema additions.
+  - Telegram bot lives inside `web` (`web/lib/tg`) and ships with the frontend. **No standalone
+    MCP server exists in the repo** (nothing to wire).
+
+  None of these can be safely shipped blind without their runtimes (Vercel preview, a Ponder DB,
+  bot restart) — all Rizky-side. The verified addresses + the sync script + the SDK constants give
+  every app a single, correct source to build against.
+
+## B5 — live smoke test (fork-validated, ready for Rizky)
+
+`contracts/script/SmokeElysium.s.sol` — fork-validated green (launch → graduate → buy →
+80/20 split → sweep to Safe → limit order place+cancel). Run on mainnet:
+```
+# from contracts/  (SMOKE_WHYPE optional, default 0.05 WHYPE of real value; also needs a little HYPE for gas)
+SMOKE_WHYPE=50000000000000000 forge script script/SmokeElysium.s.sol:SmokeElysium \
+  --rpc-url $ELY_MAINNET_RPC --account <KEYSTORE_CONTROLLING_0x1bd72E88> \
+  --sender 0x1bd72E880C2222C756F1eAD9E40A14f7220391bc --broadcast --slow
+```
+It creates a real "BallastSmoke/BSMOKE" launch + deploys a PoolSwapTest helper (buy path).
+After it runs, read-only checks (I run these): the `Launched`/`Graduated` events; the pool opened
+at ±174300; `hook.owed(feeRouter, WHYPE)` ≈ 80% and `hook.owed(vault, WHYPE)` ≈ 20% of the fee
+pre-sweep; the Safe's WHYPE balance rose by the protocol 20% after sweep.
+
+## Remaining for Rizky (in order)
+
+1. Publish the SDK (`npm publish` from `packages/sdk`, v0.1.0).
+2. Decide the frontend architecture (recommend a **separate env-selected Elysium deployment** to
+   preserve the single-chain design) and build: 99901 chain def (from the SDK), gen-5 launch flow,
+   **standard v4 UR swap encoding**, treasury-OFF UI, "Gen 5 · beta" label + the burn wording.
+   Preview on Vercel → verify launch/buy → promote to prod.
+3. Extend the Ponder indexer to 99901 (gen-5 ABIs + handlers + schema; startBlock 3085053) and run it.
+4. Verify contract source once the Blockscout explorer launches (B2 commands above).
+5. Run the smoke test (B5) before announcing.
