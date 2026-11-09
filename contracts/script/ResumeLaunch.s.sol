@@ -50,8 +50,7 @@ contract ResumeLaunch is Script {
             return;
         }
 
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         factory.graduate(token);
         vm.stopBroadcast();
 

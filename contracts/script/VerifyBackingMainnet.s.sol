@@ -41,22 +41,21 @@ contract VerifyBackingMainnet is Script {
     }
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address sgov = vm.envAddress("PROBE_STOCK_TOKEN");
         address feedAddr = vm.envAddress("SGOV_FEED");
         uint256 amount = vm.envUint("PROBE_AMOUNT");
-        require(IERC20(sgov).balanceOf(vm.addr(pk)) >= amount, "EOA lacks SGOV");
+        require(IERC20(sgov).balanceOf(msg.sender) >= amount, "EOA lacks SGOV");
 
-        (address treasury, address projectToken) = _deploy(pk, sgov, feedAddr, amount);
+        (address treasury, address projectToken) = _deploy(sgov, feedAddr, amount);
         _report(treasury, projectToken, sgov, feedAddr);
     }
 
-    function _deploy(uint256 pk, address sgov, address feedAddr, uint256 amount)
+    function _deploy(address sgov, address feedAddr, uint256 amount)
         internal
         returns (address treasury, address projectToken)
     {
-        address eoa = vm.addr(pk);
-        vm.startBroadcast(pk);
+        address eoa = msg.sender;
+        vm.startBroadcast();
         MockERC20 token = new MockERC20("Probe Project", "PROBE", 18);
         token.mint(eoa, 1_000e18); // totalSupply = 1,000 (backing denominator)
         AssetRegistry registry = new AssetRegistry(eoa);

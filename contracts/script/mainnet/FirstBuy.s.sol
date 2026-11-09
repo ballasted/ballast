@@ -43,12 +43,11 @@ contract FirstBuy is Script {
     bytes1 constant CMD_V4_SWAP = 0x10;
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address token = vm.envAddress("TOKEN");
         address hook = vm.envAddress("HOOK");
         uint128 amountIn = uint128(vm.envOr("SWAP_AMOUNT_IN", uint256(100_000_000_000_000))); // 0.0001 ETH
         uint128 minOut = uint128(vm.envOr("MIN_OUT", uint256(0)));
-        address eoa = vm.addr(pk);
+        address eoa = msg.sender;
 
         console2.log("=== FirstBuy ===");
         console2.log("EOA:", eoa);
@@ -89,7 +88,7 @@ contract FirstBuy is Script {
 
         uint256 tokenBefore = IERC20(token).balanceOf(eoa);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         IWETH(WETH).deposit{value: amountIn}();
         IWETH(WETH).approve(PERMIT2, amountIn);
         (bool ok,) = PERMIT2.call(

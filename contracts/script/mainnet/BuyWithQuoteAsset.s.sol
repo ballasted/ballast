@@ -38,13 +38,12 @@ contract BuyWithQuoteAsset is Script {
     bytes1 constant CMD_V4_SWAP = 0x10;
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address token = vm.envAddress("TOKEN");
         address hook = vm.envAddress("HOOK");
         address quoteAsset = vm.envAddress("QUOTE_ASSET");
         uint128 amountIn = uint128(vm.envUint("SWAP_AMOUNT_IN"));
         uint128 minOut = uint128(vm.envOr("MIN_OUT", uint256(0)));
-        address eoa = vm.addr(pk);
+        address eoa = msg.sender;
 
         console2.log("=== BuyWithQuoteAsset ===");
         console2.log("EOA:", eoa);
@@ -86,7 +85,7 @@ contract BuyWithQuoteAsset is Script {
 
         uint256 tokenBefore = IERC20(token).balanceOf(eoa);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         IERC20(quoteAsset).approve(PERMIT2, amountIn);
         (bool ok,) = PERMIT2.call(
             abi.encodeWithSignature(

@@ -38,7 +38,7 @@ import {ProtocolFeeVault} from "../src/elysium/ProtocolFeeVault.sol";
 ///
 /// Required env:
 ///   ELYSIUM_CONFIG         — path to the chain config, e.g. deployments/elysium-testnet.json
-///   DEPLOYER_PRIVATE_KEY   — funded deployer EOA (its address MUST be passed as --sender)
+///   (no private key env — the signer comes from --account <keystore> / --sender <addr>)
 ///
 /// Run (testnet):
 ///   ELYSIUM_CONFIG=deployments/elysium-testnet.json \
@@ -73,8 +73,9 @@ contract DeployElysium is Script {
         Cfg memory c = _loadConfig();
         validate(c);
 
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(pk);
+        // No private key read. The signer comes from --account/--sender; forge sets
+        // msg.sender (and tx.origin) to the --sender address for the whole run.
+        address deployer = msg.sender;
 
         console2.log("=== DeployElysium ===");
         console2.log("config          :", vm.envString("ELYSIUM_CONFIG"));
@@ -87,7 +88,7 @@ contract DeployElysium is Script {
         console2.log("burnDestination :", c.burnDestination);
         console2.log("protocolOwner   :", c.owner);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
 
         // 1. Mine + deploy the hook at a flag-valid address.
         bytes memory hookArgs = abi.encode(IPoolManager(c.poolManager), c.protocolFeeBps, c.minFeeBps, c.maxFeeBps);

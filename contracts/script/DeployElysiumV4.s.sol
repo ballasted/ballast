@@ -47,14 +47,14 @@ contract DeployElysiumV4 is Script {
         require(!isProduction, "DeployElysiumV4 is TESTNET-ONLY; mainnet uses official v4");
         require(cfgChainId == block.chainid, "config chainId != live chainId");
 
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(pk);
+        // No private key read. The signer comes from --account/--sender.
+        address deployer = msg.sender;
 
         console2.log("=== DeployElysiumV4 (TESTNET self-deploy) ===");
         console2.log("chainId  :", block.chainid);
         console2.log("deployer :", deployer);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
 
         poolManager = vm.deployCode("PoolManager.sol:PoolManager", abi.encode(deployer));
         swapRouter = vm.deployCode("PoolSwapTest.sol:PoolSwapTest", abi.encode(poolManager));

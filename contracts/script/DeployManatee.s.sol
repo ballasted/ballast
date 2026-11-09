@@ -40,13 +40,12 @@ import {BallastManatee} from "../src/manatee/BallastManatee.sol";
 ///     --constructor-args $(cast abi-encode "constructor(address)" <RENDERER_ADDR>)
 contract DeployManatee is Script {
     function run() external returns (ManateeRenderer renderer, BallastManatee nft) {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(pk);
+        address deployer = msg.sender;
 
         console2.log("Deployer / owner / royalty receiver:", deployer);
         console2.log("Royalty: 7.5% (750 / 10000), EIP-2981");
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         renderer = new ManateeRenderer();
         nft = new BallastManatee(address(renderer));
         vm.stopBroadcast();

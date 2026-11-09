@@ -37,7 +37,7 @@ contract DeploySplitter is Script {
         address[] memory defaultHooks = new address[](1);
         defaultHooks[0] = PRIOR_HOOK;
 
-        vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
+        vm.startBroadcast();
         splitter = new FeeSplitter(
             vm.envAddress("WETH"),
             vm.envAddress("NEXT_PUBLIC_BUYBACK_ADDRESS"),

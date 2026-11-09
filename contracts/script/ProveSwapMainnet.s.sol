@@ -47,9 +47,8 @@ contract ProveSwapMainnet is Script {
     bytes1 constant CMD_V4_SWAP = 0x10;
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         uint128 amountIn = uint128(vm.envOr("SWAP_AMOUNT_IN", uint256(10_000_000_000_000))); // 0.00001 WETH
-        address eoa = vm.addr(pk);
+        address eoa = msg.sender;
 
         console2.log("=== swap proof ===");
         console2.log("EOA:", eoa);
@@ -85,7 +84,7 @@ contract ProveSwapMainnet is Script {
 
         uint256 tokenBefore = IERC20(TOKEN).balanceOf(eoa);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         IWETH(WETH).deposit{value: amountIn}();
         IWETH(WETH).approve(PERMIT2, amountIn);
         IPermit2(PERMIT2).approve(WETH, ROUTER, amountIn, uint48(block.timestamp + 3600));

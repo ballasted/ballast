@@ -52,7 +52,7 @@ contract DeployBuyback is Script {
             hooks: IHooks(vm.envAddress("BUYBACK_POOL_HOOK"))
         });
 
-        vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
+        vm.startBroadcast();
         buyback = new BuybackBurner(
             IPoolManager(vm.envAddress("POOL_MANAGER")),
             vm.envAddress("WETH"),
