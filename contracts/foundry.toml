@@ -49,6 +49,10 @@ remappings = [
 fs_permissions = [
     { access = "read", path = "../docs/manatee-svgs-ref" },
     { access = "read", path = "./out" },
+    # Elysium gen-5: DeployElysium reads a chain config JSON here; its config-parse
+    # test reads a fixture under test/elysium/fixtures.
+    { access = "read", path = "./deployments" },
+    { access = "read", path = "./test/elysium/fixtures" },
 ]
 
 # Dedicated profile for re-verifying the vendored RamsesLocker's bytecode

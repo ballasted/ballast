@@ -37,11 +37,10 @@ import {ProbeVault} from "./probe/ProbeVault.sol";
 ///     --rpc-url robinhood_mainnet --broadcast -vvvv
 contract ProbeStockTokenCustody is Script {
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address token = vm.envAddress("PROBE_STOCK_TOKEN");
         uint256 amount = vm.envUint("PROBE_AMOUNT");
         address feed = vm.envOr("PROBE_FEED", address(0));
-        address eoa = vm.addr(pk);
+        address eoa = msg.sender;
 
         require(token != address(0), "PROBE_STOCK_TOKEN unset");
         require(amount > 0, "PROBE_AMOUNT unset");
@@ -57,7 +56,7 @@ contract ProbeStockTokenCustody is Script {
 
         _printDiagnostics(token, feed, eoa);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
 
         // --- deploy a contract to act as custodian --------------------------
         ProbeVault vault = new ProbeVault();

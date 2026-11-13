@@ -114,9 +114,6 @@ contract SetAssets is Script {
             Candidate("MCD", EQUITY_STALE, 1e17, MarketHours.UsEquities24_5)
         ];
 
-        uint256 pk;
-        if (!dryRun) pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-
         console2.log("=== SetAssets: expand allowlist ===");
         console2.log("registry:", address(registry));
         console2.log(dryRun ? "MODE: DRY-RUN (no writes)" : "MODE: BROADCAST");
@@ -150,7 +147,7 @@ contract SetAssets is Script {
         // Second pass: write. Verification already passed for every resolved entry,
         // so a revert here is a permissions problem (not owner), not bad data.
         if (!dryRun && toWrite > 0) {
-            vm.startBroadcast(pk);
+            vm.startBroadcast();
             for (uint256 i = 0; i < candidates.length; i++) {
                 if (tok[i] == address(0) || fd[i] == address(0)) continue;
                 Candidate memory c = candidates[i];

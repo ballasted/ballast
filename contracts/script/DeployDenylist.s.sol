@@ -25,10 +25,9 @@ import {MetadataDenylist} from "../src/MetadataDenylist.sol";
 contract DeployDenylist is Script {
     function run() external returns (MetadataDenylist denylist) {
         address owner = vm.envAddress("PROTOCOL_OWNER_ADDRESS");
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         require(owner != address(0), "PROTOCOL_OWNER_ADDRESS unset");
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         denylist = new MetadataDenylist(owner);
         vm.stopBroadcast();
 

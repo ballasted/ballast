@@ -48,7 +48,6 @@ contract DeployMainnet is Script {
     }
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         Env memory e = Env({
             owner: vm.envAddress("PROTOCOL_OWNER_ADDRESS"),
             vault: vm.envAddress("PROTOCOL_VAULT_ADDRESS"),
@@ -63,7 +62,7 @@ contract DeployMainnet is Script {
             "env unset"
         );
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         address registry = address(new AssetRegistry(e.owner));
         console2.log("AssetRegistry:  ", registry);
         console2.log("BackingLens:    ", address(new BackingLens(e.sequencer)));

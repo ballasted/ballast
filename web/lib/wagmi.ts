@@ -1,7 +1,7 @@
 import { fallback, http } from "viem";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { defineChain as defineAppKitChain, type AppKitNetwork } from "@reown/appkit/networks";
-import { robinhoodChain, PUBLIC_RPC_URL } from "./chain";
+import { activeChain, PUBLIC_RPC_URL, profile } from "./chain";
 
 // Wallet layer. Imported ONLY by the /app provider, so no web3 (or reown) code is
 // pulled into the marketing bundle.
@@ -56,26 +56,34 @@ export const RPC_TRANSPORT = isBrowser
 // still satisfying (a) — our proxy IS a real, working, absolute RPC endpoint.
 // Server-side this can't resolve `window.location`, but AppKit only runs client-side.
 const APPKIT_RPC_URL = isBrowser ? `${window.location.origin}/api/rpc` : PUBLIC_RPC_URL;
-export const robinhoodNetwork = defineAppKitChain({
-  id: 4663,
-  caipNetworkId: "eip155:4663",
+
+// The AppKit network mirrors the ACTIVE chain profile (robinhood | elysium) so the
+// wallet picker, the wagmi config, and wallet_addEthereumChain all describe the one
+// network this build targets. `activeNetwork` is the generic name; `robinhoodNetwork`
+// is kept as an alias for existing imports (appkit.ts).
+export const activeNetwork = defineAppKitChain({
+  id: activeChain.id,
+  caipNetworkId: profile.caipNetworkId,
   chainNamespace: "eip155",
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  name: activeChain.name,
+  nativeCurrency: activeChain.nativeCurrency,
   rpcUrls: { default: { http: [APPKIT_RPC_URL] } },
-  blockExplorers: { default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" } },
+  blockExplorers: { default: { name: "Explorer", url: profile.explorerUrl } },
   contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
 }) as AppKitNetwork;
 
+// Back-compat alias.
+export const robinhoodNetwork = activeNetwork;
+
 export const wagmiAdapter = new WagmiAdapter({
-  networks: [robinhoodNetwork],
+  networks: [activeNetwork],
   // A non-empty string is required to construct the adapter; if the env var is
   // unset the AppKit modal isn't created (see lib/appkit.ts) and the connect
   // button falls back to injected wallets, so this placeholder is never used to
   // actually reach the WalletConnect relay.
   projectId: projectId || "ballast-no-projectid",
   ssr: true,
-  transports: { [robinhoodChain.id]: RPC_TRANSPORT },
+  transports: { [activeChain.id]: RPC_TRANSPORT },
 });
 
 export const wagmiConfig = wagmiAdapter.wagmiConfig;

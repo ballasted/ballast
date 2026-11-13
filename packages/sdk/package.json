@@ -1,6 +1,6 @@
 {
   "name": "ballast-sdk",
-  "version": "0.1.0-preview",
+  "version": "0.1.0",
   "description": "Preview SDK for the Ballast launchpad on Robinhood Chain (4663). Reads, quotes, writes, and typed event decoders.",
   "type": "module",
   "license": "MIT",

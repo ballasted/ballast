@@ -29,6 +29,8 @@ import { decodeTgLog, buybackBurnedAbi, type TgEventWithMeta } from "@/lib/tg/de
 import { sendMessage, sendAnimation, type AnimKind } from "@/lib/tg/telegram";
 import { classifySwap } from "@/lib/tg/swapDirection";
 import * as fmt from "@/lib/tg/format";
+import { isElysium } from "@/lib/chainProfile";
+import { pollElysium } from "@/lib/tg/pollV5";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,10 +74,18 @@ export async function GET(req: Request) {
   if (!TG.enabled) return NextResponse.json({ skipped: "TG_BOT_ENABLED is off" });
   if (!TG.dryRun && !botConfigured()) return NextResponse.json({ skipped: "bot not configured (token/chat)" });
   if (!KV_CONFIGURED) return NextResponse.json({ skipped: "KV not configured (cursor/dedup required)" });
-  if (!POOL_MANAGER_ADDRESS || FACTORY_ADDRESSES.length === 0) return NextResponse.json({ skipped: "chain addresses not configured" });
 
   const client = serverClient();
   const latest = await client.getBlockNumber();
+
+  // Chain-aware dispatch. The app ships as TWO Vercel deployments of one codebase
+  // selected by NEXT_PUBLIC_CHAIN; the bot posts for whichever chain THIS
+  // deployment targets. On Elysium (gen-5) run the separate gen-5 pipeline, which
+  // owns its own KV cursor/pool keys so the two deployments never clobber each
+  // other. On Robinhood (gen-4) fall through to the unchanged path below.
+  if (isElysium) return NextResponse.json(await pollElysium(client, latest));
+
+  if (!POOL_MANAGER_ADDRESS || FACTORY_ADDRESSES.length === 0) return NextResponse.json({ skipped: "chain addresses not configured" });
 
   // First run ever: seed the pool map (reads only) and set the cursor at the tip.
   // NEVER backfill history into the channel.

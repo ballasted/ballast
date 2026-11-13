@@ -29,10 +29,9 @@ contract AcquireNvda is Script {
     address constant POOL = 0xF8996E22ac7A67fAe741830Ad83B3b4D5e5de203;
 
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         uint256 amountIn = vm.envOr("SWAP_AMOUNT_IN", uint256(200_000_000_000_000)); // 0.0002 ETH
         uint256 minOut = vm.envOr("MIN_NVDA_OUT", uint256(0));
-        address eoa = vm.addr(pk);
+        address eoa = msg.sender;
 
         console2.log("=== AcquireNvda ===");
         console2.log("EOA:", eoa);
@@ -41,7 +40,7 @@ contract AcquireNvda is Script {
 
         uint256 nvdaBefore = IERC20(NVDA).balanceOf(eoa);
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         IWETH(WETH).deposit{value: amountIn}();
         RamsesSwapHelper helper = new RamsesSwapHelper(POOL, WETH, NVDA);
         IWETH(WETH).approve(address(helper), amountIn);

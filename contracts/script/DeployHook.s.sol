@@ -29,7 +29,6 @@ contract DeployHook is Script {
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
     function run() external returns (FeeConfig cfg, BallastHook hook) {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address owner = vm.envAddress("PROTOCOL_OWNER_ADDRESS");
         address vault = vm.envAddress("PROTOCOL_VAULT_ADDRESS");
         address pm = vm.envAddress("POOL_MANAGER");
@@ -41,7 +40,7 @@ contract DeployHook is Script {
                 | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         cfg = new FeeConfig(owner, vault);
         // Mine AFTER cfg exists — the hook's constructor args include cfg's address.
         (address hookAddr, bytes32 salt) =

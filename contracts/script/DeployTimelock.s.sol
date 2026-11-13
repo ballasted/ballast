@@ -35,7 +35,6 @@ import {TimelockController} from "openzeppelin-contracts/contracts/governance/Ti
 ///                          withdrawals elsewhere in this codebase
 contract DeployTimelock is Script {
     function run() external {
-        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address safe = vm.envAddress("SAFE_ADDRESS");
         uint256 minDelay = vm.envOr("MIN_DELAY_SECONDS", uint256(7 days));
 
@@ -49,7 +48,7 @@ contract DeployTimelock is Script {
         address[] memory executors = new address[](1);
         executors[0] = safe;
 
-        vm.startBroadcast(pk);
+        vm.startBroadcast();
         TimelockController timelock = new TimelockController(minDelay, proposers, executors, address(0));
         vm.stopBroadcast();
 

@@ -58,3 +58,39 @@ export const ALL_FACTORIES: Address[] = [ADDRESSES.factory, ...PRIOR_FACTORIES];
 
 /** Extra (prior-gen) hooks whose pools/fees still need reading, if any. */
 export const PRIOR_HOOKS: Address[] = [];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gen-5 — Elysium mainnet (99901), "Gen 5 · beta". A DIFFERENT contract set than
+// gen-4: no treasury, no backing lens, no asset registry. WHYPE is the only quote
+// asset. All addresses verified on 99901 and proven by a fork rehearsal + an
+// on-chain runtime-bytecode match against the local build (see
+// docs/reports/elysium-mainnet-2026-11-09.md). Keep in sync with
+// deployments/elysium-mainnet.addresses.json (the canonical source the sync script
+// writes). Per-launch addresses (token/feeRouter/pool) are resolved from the
+// factory's Launched event — never hardcoded.
+// ─────────────────────────────────────────────────────────────────────────────
+export const ELYSIUM_ADDRESSES = {
+  // ── Gen-5 core (deployed 2026-11-09) ──
+  factory: "0x24c9582C31a7B890dC51D51e99E1283880Bc4bEE", // BallastFactoryV5
+  hook: "0x3F5b07E06A16E0A1da416D29B64C1f9DC48A12Cc", // BallastHookV5 (flags 0x12cc)
+  seeder: "0x1A2b1e5361a5f1cc0c8fe48b983D8191F0fA4444", // BallastSeederV5
+  protocolFeeVault: "0xA8fAd48376572075288ad60eE199b36bc445D1b0", // ProtocolFeeVault
+  safe: "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C", // Ballast Safe (2-of-3, burn dest + factory owner)
+  dead: "0x000000000000000000000000000000000000dEaD",
+
+  // ── Tokens ──
+  whype: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81", // the only green quote asset
+  usdc: "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65", // USDC.e (reference only)
+
+  // ── Uniswap v4 + infra (verified on 99901) ──
+  poolManager: "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1",
+  universalRouter: "0x1B341FDD55d56F8E08409A2C25DDFad93Eb03C1a", // UR v2.2.0; Elysium swaps need STANDARD v4 encoding (NOT 4663 minHopPriceX36)
+  permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11",
+  // positionManager / stateView / v4Quoter: not yet sourced for 99901 (reads/LP only).
+} as const satisfies Record<string, Address>;
+
+export type ElysiumAddresses = typeof ELYSIUM_ADDRESSES;
+
+/** Factory deploy block on 99901 (L2) — indexer/backfill anchor. */
+export const ELYSIUM_START_BLOCK = 3085053 as const;
