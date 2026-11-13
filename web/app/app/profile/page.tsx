@@ -153,7 +153,7 @@ function Stat({ label, value, balance }: { label: string; value: string; balance
 
 function ProfileLaunch({ p }: { p: Project }) {
   return (
-    <Link href={`/app/token/${p.token}`} className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint">
+    <Link href={`/app/token/${p.token}`} className="card card-hover flex items-center justify-between gap-3 p-4">
       <div className="min-w-0">
         <div className="truncate font-semibold text-text-primary">{p.symbol ?? "—"}</div>
         <div className="truncate metric-secondary">{p.name ?? "Unnamed project"}</div>

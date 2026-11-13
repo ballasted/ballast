@@ -189,7 +189,7 @@ export default function BackingIndexPage() {
         </div>
       )}
 
-      <p className="rounded-input bg-card px-3 py-2 text-xs text-text-muted">
+      <p className="rounded-input bg-bg px-3 py-2 text-xs text-text-muted">
         Holding a token gives no claim, redemption right, or entitlement to treasury assets.
       </p>
     </div>

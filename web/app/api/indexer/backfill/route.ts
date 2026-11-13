@@ -38,6 +38,10 @@ export async function POST(req: Request) {
   if (!indexerChainReady()) return NextResponse.json({ error: "chain addresses not configured" }, { status: 503 });
 
   const url = new URL(req.url);
+  // A distinct cursor name lets a manual catch-up run independently of the 2-min
+  // cron (which uses DEFAULT_CURSOR), so the two never fight over one cursor row.
+  // Rows are idempotent, so both populating the same tables is safe.
+  const cursorName = (url.searchParams.get("cursor") || DEFAULT_CURSOR).slice(0, 40);
   const blocks = bigParam(url.searchParams.get("blocks"), DEFAULT_BLOCKS, MAX_BLOCKS);
   const iterRaw = Number(url.searchParams.get("iterations") ?? DEFAULT_ITERATIONS);
   const iterations = Number.isFinite(iterRaw) ? Math.min(Math.max(1, Math.floor(iterRaw)), MAX_ITERATIONS) : DEFAULT_ITERATIONS;
@@ -51,9 +55,9 @@ export async function POST(req: Request) {
 
   // reset=1 restarts the backfill from genesis (after an indexing-logic fix).
   // Row inserts are idempotent, so a re-scan only fills gaps.
-  if (url.searchParams.get("reset") === "1") await resetCursor(DEFAULT_CURSOR);
+  if (url.searchParams.get("reset") === "1") await resetCursor(cursorName);
 
-  const cursor = await getCursor(DEFAULT_CURSOR);
+  const cursor = await getCursor(cursorName);
   let from = cursor === null ? genesisBlock() : cursor + 1n;
   if (from > head) {
     return NextResponse.json({ done: true, moreWork: false, cursor: cursor?.toString() ?? null, head: head.toString() });
@@ -64,7 +68,7 @@ export async function POST(req: Request) {
   try {
     for (let i = 0; i < iterations && from <= head; i++) {
       const to = from + blocks - 1n > head ? head : from + blocks - 1n;
-      const res = await indexRange(from, to, DEFAULT_CURSOR);
+      const res = await indexRange(from, to, cursorName);
       ranges.push({ from: res.fromBlock, to: res.toBlock, counts: res.counts });
       lastTo = to;
       from = to + 1n;
@@ -72,7 +76,7 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error("[indexer/backfill] failed", (e as Error).message);
     return NextResponse.json(
-      { ok: false, error: "backfill failed", cursor: (await getCursor(DEFAULT_CURSOR))?.toString() ?? null, ranges },
+      { ok: false, error: "backfill failed", cursor: (await getCursor(cursorName))?.toString() ?? null, ranges },
       { status: 500 },
     );
   }

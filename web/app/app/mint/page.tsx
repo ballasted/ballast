@@ -144,7 +144,7 @@ function Minted({ tokenId, txHash }: { tokenId?: number; txHash?: `0x${string}` 
         {tokenId != null && <span className="font-mono text-sm text-bone">#{tokenId}</span>}
       </div>
 
-      <div className="relative aspect-square w-full max-w-sm overflow-hidden rounded-card border border-border bg-card">
+      <div className="card relative aspect-square w-full max-w-sm overflow-hidden">
         {art.svg ? (
           // Inlined, NOT via <img src="data:…">. Our CSP already allows data: images
           // (img-src 'self' data: blob: https:), but the ;utf8 data-URI form renders

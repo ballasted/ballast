@@ -33,3 +33,10 @@ docs/v1-claim-*.csv
 # in-memory to drive the production UI via Playwright. Never commit (the tracked
 # e2e version web/e2e/wallet-bridge.mjs uses only Anvil's public dev key).
 web/scripts/_wallet-bridge.mjs
+
+# Creator Fund — derived scan cache + generated Safe payout batches. The leaderboard
+# outputs (web/lib/creator-fund/data/*.json) and confirmed-winners.json ARE committed
+# (the app imports them); the incremental state cache and generated payout JSON are
+# machine-local / regenerated, so they stay out of git.
+data/creator-fund/
+scripts/creator-fund/payouts/*.json

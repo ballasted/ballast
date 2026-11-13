@@ -218,3 +218,213 @@ export async function getAnalyticsSeries(days = 30): Promise<AnalyticsDay[] | nu
     return null;
   }
 }
+
+// ── protocol-wide analytics (Analytics page) ─────────────────────────────────
+
+export type FeeFlowBase = {
+  volumeUsdAll: number;
+  parentBurnTokens: number; // $BALLAST burned via FeeRouter parent-burn families
+  buybackRuns: number;
+  buybackBallastTotal: number; // $BALLAST bought+burned by the protocol buyback
+  buybackByAsset: { asset: string; amountIn: number; ballastBought: number }[];
+};
+
+/** Raw fee-flow inputs from the indexer. USD fee splits are layered on in the
+ *  endpoint from the LIVE FeeConfig bps (never hardcoded here). */
+export async function getFeeFlowBase(): Promise<FeeFlowBase | null> {
+  try {
+    const volRows = await query<{ v: string }>(`SELECT coalesce(sum(usd_size), 0) AS v FROM swaps`);
+    if (volRows === null) return null;
+    const pbRows = await query<{ v: string }>(
+      `SELECT coalesce(sum(amount), 0) AS v FROM fee_distributions WHERE kind = 'parent_burn'`,
+    );
+    const bbCount = await query<{ n: string }>(`SELECT count(*) AS n FROM buyback_runs`);
+    const bbTotal = await query<{ v: string }>(`SELECT coalesce(sum(amount_burned), 0) AS v FROM buyback_runs`);
+    const bbByAsset = await query<{ asset: string | null; amt_in: string; bought: string }>(
+      `SELECT asset, coalesce(sum(amount_in), 0) AS amt_in, coalesce(sum(amount_burned), 0) AS bought
+       FROM buyback_runs GROUP BY asset ORDER BY bought DESC`,
+    );
+    return {
+      volumeUsdAll: num(volRows[0]?.v),
+      parentBurnTokens: num(pbRows?.[0]?.v),
+      buybackRuns: Math.floor(num(bbCount?.[0]?.n)),
+      buybackBallastTotal: num(bbTotal?.[0]?.v),
+      buybackByAsset: (bbByAsset ?? []).map((r) => ({
+        asset: (r.asset ?? "").toLowerCase(),
+        amountIn: num(r.amt_in),
+        ballastBought: num(r.bought),
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type BurnByToken = { token: string; symbol: string | null; burnedTokens: number };
+export type BuybackRun = {
+  burner: string;
+  asset: string | null;
+  amountIn: number;
+  ballastBought: number;
+  ts: number;
+  tx: string;
+};
+export type BurnTracker = { byToken: BurnByToken[]; totalBurned: number; buybacks: BuybackRun[] };
+
+/** Cumulative $BALLAST at the dead address (from indexed Transfer→dead) per token,
+ *  plus the full buyback-run list. */
+export async function getBurnTracker(limit = 50): Promise<BurnTracker | null> {
+  try {
+    const byToken = await query<{ token: string; symbol: string | null; v: string }>(
+      `SELECT b.token, l.symbol, coalesce(sum(b.amount), 0) AS v
+       FROM burns b LEFT JOIN launches l ON l.token = b.token
+       GROUP BY b.token, l.symbol ORDER BY v DESC`,
+    );
+    if (byToken === null) return null;
+    const runs = await query<{ burner: string; asset: string | null; amount_in: string; amount_burned: string; ts: string; tx: string }>(
+      `SELECT burner, asset, amount_in, amount_burned, extract(epoch FROM ts) AS ts, tx
+       FROM buyback_runs ORDER BY block DESC, log_index DESC LIMIT $1`,
+      [Math.min(Math.max(1, Math.floor(limit)), 500)],
+    );
+    const tokens = byToken.map((r) => ({ token: r.token, symbol: r.symbol, burnedTokens: num(r.v) }));
+    return {
+      byToken: tokens,
+      totalBurned: tokens.reduce((s, t) => s + t.burnedTokens, 0),
+      buybacks: (runs ?? []).map((r) => ({
+        burner: r.burner,
+        asset: r.asset ? r.asset.toLowerCase() : null,
+        amountIn: num(r.amount_in),
+        ballastBought: num(r.amount_burned),
+        ts: Math.floor(num(r.ts)),
+        tx: r.tx,
+      })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type TopToken = { token: string; symbol: string | null; volumeUsd: number; trades: number };
+
+export async function getTopTokensByVolume(limit = 10): Promise<TopToken[] | null> {
+  try {
+    const rows = await query<{ token: string; symbol: string | null; v: string; n: string }>(
+      `SELECT s.token, l.symbol, coalesce(sum(s.usd_size), 0) AS v, count(*) AS n
+       FROM swaps s LEFT JOIN launches l ON l.token = s.token
+       GROUP BY s.token, l.symbol
+       HAVING coalesce(sum(s.usd_size), 0) > 0
+       ORDER BY v DESC LIMIT $1`,
+      [Math.min(Math.max(1, Math.floor(limit)), 100)],
+    );
+    if (rows === null) return null;
+    return rows.map((r) => ({ token: r.token, symbol: r.symbol, volumeUsd: num(r.v), trades: Math.floor(num(r.n)) }));
+  } catch {
+    return null;
+  }
+}
+
+export type TopCreator = { creator: string; tokenCount: number; volumeUsd: number };
+
+/** Creators ranked by the trading volume of the tokens they launched. The fee USD
+ *  is layered on in the endpoint from the live fee + creator-split bps. */
+export async function getTopCreatorsByVolume(limit = 10): Promise<TopCreator[] | null> {
+  try {
+    const rows = await query<{ creator: string; tokens: string; v: string }>(
+      `SELECT l.creator, count(DISTINCT l.token) AS tokens, coalesce(sum(s.usd_size), 0) AS v
+       FROM launches l JOIN swaps s ON s.token = l.token
+       GROUP BY l.creator
+       HAVING coalesce(sum(s.usd_size), 0) > 0
+       ORDER BY v DESC LIMIT $1`,
+      [Math.min(Math.max(1, Math.floor(limit)), 100)],
+    );
+    if (rows === null) return null;
+    return rows.map((r) => ({ creator: r.creator, tokenCount: Math.floor(num(r.tokens)), volumeUsd: num(r.v) }));
+  } catch {
+    return null;
+  }
+}
+
+export type Family = { parent: string; routers: string[]; burnedTokens: number };
+
+/** FeeRouter parent-burn families: each parent token and the child routers that
+ *  have burned it. Empty until a family fee-router is deployed (honest). */
+export async function getFamilies(): Promise<Family[] | null> {
+  try {
+    const rows = await query<{ parent: string; routers: string[]; v: string }>(
+      `SELECT recipient AS parent, array_agg(DISTINCT router) AS routers, coalesce(sum(amount), 0) AS v
+       FROM fee_distributions WHERE kind = 'parent_burn' AND recipient IS NOT NULL
+       GROUP BY recipient ORDER BY v DESC`,
+    );
+    if (rows === null) return null;
+    return rows.map((r) => ({
+      parent: r.parent,
+      routers: (r.routers ?? []).filter(Boolean),
+      burnedTokens: num(r.v),
+    }));
+  } catch {
+    return null;
+  }
+}
+
+export type RoundupStats = {
+  count: number;
+  ethIn: number;
+  byStock: { stock: string; count: number; stockOut: number }[];
+};
+
+export async function getRoundupStats(): Promise<RoundupStats | null> {
+  try {
+    const totals = await query<{ n: string; eth: string }>(
+      `SELECT count(*) AS n, coalesce(sum(eth_in), 0) AS eth FROM roundups`,
+    );
+    if (totals === null) return null;
+    const byStock = await query<{ stock: string; n: string; out: string }>(
+      `SELECT stock, count(*) AS n, coalesce(sum(stock_out), 0) AS out
+       FROM roundups GROUP BY stock ORDER BY out DESC`,
+    );
+    return {
+      count: Math.floor(num(totals[0]?.n)),
+      ethIn: num(totals[0]?.eth),
+      byStock: (byStock ?? []).map((r) => ({ stock: r.stock.toLowerCase(), count: Math.floor(num(r.n)), stockOut: num(r.out) })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type LaunchLite = { token: string; treasury: string; symbol: string | null; creator: string };
+
+/** All indexed launches (token/treasury/creator/symbol) for endpoint-side chain
+ *  aggregation (e.g. per-stock treasury exposure via BackingLens). */
+export async function getLaunchesLite(): Promise<LaunchLite[] | null> {
+  try {
+    const rows = await query<{ token: string; treasury: string; symbol: string | null; creator: string }>(
+      `SELECT token, treasury, symbol, creator FROM launches ORDER BY launch_block ASC`,
+    );
+    if (rows === null) return null;
+    return rows.map((r) => ({ token: r.token, treasury: r.treasury, symbol: r.symbol, creator: r.creator }));
+  } catch {
+    return null;
+  }
+}
+
+export type PairingRow = { token: string; hasWeth: boolean; hasStock: boolean };
+
+/** Per-token pool pairing (does the token have a WETH pool, a stock pool, or both),
+ *  so the endpoint can classify the pairing mix. */
+export async function getPairingRows(weth: string): Promise<PairingRow[] | null> {
+  try {
+    const rows = await query<{ token: string; has_weth: boolean; has_stock: boolean }>(
+      `SELECT l.token,
+         bool_or(p.quote_asset = $1) AS has_weth,
+         bool_or(p.quote_asset IS NOT NULL AND p.quote_asset <> $1) AS has_stock
+       FROM launches l LEFT JOIN pools p ON p.token = l.token
+       GROUP BY l.token`,
+      [weth.toLowerCase()],
+    );
+    if (rows === null) return null;
+    return rows.map((r) => ({ token: r.token, hasWeth: Boolean(r.has_weth), hasStock: Boolean(r.has_stock) }));
+  } catch {
+    return null;
+  }
+}

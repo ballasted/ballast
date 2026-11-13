@@ -10,6 +10,7 @@ import { useProjectMeta } from "@/hooks/useProjectMeta";
 import { BackingPanel } from "@/components/app/BackingPanel";
 import { PendingWithdrawalBanner } from "@/components/app/PendingWithdrawalBanner";
 import { CreatorWithdrawalPanel } from "@/components/app/CreatorWithdrawalPanel";
+import { PendingDepositsCard } from "@/components/app/token/PendingDepositsCard";
 import { BasketSection } from "@/components/app/token/BasketSection";
 import { OpenTreasurySection } from "@/components/app/token/OpenTreasurySection";
 import { RamsesLockSection } from "@/components/app/token/RamsesLockSection";
@@ -94,6 +95,11 @@ export default function BackingDetailPage() {
               announced, before any asset moves (build-spec §9). Not creator-gated. */}
           {pending && <PendingWithdrawalBanner pending={pending} now={now} />}
           <BackingPanel backing={backing} symbol={symbol ?? ""} now={now} />
+          {/* Third-party deposit proposals awaiting the creator's acceptance (e.g. a
+              Creator Fund prize proposed by the Safe). Public disclosure for all;
+              Accept/Decline only for the connected creator. Not gen-gated — any
+              treasury can receive a proposeDeposit. */}
+          <PendingDepositsCard token={token} treasury={treasury} creator={creator} symbol={symbol} now={now} />
           {/* Creator treasury controls — gen-4 only. A non-creator visitor on a
               gen-4 token still sees BasketSection's read-only composition and the
               pending-withdrawal disclosure; they just can't act. gen-1..3 get the

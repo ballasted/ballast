@@ -93,7 +93,7 @@ function FlaggedRow({ token, symbol, result }: { token: Address; symbol?: string
   return (
     <Link
       href={`/app/token/${token}`}
-      className="card flex items-center justify-between gap-3 p-4 transition-colors hover:border-text-faint"
+      className="card card-hover flex items-center justify-between gap-3 p-4"
     >
       <span className="font-mono text-sm text-text-primary">{symbol ? `$${symbol}` : shortAddress(token)}</span>
       <span className="flex flex-wrap justify-end gap-1.5">
