@@ -1,43 +1,21 @@
-import { defineChain } from "viem";
-
-// Robinhood Chain — Arbitrum Orbit L2. This is the ONLY network BALLAST supports,
-// so it is the only chain defined here and the only chain in the wagmi config.
+// This module USED to hardcode Robinhood Chain 4663. It is now a thin re-export of
+// the active chain profile (lib/chainProfile.ts), which selects the chain at build
+// time from NEXT_PUBLIC_CHAIN (robinhood | elysium). Kept as the stable import path
+// every hook/component already uses (`activeChain`, `robinhoodChain`, PUBLIC_RPC_URL).
 //
-// Values from docs/robinhood-chain-research.md: mainnet id 4663, gas token ETH,
-// ~100ms blocks, Multicall3 canonical. The public RPC is rate-limited — set
-// NEXT_PUBLIC_RPC_URL to a dedicated endpoint (Alchemy) in prod.
-//
-// Why a single chain: wagmi treats a connected chain that is absent from its
-// `chains` array as unsupported and falls back to `chains[0]`. The previous
-// config listed BOTH a mainnet and a testnet entry and toggled the *active* one
-// off NEXT_PUBLIC_USE_MAINNET (defaulted false → testnet 46630). A wallet on real
-// mainnet 4663 therefore mismatched the app's target and wagmi reported the wrong
-// id — the "undefined"/id-1 fallback the launch bug surfaced. One chain, no toggle.
+// Robinhood stays the default — an unset NEXT_PUBLIC_CHAIN behaves exactly as before.
+import { activeChain, robinhoodChain, elysiumChain, profile } from "./chainProfile";
 
-// Public Robinhood RPC. Two jobs: it's what wallet_addEthereumChain hands the
-// user's wallet (which must reach it directly — a same-origin proxy is useless
-// there), and it's the client transport's fallback. The app's OWN reads go
-// through the /api/rpc proxy (lib/wagmi.ts), which holds the dedicated RPC key
-// server-side — so no RPC key ever reaches the browser bundle.
-export const PUBLIC_RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
+export { activeChain, robinhoodChain, elysiumChain, profile };
+export { isElysium, isRobinhood, CHAIN_KEY } from "./chainProfile";
+export type { ChainProfile, ChainKey, ChainFeatures } from "./chainProfile";
 
-export const robinhoodChain = defineChain({
-  id: 4663,
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: {
-    default: { http: [PUBLIC_RPC_URL] },
-    public: { http: [PUBLIC_RPC_URL] },
-  },
-  blockExplorers: {
-    default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
-  },
-  contracts: {
-    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
-  },
-});
+// The absolute, wallet-reachable RPC for the active chain. Two jobs: it's what
+// wallet_addEthereumChain hands the wallet (which must reach it directly) and it's
+// the client transport's fallback. The app's OWN reads still go through /api/rpc.
+export const PUBLIC_RPC_URL = profile.publicRpcUrl;
 
-// The app targets exactly one network. `activeChain` and `robinhoodMainnet` are
-// kept as aliases so existing imports keep working without threading a choice.
-export const activeChain = robinhoodChain;
-export const robinhoodMainnet = robinhoodChain;
+// `robinhoodMainnet` alias kept for back-compat with older imports. It resolves to
+// the ACTIVE chain (not necessarily Robinhood) so callers targeting "the chain this
+// app runs on" keep working on both deployments.
+export const robinhoodMainnet = activeChain;

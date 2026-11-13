@@ -4,15 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { parseUnits, maxUint160, encodeFunctionData, type Address } from "viem";
 import { erc20Abi, permit2Abi, quoterAbi, stateViewAbi } from "@/lib/abis";
+import { ballastHookV5Abi } from "@/lib/abisV5";
 import {
   WETH_ADDRESS,
   QUOTER_ADDRESS,
   UNIVERSAL_ROUTER_ADDRESS,
   PERMIT2_ADDRESS,
   STATE_VIEW_ADDRESS,
+  POOL_MANAGER_ADDRESS,
   isSwapConfigured,
 } from "@/lib/contracts";
-import { activeChain } from "@/lib/chain";
+import { activeChain, isElysium } from "@/lib/chain";
+import { poolId as computePoolId } from "@/lib/pool";
+import { quoteElysiumExactIn } from "@/lib/elysiumQuote";
 import { poolKeyForToken, candidatePoolKeys, buyZeroForOne, sellZeroForOne } from "@/lib/pool";
 import { buildV4SwapInput, buildErc20SwapInput, swapDeadline, computeMinOut, type SwapSide } from "@/lib/swap";
 import { universalRouterExecuteAbi } from "@/lib/robinhoodRouter";
@@ -140,8 +144,71 @@ export function useSwap(
   // zero extra reads), else the resolved live one (undefined until the probe lands).
   const hookForKey = candidates.length <= 1 ? candidates[0]?.hook : resolvedHook;
 
+  // Elysium (gen-5) has no V4Quoter deployed: quote from live pool state read via
+  // PoolManager.extsload + single-tick v4 math (lib/elysiumQuote.ts), using the
+  // pool's creator fee. Used only when no quoter address is configured on an Elysium
+  // build; if one is ever set, the standard quoter path below runs instead.
+  const useElysiumQuote = isElysium && !QUOTER_ADDRESS;
+  useEffect(() => {
+    if (!useElysiumQuote) return;
+    let cancelled = false;
+    if (
+      !token ||
+      !publicClient ||
+      !quoteAsset ||
+      amountIn === 0n ||
+      !hookForKey ||
+      !POOL_MANAGER_ADDRESS
+    ) {
+      setQuote(undefined);
+      setQuoteError(undefined);
+      return;
+    }
+    const key = poolKeyForToken(token, quoteAsset, hookForKey);
+    if (!key) return;
+    setPhase("quoting");
+    (async () => {
+      try {
+        const feeBps = (await publicClient.readContract({
+          address: hookForKey,
+          abi: ballastHookV5Abi,
+          functionName: "poolFeeBps",
+          args: [computePoolId(key)],
+        })) as number;
+        const out = await quoteElysiumExactIn({
+          client: publicClient,
+          poolManager: POOL_MANAGER_ADDRESS,
+          token,
+          quoteAsset,
+          hook: hookForKey,
+          feeBps: Number(feeBps),
+          side,
+          amountIn,
+        });
+        if (cancelled) return;
+        if (out > 0n) {
+          setQuote(out);
+          setQuoteError(undefined);
+        } else {
+          setQuote(undefined);
+          setQuoteError("No pool liquidity");
+        }
+        setPhase("idle");
+      } catch (e) {
+        if (cancelled) return;
+        setQuote(undefined);
+        setQuoteError(e instanceof Error ? e.message.split("\n")[0] : "No quote");
+        setPhase("idle");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [useElysiumQuote, token, publicClient, amountIn, side, hookForKey, quoteAsset]);
+
   // Quote via V4Quoter (revert-based; simulate to read the return value).
   useEffect(() => {
+    if (useElysiumQuote) return;
     let cancelled = false;
     if (!token || !publicClient || !QUOTER_ADDRESS || !quoteAsset || amountIn === 0n || !hookForKey) {
       setQuote(undefined);
@@ -180,7 +247,7 @@ export function useSwap(
     return () => {
       cancelled = true;
     };
-  }, [token, publicClient, amountIn, side, hookForKey, quoteAsset]);
+  }, [useElysiumQuote, token, publicClient, amountIn, side, hookForKey, quoteAsset]);
 
   const minOut = computeMinOut(quote, slippageBps);
 

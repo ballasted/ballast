@@ -1,21 +1,19 @@
 import "server-only";
-import { createPublicClient, http, defineChain, type Address } from "viem";
+import { createPublicClient, http, type Address } from "viem";
 import { ballastFactoryAbi } from "@/lib/abis";
 import { FACTORY_ADDRESSES } from "@/lib/contracts";
+import { activeChain, profile } from "@/lib/chainProfile";
 
 // Server-side chain reads for the API routes (trending, analytics). Enumerates the
 // multi-factory launch union the SAME way useProjects/heroStats do, so every
 // server-derived total reconciles with what Discover lists. Single source of the
 // viem client + chain def for server routes.
-const RPC = process.env.RPC_UPSTREAM_URL || "https://rpc.mainnet.chain.robinhood.com";
+//
+// Chain-aware: resolves the active chain (robinhood | elysium) from the profile, so
+// an Elysium deployment reads Elysium. RPC_UPSTREAM_URL overrides the default.
+const RPC = process.env.RPC_UPSTREAM_URL || profile.publicRpcUrl;
 
-const chain = defineChain({
-  id: 4663,
-  name: "Robinhood Chain",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [RPC] } },
-  contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
-});
+const chain = activeChain;
 
 export function serverClient() {
   return createPublicClient({ chain, transport: http(RPC) });

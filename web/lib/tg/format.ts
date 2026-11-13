@@ -3,10 +3,15 @@
 // rules: no "yield/reward/floor/guaranteed/safe"; burns are "sent to the dead
 // address"; the bot states facts only (no price/market-cap in v1).
 
+import { profile } from "@/lib/chainProfile";
+
 export type Split = { creatorBps: number; treasuryBps: number; buybackBps: number; parentBurnBps: number; rewardsBps: number };
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.ballasted.fun").replace(/\/$/, "");
-const BLOCKSCOUT = (process.env.NEXT_PUBLIC_BLOCKSCOUT_URL || "https://robinhoodchain.blockscout.com").replace(/\/$/, "");
+// Explorer base for THIS deployment's chain: Robinhood → Blockscout (env override
+// honoured, as before), Elysium → elyscan.live (from the chain profile). Each
+// builder also accepts an explicit `explorer` so a caller can thread it through.
+const EXPLORER = (process.env.NEXT_PUBLIC_BLOCKSCOUT_URL || profile.explorerUrl).replace(/\/$/, "");
 
 export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -14,8 +19,8 @@ export function esc(s: string): string {
 export function shortAddr(a: string): string {
   return a.length >= 10 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
-export function txLink(hash: string): string {
-  return `<a href="${BLOCKSCOUT}/tx/${hash}">tx</a>`;
+export function txLink(hash: string, explorer: string = EXPLORER): string {
+  return `<a href="${explorer}/tx/${hash}">tx</a>`;
 }
 export function tokenLink(addr: string, label: string): string {
   return `<a href="${APP_URL}/app/token/${addr}">${esc(label)}</a>`;
@@ -68,27 +73,52 @@ export function fmtDateUtc(unix: bigint): string {
 
 // ── Message builders ─────────────────────────────────────────────────────────
 
+/** Optional chain-labelling applied to a built message: a leading tag (e.g.
+ *  "Elysium · Gen 5 beta") and the explorer base for its tx link. On Robinhood
+ *  gen-4 both are omitted and the message is byte-identical to before. */
+export type ChainCtx = { prefix?: string; explorer?: string };
+/** Prepend the per-chain tag ("Elysium · Gen 5 beta · …") when present. */
+function pfx(ctx: ChainCtx | undefined, body: string): string {
+  return ctx?.prefix ? `${ctx.prefix} · ${body}` : body;
+}
+
 export function msgLaunch(a: {
   token: string; symbol?: string; name?: string; pairs: string[]; treasury: boolean; split: Split; parentSymbol?: string; txHash: string;
-}): string {
+  /** Wrapped-native quote symbol used for the default pairing (WETH / WHYPE). */
+  quoteSymbol?: string;
+} & ChainCtx): string {
+  const quote = a.quoteSymbol ?? profile.quoteSymbol;
   const head = `🚀 New launch: ${tokenLink(a.token, ticker(a.symbol, a.token))}${a.name ? ` (${esc(a.name)})` : ""}`;
-  const pairs = `Paired with ${a.pairs.join(" + ")}`;
+  const pairs = `Paired with ${(a.pairs.length ? a.pairs : [quote]).join(" + ")}`;
   const parts = [head, pairs, `Treasury: ${a.treasury ? "yes" : "no"}`, `Split ${splitCompact(a.split)}`];
   if (a.parentSymbol) parts.push(`Parent: ${a.parentSymbol.startsWith("$") ? a.parentSymbol : `$${a.parentSymbol}`}`);
-  parts.push(txLink(a.txHash));
-  return parts.join(" · ");
+  parts.push(txLink(a.txHash, a.explorer));
+  return pfx(a, parts.join(" · "));
 }
 
 export function msgSwap(a: {
   side: "buy" | "sell"; token: string; symbol?: string; ethAmount: number; tokenAmount: number; isProtocol: boolean; txHash: string;
-}): string {
+  /** Native/quote unit label. ETH on Robinhood, HYPE on Elysium. */
+  nativeSymbol?: string;
+} & ChainCtx): string {
+  const native = a.nativeSymbol ?? profile.nativeSymbol;
   const icon = a.side === "buy" ? "🟢" : "🔴";
   const verb = a.side === "buy" ? "Buy" : "Sell";
   const star = a.isProtocol ? " ⚓" : "";
   const flow = a.side === "buy"
-    ? `${fmtAmount(a.ethAmount)} ETH → ${fmtAmount(a.tokenAmount)} ${ticker(a.symbol, a.token)}`
-    : `${fmtAmount(a.tokenAmount)} ${ticker(a.symbol, a.token)} → ${fmtAmount(a.ethAmount)} ETH`;
-  return `${icon} ${verb}${star} · ${tokenLink(a.token, ticker(a.symbol, a.token))} · ${flow} · ${txLink(a.txHash)}`;
+    ? `${fmtAmount(a.ethAmount)} ${native} → ${fmtAmount(a.tokenAmount)} ${ticker(a.symbol, a.token)}`
+    : `${fmtAmount(a.tokenAmount)} ${ticker(a.symbol, a.token)} → ${fmtAmount(a.ethAmount)} ${native}`;
+  return pfx(a, `${icon} ${verb}${star} · ${tokenLink(a.token, ticker(a.symbol, a.token))} · ${flow} · ${txLink(a.txHash, a.explorer)}`);
+}
+
+/** ProtocolFeeVault.Forwarded — the protocol's share of swap fees collected in the
+ *  vault and forwarded to the Ballast multisig. Gen-5 (Elysium) only.
+ *  NOTE: the destination is a Gnosis Safe, but CLAUDE.md rule 1 bans the word
+ *  "safe" in Ballast copy, so the public message says "Ballast multisig". */
+export function msgSweep(a: {
+  assetSymbol: string; amount: number; txHash: string;
+} & ChainCtx): string {
+  return pfx(a, `💸 Protocol share forwarded to the Ballast multisig · ${fmtAmount(a.amount)} ${a.assetSymbol} · ${txLink(a.txHash, a.explorer)}`);
 }
 
 export function msgBuyback(a: { ballastBurned: number; asset: string; spent: number; txHash: string }): string {

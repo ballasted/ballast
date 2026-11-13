@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { activeChain } from "./chain";
+import { activeChain, isElysium, profile } from "./chain";
 
 // Contract addresses come from env, filled after deployment. Never hardcode
 // per-launch addresses — those resolve from the BallastFactory registry
@@ -11,13 +11,51 @@ function asAddress(v: string | undefined): Address | undefined {
   return v as Address;
 }
 
+// ── Gen-5 Elysium (99901) deployed defaults ──────────────────────────────────
+// Verified, immutable gen-5 core on 99901 (keep in sync with
+// deployments/elysium-mainnet.addresses.json + packages/sdk ELYSIUM_ADDRESSES).
+// These are used ONLY when NEXT_PUBLIC_CHAIN=elysium AND the matching env var is
+// unset, exactly like BASKET_ZAP_DEFAULT_4663 — so an Elysium build (or a Preview)
+// works from just NEXT_PUBLIC_CHAIN=elysium, while the env var stays an override.
+// positionManager / stateView / v4Quoter are intentionally absent (not yet sourced
+// on 99901 — reads/LP quote via PoolManager extsload + swap simulation instead).
+export const ELYSIUM_DEFAULTS = {
+  factory: "0x24c9582C31a7B890dC51D51e99E1283880Bc4bEE" as Address, // BallastFactoryV5
+  hook: "0x3F5b07E06A16E0A1da416D29B64C1f9DC48A12Cc" as Address, // BallastHookV5
+  seeder: "0x1A2b1e5361a5f1cc0c8fe48b983D8191F0fA4444" as Address, // BallastSeederV5
+  protocolFeeVault: "0xA8fAd48376572075288ad60eE199b36bc445D1b0" as Address,
+  safe: "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C" as Address, // 2-of-3, burn dest
+  whype: "0xbA876237B0F021A6c6D852d6c26E107997cC5E81" as Address, // only green quote
+  poolManager: "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1" as Address,
+  universalRouter: "0x1B341FDD55d56F8E08409A2C25DDFad93Eb03C1a" as Address, // UR v2.2.0
+} as const;
+
+/** env var if set, else the Elysium default when NEXT_PUBLIC_CHAIN=elysium. */
+function elysiumAddr(
+  env: string | undefined,
+  key: keyof typeof ELYSIUM_DEFAULTS,
+): Address | undefined {
+  return asAddress(env) ?? (isElysium ? ELYSIUM_DEFAULTS[key] : undefined);
+}
+
+// BALLAST contract generation + beta label for THIS build (from the chain profile).
+export const GENERATION = profile.generation;
+export const GENERATION_LABEL = profile.label; // "" on Robinhood, "Gen 5 · beta" on Elysium
+export const CHAIN_FEATURES = profile.features;
+
 // ── Deployed by DeployMainnet.s.sol (Part 2) ─────────────────────────────────
 export const LENS_ADDRESS = asAddress(process.env.NEXT_PUBLIC_LENS_ADDRESS);
 export const ASSET_REGISTRY_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS,
 );
-export const FACTORY_ADDRESS = asAddress(process.env.NEXT_PUBLIC_FACTORY_ADDRESS);
-export const HOOK_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS);
+export const FACTORY_ADDRESS = elysiumAddr(
+  process.env.NEXT_PUBLIC_FACTORY_ADDRESS,
+  "factory",
+);
+export const HOOK_ADDRESS = elysiumAddr(
+  process.env.NEXT_PUBLIC_V4_HOOK_ADDRESS,
+  "hook",
+);
 // FeeConfig — the fee split shown in the create flow is read live from here, not
 // hardcoded, because the owner can retune it (CLAUDE.md conventions).
 export const FEE_CONFIG_ADDRESS = asAddress(
@@ -252,16 +290,40 @@ export const MANATEE_ADDRESS = asAddress(process.env.NEXT_PUBLIC_MANATEE_ADDRESS
 export const isManateeConfigured = Boolean(MANATEE_ADDRESS);
 
 // ── Pre-existing chain infrastructure (verified, docs/robinhood-chain-research) ─
-export const WETH_ADDRESS = asAddress(process.env.NEXT_PUBLIC_WETH_ADDRESS);
-export const POOL_MANAGER_ADDRESS = asAddress(
+// On Elysium, WETH_ADDRESS carries WHYPE — the wrapped-native quote asset — so the
+// same wrap/settle/take swap plumbing works with the native symbol swapped to HYPE.
+export const WETH_ADDRESS = elysiumAddr(process.env.NEXT_PUBLIC_WETH_ADDRESS, "whype");
+export const POOL_MANAGER_ADDRESS = elysiumAddr(
   process.env.NEXT_PUBLIC_POOL_MANAGER_ADDRESS,
+  "poolManager",
 );
+// StateView / V4Quoter are NOT yet deployed/sourced on Elysium (99901). When unset
+// there, reads fall back to PoolManager.extsload (slot0/liquidity) and quotes to
+// swap simulation (see lib/swapV4.ts, hooks/useElysiumPool.ts).
 export const STATE_VIEW_ADDRESS = asAddress(
   process.env.NEXT_PUBLIC_STATE_VIEW_ADDRESS,
 );
 export const QUOTER_ADDRESS = asAddress(process.env.NEXT_PUBLIC_V4_QUOTER_ADDRESS);
-export const UNIVERSAL_ROUTER_ADDRESS = asAddress(
+export const UNIVERSAL_ROUTER_ADDRESS = elysiumAddr(
   process.env.NEXT_PUBLIC_UNIVERSAL_ROUTER_ADDRESS,
+  "universalRouter",
+);
+
+// ── Gen-5 Elysium core (no treasury, no backing lens, no asset registry) ──────
+// The only quote asset on Elysium. Alias of WETH_ADDRESS here (which resolves to
+// WHYPE on Elysium), exported under its real name for gen-5 call sites.
+export const WHYPE_ADDRESS = isElysium ? WETH_ADDRESS : undefined;
+export const SEEDER_ADDRESS = elysiumAddr(
+  process.env.NEXT_PUBLIC_SEEDER_ADDRESS,
+  "seeder",
+);
+export const PROTOCOL_FEE_VAULT_ADDRESS = elysiumAddr(
+  process.env.NEXT_PUBLIC_PROTOCOL_FEE_VAULT_ADDRESS,
+  "protocolFeeVault",
+);
+export const BALLAST_SAFE_ADDRESS = elysiumAddr(
+  process.env.NEXT_PUBLIC_BALLAST_SAFE_ADDRESS,
+  "safe",
 );
 
 // BallastRouterV2 (contracts/src/BallastRouterV2.sol) — pay with ETH into a
@@ -375,7 +437,10 @@ export const FACTORY_ADDRESSES: Address[] = FACTORIES.map((f) => f.address);
 // lists — one short entry silently made an entire generation's real, liquid pools
 // invisible with no error (BALLAST/CHRS/RCN, found + fixed 2026-09-25). A reviewed,
 // checked-in constant can't drift out of sync the same way an env var can.
-const HISTORICAL_HOOKS: { factory: Address; hook: Address }[] = [
+// Robinhood-only: these are gen-4 (chain 4663) factory↔hook pairs and MUST be empty
+// on an Elysium build, or the swap/fee read paths would probe non-existent 4663 hook
+// addresses on 99901 (and the StateView-based hook resolver, which Elysium lacks).
+const HISTORICAL_HOOKS: { factory: Address; hook: Address }[] = isElysium ? [] : [
   { factory: "0x069974136c78Cf0F2162463B95321E59F56523D8", hook: "0x9C15c992E4De3711715C8B7D717EF46e474680CC" },
   { factory: "0x05aaa5c50e8c3067c3321df07686ac52be8f2ed1", hook: "0x743102aa1De955b5F0Fada1377B6E545Fdb080cc" },
   // gen-3 (HARUNA, BALLCAT) — was missing here since this list's introduction
@@ -434,24 +499,36 @@ export function hookForFactory(factory: Address | undefined): Address | undefine
 // missing OR zero/malformed value to `undefined`, so this list catches both the
 // unset and the `0x0` case the spec calls out — a startup guard surfaces it as a
 // clear configuration error rather than letting a write revert confusingly later.
-export const REQUIRED_CONTRACTS = [
-  ["Factory", "NEXT_PUBLIC_FACTORY_ADDRESS", FACTORY_ADDRESS],
-  ["Backing lens", "NEXT_PUBLIC_LENS_ADDRESS", LENS_ADDRESS],
-  ["Asset registry", "NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS", ASSET_REGISTRY_ADDRESS],
-] as const;
+// Core addresses the app cannot function without, by generation. Gen-5 (Elysium)
+// has NO backing lens and NO asset registry — requiring them would brick an Elysium
+// build. Gen-5 instead needs the hook + router + WHYPE to do anything useful.
+export const REQUIRED_CONTRACTS = (
+  isElysium
+    ? [
+        ["Factory", "NEXT_PUBLIC_FACTORY_ADDRESS", FACTORY_ADDRESS],
+        ["Hook", "NEXT_PUBLIC_V4_HOOK_ADDRESS", HOOK_ADDRESS],
+        ["WHYPE", "NEXT_PUBLIC_WETH_ADDRESS", WETH_ADDRESS],
+        ["UniversalRouter", "NEXT_PUBLIC_UNIVERSAL_ROUTER_ADDRESS", UNIVERSAL_ROUTER_ADDRESS],
+      ]
+    : [
+        ["Factory", "NEXT_PUBLIC_FACTORY_ADDRESS", FACTORY_ADDRESS],
+        ["Backing lens", "NEXT_PUBLIC_LENS_ADDRESS", LENS_ADDRESS],
+        ["Asset registry", "NEXT_PUBLIC_ASSET_REGISTRY_ADDRESS", ASSET_REGISTRY_ADDRESS],
+      ]
+) as readonly (readonly [string, string, Address | undefined])[];
 
 export const missingContracts: string[] = REQUIRED_CONTRACTS.filter(
   ([, , addr]) => !addr,
 ).map(([name, envVar]) => `${name} (${envVar})`);
 
 export const hasConfigError = missingContracts.length > 0;
-// A swap needs the pool identity (hook + WETH) and a route (router + state view).
-export const isSwapConfigured = Boolean(
-  HOOK_ADDRESS &&
-    WETH_ADDRESS &&
-    UNIVERSAL_ROUTER_ADDRESS &&
-    STATE_VIEW_ADDRESS,
-);
+// A swap needs the pool identity (hook + WETH/WHYPE) and a route (router). On gen-4
+// StateView is also required (price reads); on gen-5 StateView isn't deployed yet,
+// so reads fall back to PoolManager.extsload — hence the PoolManager requirement
+// there instead.
+export const isSwapConfigured = isElysium
+  ? Boolean(HOOK_ADDRESS && WETH_ADDRESS && UNIVERSAL_ROUTER_ADDRESS && POOL_MANAGER_ADDRESS)
+  : Boolean(HOOK_ADDRESS && WETH_ADDRESS && UNIVERSAL_ROUTER_ADDRESS && STATE_VIEW_ADDRESS);
 
 // Fixed launch parameters, mirrored from BallastFactory so the UI can preview
 // backing per token before any contract call. Read economic globals live; these

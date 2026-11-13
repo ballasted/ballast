@@ -10,6 +10,7 @@ import { SideNav } from "@/components/app/SideNav";
 import { TopBar } from "@/components/app/TopBar";
 import { ConfigGuard } from "@/components/app/ConfigGuard";
 import { NetworkGuard } from "@/components/app/NetworkGuard";
+import { CrossAppSwitch } from "@/components/app/CrossAppSwitch";
 import { cn } from "@/lib/cn";
 
 // APP LAYOUT — this is the ONLY segment wrapped in web3 providers. The marketing
@@ -56,6 +57,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 : "px-6 pb-[calc(52px+env(safe-area-inset-bottom))] pt-5 lg:px-10 lg:pb-10",
             )}
           >
+            {!isMiniApp && <CrossAppSwitch />}
             {children}
           </main>
           {!isMiniApp && <BottomNav />}

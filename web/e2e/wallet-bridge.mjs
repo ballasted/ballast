@@ -13,13 +13,16 @@ import { createWalletClient, createPublicClient, http } from "viem";
 const ANVIL_PK = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const RPC_URL = process.env.BRIDGE_RPC_URL || "http://127.0.0.1:8555";
 const PORT = Number(process.env.BRIDGE_PORT || 8766);
-const CHAIN_ID = 4663;
+// Chain id defaults to 4663 (Robinhood harness, unchanged); the Elysium harness
+// sets BRIDGE_CHAIN_ID=99901 so the signing client's chainId matches the fork.
+const CHAIN_ID = Number(process.env.BRIDGE_CHAIN_ID || 4663);
+const NATIVE_SYMBOL = process.env.BRIDGE_NATIVE_SYMBOL || "ETH";
 
 const account = privateKeyToAccount(ANVIL_PK);
 const chain = {
   id: CHAIN_ID,
-  name: "Robinhood Chain (fork)",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  name: `Fork chain ${CHAIN_ID}`,
+  nativeCurrency: { name: NATIVE_SYMBOL, symbol: NATIVE_SYMBOL, decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
 };
 const walletClient = createWalletClient({ account, chain, transport: http(RPC_URL) });

@@ -14,6 +14,35 @@ import { WETH_ADDRESS } from "./contracts";
 
 export type SwapSide = "buy" | "sell";
 
+// BOTH chains this app ships on use the SAME modified v4 swap-params struct with the
+// `minHopPriceX36` fork field. Robinhood Chain is the original fork; Elysium's
+// UniversalRouter was EMPIRICALLY shown to require the field too — standard Uniswap
+// v4 calldata reverts there (see lib/chainProfile.ts and scripts/elysiumEncDebug.mts).
+// So there is a single encoding here, not a per-chain branch.
+
+/** Encode the single-hop exact-in swap params for the active chain's router. */
+function encodeSwapParams(
+  key: PoolKey,
+  zeroForOne: boolean,
+  amountIn: bigint,
+  amountOutMinimum: bigint,
+): Hex {
+  const poolKey = keyTuple(key);
+  return encodeAbiParameters(
+    [exactInputSingleParamsAbi],
+    [
+      {
+        poolKey,
+        zeroForOne,
+        amountIn,
+        amountOutMinimum,
+        minHopPriceX36: 0n, // fork field; slippage via amountOutMinimum / unwrap min
+        hookData: "0x",
+      },
+    ],
+  );
+}
+
 // v4 action param encodings, verified against the DEPLOYED fork's Actions.sol +
 // V4Router.sol (not the Uniswap SDK — this router is modified):
 //   SETTLE      (currency, amount, payerIsUser)  — payer=router when false
@@ -67,16 +96,7 @@ export function buildV4SwapInput(args: {
   const isBuy = args.side === "buy";
   const zeroForOne = isBuy ? buyZeroForOne(args.token, WETH_ADDRESS) : sellZeroForOne(args.token, WETH_ADDRESS);
 
-  const swapParams = encodeAbiParameters([exactInputSingleParamsAbi], [
-    {
-      poolKey: keyTuple(key),
-      zeroForOne,
-      amountIn: args.amountIn,
-      amountOutMinimum: args.amountOutMinimum,
-      minHopPriceX36: 0n, // fork field; slippage via amountOutMinimum / unwrap min
-      hookData: "0x",
-    },
-  ]);
+  const swapParams = encodeSwapParams(key, zeroForOne, args.amountIn, args.amountOutMinimum);
 
   if (isBuy) {
     // WRAP_ETH the router's whole ETH balance (= msg.value) into WETH it holds.
@@ -152,16 +172,7 @@ export function buildErc20SwapInput(args: {
   const inputCurrency = isBuy ? args.quoteAsset : args.token;
   const outputCurrency = isBuy ? args.token : args.quoteAsset;
 
-  const swapParams = encodeAbiParameters([exactInputSingleParamsAbi], [
-    {
-      poolKey: keyTuple(key),
-      zeroForOne,
-      amountIn: args.amountIn,
-      amountOutMinimum: args.amountOutMinimum,
-      minHopPriceX36: 0n,
-      hookData: "0x",
-    },
-  ]);
+  const swapParams = encodeSwapParams(key, zeroForOne, args.amountIn, args.amountOutMinimum);
   const settleAll = encodeAbiParameters(SETTLE_ALL_ABI, [inputCurrency, args.amountIn]);
   const takeAll = encodeAbiParameters(TAKE_ALL_ABI, [outputCurrency, args.amountOutMinimum]);
   const actions = concatHex([

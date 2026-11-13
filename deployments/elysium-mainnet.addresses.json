@@ -1,0 +1,42 @@
+{
+  "chainId": 99901,
+  "label": "Gen 5 · beta",
+  "rpc": "https://rpc.elysium.kinetiq.xyz",
+  "rpcBackup": "https://rpc.elyscan.live",
+  "explorer": "https://elysium.kinetiq.xyz/explorer",
+  "startBlock": 3085053,
+  "tokens": {
+    "_comment": "whype: name/symbol WHYPE, decimals 18 (verified on 99901). usdc: symbol USDC, decimals 6 (USDC.e). USDC is NOT a green quote asset on launch (WHYPE only); recorded for reference.",
+    "whype": "0xbA876237B0F021A6c6D852d6c26E107997cC5E81",
+    "usdc": "0xb47c4C8F73F009CC0C0d3f92B388d13E293F0B65"
+  },
+  "infra": {
+    "_comment": "All verified present on 99901 (cast codesize). create2Deployer is exactly 69 bytes = canonical Arachnid deployer. Safe v1.3.0 canonical contracts ALREADY have code on 99901 — no Safe infra deploy needed.",
+    "create2Deployer": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+    "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "safeSingleton_1_3_0": "0x3E5c63644E683549055b9Be8653de26E0B4CD36E",
+    "_safeSingletonNote": "GnosisSafeL2 v1.3.0 (per Rizky — L2 variant, stays Safe{Wallet}-compatible if Elysium is added). Code present on 99901 (23800b). The L1 GnosisSafe singleton 0xd9Db270c... is also present if ever needed.",
+    "safeProxyFactory_1_3_0": "0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2",
+    "safeFallbackHandler_1_3_0": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
+  },
+  "v4": {
+    "_comment": "poolManager: genuine Uniswap v4 PoolManager — byte-identical to the official 4663 v4 PoolManager except its 20-byte self-address (solc 0.8.26). CONFIRMED by Rizky as Elysium's canonical v4 (also used by 0x Settler PR #701, merged Nov 3). On-chain: owner()=0xA9aE0c5eb238a519b7f5Af27415eb6Dd0744Da8D, protocolFeeController()=0x0 (no Uniswap protocol fee set). universalRouter: Uniswap UR v2.2.0 — code present, poolManager()==0xE2e105..., WHYPE+Permit2 embedded as immutables; from Uniswap/universal-router PR #534 (verified, PR pending merge). Chose v2.2.0 over v2.1.2 (0xA13f7611...4b45) because neither matches our 4663 minHopPriceX36 fork encoding, so the tiebreak (v2.2.0) applies. The DeployElysium script reads ONLY .v4.poolManager; the rest is frontend/SDK-only. FRONTEND NOTE: Elysium swaps need STANDARD v4 UR encoding (NO minHopPriceX36) — do not reuse the 4663 calldata path. positionManager/stateView/v4Quoter still to source (reads/LP only).",
+    "poolManager": "0xE2e105d3F7209A9DA11f83cCf3E7398a753823F1",
+    "positionManager": "",
+    "stateView": "",
+    "v4Quoter": "",
+    "universalRouter": "0x1B341FDD55d56F8E08409A2C25DDFad93Eb03C1a",
+    "universalRouter_alt_v2_1_2": "0xA13f7611115752DEB2B13813BDDE16A5073e4b45",
+    "_universalRouterNote": "v2.2.0 selected; verified, Uniswap PR #534 pending merge"
+  },
+  "safe": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C",
+  "protocolBurnDestination": "0xa4dCbAd7A34da4473040d9f0fE35990c458A727C",
+  "ballast": {
+    "protocolFeeVault": "0xa8fad48376572075288ad60ee199b36bc445d1b0",
+    "hook": "0x3f5b07e06a16e0a1da416d29b64c1f9dc48a12cc",
+    "seeder": "0x1a2b1e5361a5f1cc0c8fe48b983d8191f0fa4444",
+    "factory": "0x24c9582c31a7b890dc51d51e99e1283880bc4bee",
+    "assetRegistry": ""
+  }
+}

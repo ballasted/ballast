@@ -45,6 +45,8 @@ import { LiquidityDepthNote } from "@/components/app/LiquidityDepthNote";
 import { ProjectLinks } from "@/components/app/ProjectLinks";
 import { MotionSection } from "@/components/app/MotionSection";
 import { activeChain } from "@/lib/chain";
+import { isElysium } from "@/lib/chainProfile";
+import { TokenViewV5 } from "@/components/app/token/TokenViewV5";
 import { ipfsToGateway } from "@/lib/ipfs";
 import { shortAddress, formatUsd, formatSmallUsd } from "@/lib/format";
 import { marketCapUsd, marketCapSupply } from "@/lib/market";
@@ -60,6 +62,22 @@ type TabId = "trades" | "holders" | "about";
 // strip + chart/trade side by side, nothing else above the fold; everything
 // else lives behind the four tabs below (UI principles).
 export default function TokenDetailPage() {
+  // Gen-5 (Elysium) renders a dedicated, treasury-free token view. `isElysium` is a
+  // build-time constant, so this branch is stable across every render on a given
+  // deployment — the gen-4 hooks below never run on an Elysium build, and vice-versa.
+  if (isElysium) return <ElysiumTokenDetail />;
+  return <RobinhoodTokenDetail />;
+}
+
+function ElysiumTokenDetail() {
+  const params = useParams();
+  const raw = typeof params.address === "string" ? params.address : "";
+  const isAddr = /^0x[0-9a-fA-F]{40}$/.test(raw);
+  if (!isAddr) return <div className="card p-5 text-sm text-text-muted">Invalid token address.</div>;
+  return <TokenViewV5 token={raw as Address} />;
+}
+
+function RobinhoodTokenDetail() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();

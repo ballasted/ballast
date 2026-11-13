@@ -2,7 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
-import { robinhoodChain } from "@/lib/chain";
+import { activeChain } from "@/lib/chain";
+
+// The chain this build targets (robinhood | elysium). Local alias kept so the body
+// below reads the same as before; it is NOT necessarily Robinhood anymore.
+const targetNetwork = activeChain;
 
 // Single source of truth for "is the connected wallet on the network we support".
 // Read on every render from the live account so a mid-session network change is
@@ -14,33 +18,34 @@ export function useNetworkGuard() {
   const { switchChainAsync, isPending } = useSwitchChain();
   const [error, setError] = useState<string | undefined>();
 
-  const wrongNetwork = isConnected && chainId !== robinhoodChain.id;
+  const wrongNetwork = isConnected && chainId !== targetNetwork.id;
 
-  const switchToRobinhood = useCallback(async () => {
+  const switchToActive = useCallback(async () => {
     setError(undefined);
     try {
       // wagmi asks the wallet to switch; most injected wallets add-then-switch
       // on a 4902 (unknown chain) automatically.
-      await switchChainAsync({ chainId: robinhoodChain.id });
+      await switchChainAsync({ chainId: targetNetwork.id });
     } catch (switchErr) {
       // Explicit fallback for wallets that do NOT auto-add: add the chain from our
       // canonical viem definition, then switch. Uses the raw provider so the params
-      // exactly match lib/chain.ts (no second, drifting source of RPC/explorer URLs).
+      // exactly match lib/chainProfile.ts (no second, drifting source of RPC/explorer
+      // URLs). On Elysium this hands the wallet a DIRECT RPC, never the HyperEVM inbox.
       try {
         const provider = (await connector?.getProvider()) as
           | { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
           | undefined;
         if (!provider) throw switchErr;
-        const hexId = `0x${robinhoodChain.id.toString(16)}`;
+        const hexId = `0x${targetNetwork.id.toString(16)}`;
         await provider.request({
           method: "wallet_addEthereumChain",
           params: [
             {
               chainId: hexId,
-              chainName: robinhoodChain.name,
-              nativeCurrency: robinhoodChain.nativeCurrency,
-              rpcUrls: [...robinhoodChain.rpcUrls.default.http],
-              blockExplorerUrls: [robinhoodChain.blockExplorers.default.url],
+              chainName: targetNetwork.name,
+              nativeCurrency: targetNetwork.nativeCurrency,
+              rpcUrls: [...targetNetwork.rpcUrls.default.http],
+              blockExplorerUrls: [targetNetwork.blockExplorers?.default.url],
             },
           ],
         });
@@ -63,9 +68,13 @@ export function useNetworkGuard() {
     isConnected,
     chainId,
     wrongNetwork,
-    switchToRobinhood,
+    switchToActive,
+    // Back-compat alias — many components call `switchToRobinhood`; it now switches
+    // to whichever chain this build targets.
+    switchToRobinhood: switchToActive,
     isSwitching: isPending,
     error,
-    targetChain: robinhoodChain,
+    targetChain: targetNetwork,
+    targetChainName: targetNetwork.name,
   };
 }
